@@ -41,8 +41,9 @@ Instale o [Poetry](https://python-poetry.org/docs/#installation) e depois:
 
 ```bash
 poetry install
-copy .env.example .env
-# Subir PostgreSQL local ou ajustar DATABASE_URL
+cp .env.example .env
+# Subir o banco: docker compose up db -d  (ou PostgreSQL local)
+# DATABASE_URL usa localhost fora do Docker; dentro do Compose use host db
 poetry run alembic upgrade head
 poetry run uvicorn src.main:app --reload
 ```
