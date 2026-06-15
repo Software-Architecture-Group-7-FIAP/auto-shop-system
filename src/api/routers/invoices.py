@@ -1,0 +1,46 @@
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from src.api.dependencies import domain_error_handler, get_current_user
+from src.api.schemas import InvoiceResponse, ServiceOrderResponse
+from src.application.services.invoice_service import InvoiceService
+from src.domain.exceptions import DomainError
+from src.infrastructure.database import UserModel, get_db
+
+router = APIRouter(tags=["Invoices"])
+
+
+@router.post("/admin/service-orders/{service_order_id}/invoice", response_model=InvoiceResponse, status_code=201)
+def create_invoice(
+    service_order_id: int,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        return InvoiceService(db).create_invoice(service_order_id)
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+
+@router.patch("/admin/invoices/{invoice_id}/pay", response_model=InvoiceResponse)
+def pay_invoice(
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        return InvoiceService(db).pay_invoice(invoice_id)
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+
+@router.patch("/admin/service-orders/{service_order_id}/deliver", response_model=ServiceOrderResponse)
+def deliver_service_order(
+    service_order_id: int,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        return InvoiceService(db).deliver(service_order_id)
+    except DomainError as e:
+        raise domain_error_handler(e)

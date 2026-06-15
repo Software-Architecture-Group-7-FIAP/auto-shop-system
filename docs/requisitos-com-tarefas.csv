@@ -1,0 +1,41 @@
+﻿Identificador,Descrição,Prioridade,Requisitos relacionado,Título,Tarefa,Descrição da tarefa
+RF01,Descreve a sequência de funções realizadas para o cadastro de um cliente no sistema,,"RF02 (https://app.notion.com/p/RF02-37e3d0beeb9f80a5871ff7587b568f79?pvs=21), RF05 (https://app.notion.com/p/RF05-37e3d0beeb9f8077ad9ecb8190054fed?pvs=21)",O Sistema deve permitir a Gestão do Cliente,T02,"T02 — Gestão de clientes, identificação e autenticação administrativa"
+RF02,Descreve a sequência de funções realizadas para o cadastro de um novo veículo no sistema.,,RF01 (https://app.notion.com/p/RF01-37e3d0beeb9f80dd855cfa257cce07fe?pvs=21),O Sistema deve permitir a Gestão do Veículo,T03,T03 — Gestão de veículos
+RF03,Descreve a sequência de funções realizadas para o cadastro de um novo produto no sistema,,"RF04 (https://app.notion.com/p/RF04-37e3d0beeb9f80faa35ccac552ef6f78?pvs=21), RF10 (https://app.notion.com/p/RF10-37e3d0beeb9f8006906ef21daf3f3ea1?pvs=21), RF09 (https://app.notion.com/p/RF09-37e3d0beeb9f800b8422e48d96b112e8?pvs=21)",O Sistema deve permitir a Gestão de Produtos (Peças e Insumos),T05,"T05 — Produtos, fornecedores e gestão de estoque"
+RF04,Descreve a sequência de funções realizadas para o cadastro de um novo serviço no sistema,,"RF03 (https://app.notion.com/p/RF03-37e3d0beeb9f8012a0c9ea9ee3959cbb?pvs=21), RF09 (https://app.notion.com/p/RF09-37e3d0beeb9f800b8422e48d96b112e8?pvs=21)",O Sistema deve permitir a Gestão de Serviços,T04,T04 — Catálogo de serviços e composição serviço-produto
+RF05,,,RF01 (https://app.notion.com/p/RF01-37e3d0beeb9f80dd855cfa257cce07fe?pvs=21),O Sistema deve realizar a Validação de CNPJ,T02,"T02 — Gestão de clientes, identificação e autenticação administrativa"
+RF06,Descreve a sequência de funções realizadas para o cadastro de um novo orçamento no sistema,,,O Sistema deve permitir a Gestão de Orçamento,T06,T06 — Criação e composição de orçamento
+RF07,,,,O Sistema deve permitir a Gestão de OS,T08,T08 — Gestão e atribuição de ordens de serviço (OS)
+RF08,Descreve a sequência de funções realizadas para adição de múltiplas linhas de serviço em um orçamento,,,O Sistema deve permitir a adição de múltiplas linhas de serviços em um orçamento,T06,T06 — Criação e composição de orçamento
+RF09,Descreve a sequência de funções realizadas para adição de múltiplas linhas de produto em um serviço,,"RF04 (https://app.notion.com/p/RF04-37e3d0beeb9f80faa35ccac552ef6f78?pvs=21), RF03 (https://app.notion.com/p/RF03-37e3d0beeb9f8012a0c9ea9ee3959cbb?pvs=21), RF10 (https://app.notion.com/p/RF10-37e3d0beeb9f8006906ef21daf3f3ea1?pvs=21)",O Sistema deve permitir que um serviço tenha múltiplas linhas de produto. ,T04,T04 — Catálogo de serviços e composição serviço-produto
+RF10,Descreve a sequência de funções realizadas para adição de múltiplas linhas de produto em um orçamento a partir dos produtos descritos em serviços,,"RF03 (https://app.notion.com/p/RF03-37e3d0beeb9f8012a0c9ea9ee3959cbb?pvs=21), RF09 (https://app.notion.com/p/RF09-37e3d0beeb9f800b8422e48d96b112e8?pvs=21)",O Sistema deve permitir adicionar linhas de produto dos serviços adicionados ao orçamento,T06,T06 — Criação e composição de orçamento
+RF11,,,,O Sistema deve permitir a adição de novas linhas de produto,T06,T06 — Criação e composição de orçamento
+RF12,,,,O Sistema deve calcular o preço total de um orçamento considerando todos os serviços e produtos do orçamento,T06,T06 — Criação e composição de orçamento
+RF13,,,,O Sistema deve consultar a disponibilidade de produtos (peças e insumos),T06,T06 — Criação e composição de orçamento
+RF14,,,,O Sistema deve calcular uma data prevista de entrega,T06,T06 — Criação e composição de orçamento
+RF15,,,,O Sistema deve gerar um pdf com todas as informações contidas no orçamento,T07,"T07 — PDF do orçamento, envio por e-mail e aprovação do cliente"
+RF16,,,,O Sistema deve poder enviar esse orçamemento via email. ,T07,"T07 — PDF do orçamento, envio por e-mail e aprovação do cliente"
+RF17,,,,O Email do orçamento deve conter uma ação que retorna a aprovação ou recusa do orçamento,T07,"T07 — PDF do orçamento, envio por e-mail e aprovação do cliente"
+RF18,,,,O Sistema deve gerar automaticamente uma OS com base na resposta do orçamento,T07,"T07 — PDF do orçamento, envio por e-mail e aprovação do cliente"
+RF19,,,,O Sistema deve enviar por email um pdf da OS,T08,T08 — Gestão e atribuição de ordens de serviço (OS)
+RF20,,,,O Sistema deve permitir a gestão de Reserva,T09,"T09 — Reservas, solicitações de compra e recebimento de mercadorias"
+RF21,,,,O Sistema deve permitir a gestão de Solicitação de Compra,T09,"T09 — Reservas, solicitações de compra e recebimento de mercadorias"
+RF22,,,,O Sistema deve pesquisar se há recebimento gerado para os produtos não disponíveis,T09,"T09 — Reservas, solicitações de compra e recebimento de mercadorias"
+RF23,,,,O Sistema deve gerar uma solicitação de compra para produtos não disponíveis e sem recebimento ,T09,"T09 — Reservas, solicitações de compra e recebimento de mercadorias"
+RF24,,,,O Sistema deve gerar um recebimento para todo pedido de compra,T09,"T09 — Reservas, solicitações de compra e recebimento de mercadorias"
+RF25,,,,O Sistema deve gerar uma reserva quando houver um produto (peça ou insumo) na OS,T09,"T09 — Reservas, solicitações de compra e recebimento de mercadorias"
+RF26,,,,O Sistema deve permitir a atribuição de um mecânico responsável para cada OS,T08,T08 — Gestão e atribuição de ordens de serviço (OS)
+RF27,,,,O Sistema deve alterar o status da OS para “Em Diagnóstico” após a atribuição de um responsável,T08,T08 — Gestão e atribuição de ordens de serviço (OS)
+RF28,,,,O Sistema deve permitir a atribuição de uma prioridade para a OS,T08,T08 — Gestão e atribuição de ordens de serviço (OS)
+RF29,,,,O Sistema deve permitir a gestão de fornecedor,T05,"T05 — Produtos, fornecedores e gestão de estoque"
+RF30,,,,O Sistema deve permitir a atualização do estoque,"T05, T10","T05 — Produtos, fornecedores e gestão de estoque | T10 — Fila de execução, execução do serviço e retirada de estoque"
+RF31,,,,"O Sistema deve alocar uma OS com status de Aguardando Aprovação, com aprovação vínculada, para uma fila de execução",T10,"T10 — Fila de execução, execução do serviço e retirada de estoque"
+RF32,,,,O Sistema deve permitir informar o início de atendimento,T10,"T10 — Fila de execução, execução do serviço e retirada de estoque"
+RF33,,,,O Sistema deve permitir informar a finalização de um atendimento,T10,"T10 — Fila de execução, execução do serviço e retirada de estoque"
+RF34,,,,O Sistema deve permitir a solicitação de uma retirada de estoque,T10,"T10 — Fila de execução, execução do serviço e retirada de estoque"
+RF35,,,,O Sistema deve notificar o estoquista de toda solicitação de retirada,T10,"T10 — Fila de execução, execução do serviço e retirada de estoque"
+RF36,,,,O Sistema deve monitorar OS de produto retirado de estoque,T10,"T10 — Fila de execução, execução do serviço e retirada de estoque"
+RF37,,,,"O Sistema deve atualizar reserva, estoque e OS ao final de cada atendimento",T10,"T10 — Fila de execução, execução do serviço e retirada de estoque"
+RF38,,,,O Sistema deve gerar uma fatura para OS finalizada,T11,T11 — Faturamento e encerramento por pagamento
+RF39,,,,O Sistema deve informar o pagamento de uma fatura,T11,T11 — Faturamento e encerramento por pagamento
+RF40,,,,O Sistema atualizar e encerrar a OS após o pagamento da fatura,T11,T11 — Faturamento e encerramento por pagamento

@@ -1,23 +1,17 @@
 # Oficina Mecânica — Sistema Integrado de Atendimento
 
-Backend monolítico FastAPI para gestão de ordens de serviço (OS), clientes, veículos, peças/insumos e faturamento.
+Backend MVP para gestão de ordens de serviço (OS), clientes, veículos, peças/insumos e faturamento.
 
-**FIAP 15SOAT — Tech Challenge Fase 1 (T01 Bootstrap)**
+**FIAP 15SOAT — Tech Challenge Fase 1**
 
 ## Stack
 
 - Python 3.12 + FastAPI
-- PostgreSQL 16
-- SQLAlchemy 2 + Alembic
+- PostgreSQL (escolhido por suporte a transações ACID, integridade referencial e escalabilidade para filas de OS)
+- SQLAlchemy + Alembic
+- JWT para APIs administrativas
 - Docker + docker-compose
-
-### Por que PostgreSQL?
-
-PostgreSQL foi escolhido como banco de dados relacional por:
-
-- **Transações ACID** — fluxos de orçamento e OS exigem consistência (reservas de estoque, aprovações, faturamento).
-- **Integridade referencial** — chaves estrangeiras garantem vínculos corretos entre clientes, veículos, orçamentos e ordens de serviço.
-- **Escalabilidade e maturidade** — suporte robusto a índices, JSON, concorrência e ecossistema maduro para evolução do monolito.
+- MailHog para email em desenvolvimento
 
 ## Arquitetura
 
@@ -25,13 +19,11 @@ Monolito em camadas:
 
 ```
 src/
-  domain/         # regras de negócio, exceções de domínio
-  application/    # casos de uso / services (T02+)
-  infrastructure/ # banco de dados, integrações externas
-  api/            # factory FastAPI, rotas e handlers
+  domain/         # regras de negócio, enums, validadores
+  application/    # casos de uso / services
+  infrastructure/ # banco, auth, email, PDF
+  api/            # routers FastAPI e schemas
 ```
-
-A aplicação é criada via factory `create_app()` em `src/api/factory.py`, expondo health check, Swagger e handler global de erros de domínio.
 
 ## Executar com Docker
 
@@ -41,44 +33,54 @@ docker compose up --build
 
 - API: http://localhost:8000
 - Swagger: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-
-### Health check
-
-```bash
-curl http://localhost:8000/health
-```
-
-Resposta esperada:
-
-```json
-{"status": "ok", "database": "connected"}
-```
+- MailHog UI: http://localhost:8025
 
 ## Executar localmente
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # Linux/macOS
-pip install -r requirements.txt
-copy .env.example .env        # Windows
-# cp .env.example .env        # Linux/macOS
-```
-
-Subir PostgreSQL local (ou ajustar `DATABASE_URL` no `.env`), depois:
+Instale o [Poetry](https://python-poetry.org/docs/#installation) e depois:
 
 ```bash
-alembic upgrade head
-uvicorn src.main:app --reload
+poetry install
+copy .env.example .env
+# Subir PostgreSQL local ou ajustar DATABASE_URL
+poetry run alembic upgrade head
+poetry run uvicorn src.main:app --reload
 ```
+
+## Autenticação
+
+Login admin padrão (criado automaticamente):
+
+- **Usuário:** `admin`
+- **Senha:** `admin123`
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
+```
+
+Use o token JWT retornado no header `Authorization: Bearer <token>` para rotas `/api/v1/admin/*`.
+
+## Fluxos principais
+
+1. Cadastrar cliente, veículo, serviços e produtos
+2. Criar orçamento com linhas de serviço/produto
+3. Enviar orçamento por email (aprovação/recusa via link público)
+4. OS gerada automaticamente na aprovação
+5. Atribuir mecânico, reservar peças, executar serviço
+6. Gerar fatura e registrar pagamento → OS entregue
 
 ## Testes
 
 ```bash
-pytest
+poetry run pytest --cov=src --cov-report=term-missing
 ```
 
-## Próximas tarefas
+## Segurança
 
-A T01 entrega apenas a infraestrutura base. Funcionalidades de negócio (clientes, veículos, orçamentos, etc.) serão adicionadas nas tarefas T02 em diante.
+Relatório de vulnerabilidades em `docs/security-report.md` (Bandit + pip-audit).
+
+## Requisitos funcionais
+
+Implementação cobre RF01–RF40 conforme plano de tarefas do projeto.

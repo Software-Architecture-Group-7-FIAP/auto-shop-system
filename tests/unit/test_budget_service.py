@@ -1,0 +1,24 @@
+from src.application.services.budget_service import BudgetService
+from src.application.services.customer_service import CustomerService
+from src.application.services.product_service import ProductService
+from src.application.services.service_catalog_service import ServiceCatalogService
+from src.application.services.vehicle_service import VehicleService
+
+
+def test_budget_total_calculation(db_session):
+    customer = CustomerService(db_session).create(
+        "João", "529.982.247-25", "joao@test.com"
+    )
+    vehicle = VehicleService(db_session).create(
+        customer.id, "ABC1234", "Fiat", "Uno", 2020
+    )
+    service = ServiceCatalogService(db_session).create("Troca de óleo", None, 100.0, 2.0)
+    product = ProductService(db_session).create("Óleo 5W30", "OLEO-001", 50.0, 10)
+
+    budget_svc = BudgetService(db_session)
+    budget = budget_svc.create(customer.id, vehicle.id)
+    budget_svc.add_service_line(budget.id, service.id, 1)
+    budget_svc.add_product_line(budget.id, product.id, 2)
+
+    updated = budget_svc.get_by_id(budget.id)
+    assert updated.total_price == 200.0

@@ -15,15 +15,28 @@ services:
       timeout: 5s
       retries: 5
 
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
   app:
     build: .
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://oficina:oficina@db:5432/oficina
+      SECRET_KEY: dev-secret-key-change-in-production
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      SMTP_FROM: noreply@oficina.local
+      APP_BASE_URL: http://localhost:8000
     depends_on:
       db:
         condition: service_healthy
+      mailhog:
+        condition: service_started
 
 volumes:
   postgres_data:

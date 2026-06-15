@@ -1,0 +1,36 @@
+[tool.poetry]
+name = "oficina-mecanica-api"
+version = "0.1.0"
+description = "Backend MVP para gestão de ordens de serviço (OS), clientes, veículos e faturamento"
+authors = ["FIAP 15SOAT"]
+readme = "README.md"
+packages = [{ include = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = ">=0.115.0"
+uvicorn = { version = ">=0.32.0", extras = ["standard"] }
+sqlalchemy = ">=2.0.36"
+alembic = ">=1.14.0"
+psycopg2-binary = ">=2.9.10"
+pydantic = ">=2.10.0"
+pydantic-settings = ">=2.6.0"
+python-jose = { version = ">=3.3.0", extras = ["cryptography"] }
+bcrypt = ">=4.2.0"
+validate-docbr = ">=1.10.0"
+reportlab = ">=4.2.0"
+aiosmtplib = ">=3.0.0"
+email-validator = ">=2.2.0"
+python-multipart = ">=0.0.17"
+httpx = ">=0.28.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.3.0"
+pytest-asyncio = ">=0.24.0"
+pytest-cov = ">=6.0.0"
+pip-audit = ">=2.7.0"
+bandit = ">=1.8.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

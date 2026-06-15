@@ -7,3 +7,5 @@ __pycache__/
 .coverage
 htmlcov/
 postgres_data/
+requirements-export/
+pdf-extract.txt
