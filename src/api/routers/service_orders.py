@@ -9,7 +9,7 @@ from src.api.schemas import (
     ServiceOrderResponse,
     SetPriorityRequest,
 )
-from src.application.services.budget_approval_service import ServiceOrderEmailService
+from src.application.services.service_order_email_service import ServiceOrderEmailService
 from src.application.services.service_order_service import ServiceOrderService
 from src.domain.enums import ServiceOrderStatus
 from src.domain.exceptions import DomainError

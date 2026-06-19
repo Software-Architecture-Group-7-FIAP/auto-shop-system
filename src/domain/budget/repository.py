@@ -10,6 +10,9 @@ class BudgetRepository(Protocol):
     def get_by_id(self, budget_id: int) -> Budget | None:
         ...
 
+    def get_by_approval_token(self, token: str) -> Budget | None:
+        ...
+
     def list_all(self) -> list[Budget]:
         ...
 

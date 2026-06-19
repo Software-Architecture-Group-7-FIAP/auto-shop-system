@@ -44,6 +44,16 @@ class SqlAlchemyBudgetRepository:
             return None
         return self._to_domain(model)
 
+    def get_by_approval_token(self, token: str) -> Budget | None:
+        model = (
+            self.db.query(BudgetModel)
+            .filter(BudgetModel.approval_token == token)
+            .first()
+        )
+        if not model:
+            return None
+        return self._to_domain(model)
+
     def list_all(self) -> list[Budget]:
         models = self.db.query(BudgetModel).all()
         return [self._to_domain(model) for model in models]

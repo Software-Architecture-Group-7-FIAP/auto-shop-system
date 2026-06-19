@@ -146,6 +146,18 @@ class Budget:
         current_time = now or datetime.now(UTC).replace(tzinfo=None)
         self.estimated_delivery = current_time + timedelta(hours=max(total_hours, 1))
 
+    def mark_sent(self, token: str) -> None:
+        self.approval_token = token
+        self.status = BudgetStatus.SENT
+
+    def approve(self) -> None:
+        if self.status == BudgetStatus.APPROVED:
+            raise ValidationError("Orçamento já aprovado")
+        self.status = BudgetStatus.APPROVED
+
+    def reject(self) -> None:
+        self.status = BudgetStatus.REJECTED
+
     def _required_id(self) -> int:
         if self.id is None:
             raise ValidationError("Orçamento precisa estar persistido")

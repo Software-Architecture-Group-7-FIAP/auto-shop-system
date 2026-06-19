@@ -6,7 +6,7 @@ from src.domain.enums import ServiceOrderStatus
 
 
 def _setup_os_with_budget(db_session):
-    from src.application.services.budget_approval_service import BudgetApprovalService
+    from src.api.composition.budget_approval import compose_budget_approval_service
     from src.application.services.budget_service import BudgetService
     from src.application.services.customer_service import CustomerService
     from src.application.services.product_service import ProductService
@@ -71,7 +71,8 @@ def _setup_os_with_budget(db_session):
     assert budget_model is not None
     budget_model.approval_token = token
     db_session.commit()
-    os = BudgetApprovalService(db_session).approve_budget(token)
+    created_service_order = compose_budget_approval_service(db_session).approve_budget(token)
+    os = ServiceOrderService(db_session).get_by_id(created_service_order.id)
     return os, product
 
 

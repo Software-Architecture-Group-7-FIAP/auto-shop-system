@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from src.api.composition.budget_approval import compose_budget_approval_service
 from src.api.composition.budgets import compose_budget_service
 from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.schemas import (
@@ -11,7 +12,6 @@ from src.api.schemas import (
     BudgetServiceLineCreate,
     MessageResponse,
 )
-from src.application.services.budget_approval_service import BudgetApprovalService
 from src.domain.exceptions import DomainError
 from src.infrastructure.database import UserModel, get_db
 
@@ -129,7 +129,7 @@ async def send_budget_email(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return await BudgetApprovalService(db).send_budget_email(budget_id)
+        return await compose_budget_approval_service(db).send_budget_email(budget_id)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -137,8 +137,8 @@ async def send_budget_email(
 @public_router.get("/{token}/approve", response_model=MessageResponse)
 def approve_budget(token: str, db: Session = Depends(get_db)):
     try:
-        os = BudgetApprovalService(db).approve_budget(token)
-        return MessageResponse(message=f"Orçamento aprovado. OS #{os.id} criada.")
+        service_order = compose_budget_approval_service(db).approve_budget(token)
+        return MessageResponse(message=f"Orçamento aprovado. OS #{service_order.id} criada.")
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -146,7 +146,7 @@ def approve_budget(token: str, db: Session = Depends(get_db)):
 @public_router.get("/{token}/reject", response_model=MessageResponse)
 def reject_budget(token: str, db: Session = Depends(get_db)):
     try:
-        BudgetApprovalService(db).reject_budget(token)
+        compose_budget_approval_service(db).reject_budget(token)
         return MessageResponse(message="Orçamento recusado.")
     except DomainError as e:
         raise domain_error_handler(e)
