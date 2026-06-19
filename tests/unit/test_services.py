@@ -13,6 +13,14 @@ def _setup_os_with_budget(db_session):
     from src.application.services.service_catalog_service import ServiceCatalogService
     from src.application.services.vehicle_service import VehicleService
     from src.infrastructure.auth.tokens import create_signed_approval_token
+    from src.infrastructure.database import BudgetModel
+    from src.infrastructure.persistence.budget_repository import (
+        SqlAlchemyBudgetProductLookup,
+        SqlAlchemyBudgetRepository,
+        SqlAlchemyBudgetServiceCatalogLookup,
+        SqlAlchemyReservationLookup,
+        SqlAlchemyVehicleOwnershipLookup,
+    )
     from src.infrastructure.persistence.customer_repository import (
         SqlAlchemyCustomerLookup,
         SqlAlchemyCustomerRepository,
@@ -46,11 +54,22 @@ def _setup_os_with_budget(db_session):
         products=SqlAlchemyProductRepository(db_session),
         uow=SqlAlchemyUnitOfWork(db_session),
     ).create("Part", "P-1", 10.0, 50)
-    budget = BudgetService(db_session).create(customer.id, vehicle.id)
-    BudgetService(db_session).add_service_line(budget.id, service.id)
-    BudgetService(db_session).add_product_line(budget.id, product.id, 1)
+    budget_service = BudgetService(
+        budgets=SqlAlchemyBudgetRepository(db_session),
+        customers=SqlAlchemyCustomerLookup(db_session),
+        vehicles=SqlAlchemyVehicleOwnershipLookup(db_session),
+        services=SqlAlchemyBudgetServiceCatalogLookup(db_session),
+        products=SqlAlchemyBudgetProductLookup(db_session),
+        reservations=SqlAlchemyReservationLookup(db_session),
+        uow=SqlAlchemyUnitOfWork(db_session),
+    )
+    budget = budget_service.create(customer.id, vehicle.id)
+    budget_service.add_service_line(budget.id, service.id)
+    budget_service.add_product_line(budget.id, product.id, 1)
     token = create_signed_approval_token(budget.id)
-    budget.approval_token = token
+    budget_model = db_session.query(BudgetModel).filter(BudgetModel.id == budget.id).first()
+    assert budget_model is not None
+    budget_model.approval_token = token
     db_session.commit()
     os = BudgetApprovalService(db_session).approve_budget(token)
     return os, product

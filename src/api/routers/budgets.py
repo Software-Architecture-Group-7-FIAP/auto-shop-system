@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from src.api.composition.budgets import compose_budget_service
 from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.schemas import (
     AvailabilityItem,
@@ -11,7 +12,6 @@ from src.api.schemas import (
     MessageResponse,
 )
 from src.application.services.budget_approval_service import BudgetApprovalService
-from src.application.services.budget_service import BudgetService
 from src.domain.exceptions import DomainError
 from src.infrastructure.database import UserModel, get_db
 
@@ -26,7 +26,7 @@ def create_budget(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return BudgetService(db).create(data.customer_id, data.vehicle_id)
+        return compose_budget_service(db).create(data.customer_id, data.vehicle_id)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -36,7 +36,7 @@ def list_budgets(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    return BudgetService(db).list_all()
+    return compose_budget_service(db).list_all()
 
 
 @admin_router.get("/{budget_id}", response_model=BudgetResponse)
@@ -46,7 +46,7 @@ def get_budget(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return BudgetService(db).get_by_id(budget_id)
+        return compose_budget_service(db).get_by_id(budget_id)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -59,8 +59,17 @@ def add_service_line(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        line = BudgetService(db).add_service_line(budget_id, data.service_id, data.quantity)
-        return {"id": line.id, "budget_id": line.budget_id, "service_id": line.service_id, "quantity": line.quantity}
+        line = compose_budget_service(db).add_service_line(
+            budget_id,
+            data.service_id,
+            data.quantity,
+        )
+        return {
+            "id": line.id,
+            "budget_id": line.budget_id,
+            "service_id": line.service_id,
+            "quantity": line.quantity,
+        }
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -73,8 +82,17 @@ def add_product_line(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        line = BudgetService(db).add_product_line(budget_id, data.product_id, data.quantity)
-        return {"id": line.id, "budget_id": line.budget_id, "product_id": line.product_id, "quantity": line.quantity}
+        line = compose_budget_service(db).add_product_line(
+            budget_id,
+            data.product_id,
+            data.quantity,
+        )
+        return {
+            "id": line.id,
+            "budget_id": line.budget_id,
+            "product_id": line.product_id,
+            "quantity": line.quantity,
+        }
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -86,7 +104,7 @@ def check_availability(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return BudgetService(db).check_availability(budget_id)
+        return compose_budget_service(db).check_availability(budget_id)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -98,7 +116,7 @@ def get_estimated_delivery(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        dt = BudgetService(db).get_estimated_delivery(budget_id)
+        dt = compose_budget_service(db).get_estimated_delivery(budget_id)
         return {"estimated_delivery": dt}
     except DomainError as e:
         raise domain_error_handler(e)

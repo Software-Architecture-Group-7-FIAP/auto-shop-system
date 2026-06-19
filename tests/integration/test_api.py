@@ -285,6 +285,20 @@ def test_full_flow(client, auth_headers):
     ).json()
     assert updated_budget["total_price"] == 160.0
 
+    availability = client.get(
+        f"/api/v1/admin/budgets/{budget['id']}/availability",
+        headers=auth_headers,
+    )
+    assert availability.status_code == 200
+    assert availability.json()[0]["sufficient"] is True
+
+    estimated_delivery = client.get(
+        f"/api/v1/admin/budgets/{budget['id']}/estimated-delivery",
+        headers=auth_headers,
+    )
+    assert estimated_delivery.status_code == 200
+    assert estimated_delivery.json()["estimated_delivery"]
+
     send = client.post(
         f"/api/v1/admin/budgets/{budget['id']}/send-email",
         headers=auth_headers,
