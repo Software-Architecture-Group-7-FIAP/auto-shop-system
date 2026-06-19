@@ -1,7 +1,7 @@
+from src.api.composition.service_orders import compose_service_order_service
 from src.application.services.execution_service import ExecutionService
 from src.application.services.inventory_service import InventoryService
 from src.application.services.invoice_service import InvoiceService
-from src.application.services.service_order_service import ServiceOrderService
 from src.domain.enums import ServiceOrderStatus
 
 
@@ -72,15 +72,15 @@ def _setup_os_with_budget(db_session):
     budget_model.approval_token = token
     db_session.commit()
     created_service_order = compose_budget_approval_service(db_session).approve_budget(token)
-    os = ServiceOrderService(db_session).get_by_id(created_service_order.id)
+    os = compose_service_order_service(db_session).get_by_id(created_service_order.id)
     return os, product
 
 
 def test_service_order_status_transitions(db_session):
     os, _ = _setup_os_with_budget(db_session)
-    svc = ServiceOrderService(db_session)
+    svc = compose_service_order_service(db_session)
 
-    updated = svc.assign_mechanic(os.id, "Mecânico A")
+    updated = svc.assign_mechanic(os.id, "Mec?nico A")
     assert updated.status == ServiceOrderStatus.EM_DIAGNOSTICO
 
     exec_svc = ExecutionService(db_session)
@@ -93,7 +93,7 @@ def test_service_order_status_transitions(db_session):
 
 def test_invoice_and_payment(db_session):
     os, _ = _setup_os_with_budget(db_session)
-    ServiceOrderService(db_session).assign_mechanic(os.id, "Mecânico B")
+    compose_service_order_service(db_session).assign_mechanic(os.id, "Mec?nico B")
     ExecutionService(db_session).start_service(os.id)
     ExecutionService(db_session).finish_service(os.id)
 
@@ -104,7 +104,7 @@ def test_invoice_and_payment(db_session):
     paid = invoice_svc.pay_invoice(invoice.id)
     assert paid.status.value == "Paga"
 
-    updated_os = ServiceOrderService(db_session).get_by_id(os.id)
+    updated_os = compose_service_order_service(db_session).get_by_id(os.id)
     assert updated_os.status == ServiceOrderStatus.ENTREGUE
 
 

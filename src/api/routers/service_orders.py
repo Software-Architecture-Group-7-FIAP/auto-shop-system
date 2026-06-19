@@ -1,6 +1,10 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from src.api.composition.service_orders import (
+    compose_service_order_email_service,
+    compose_service_order_service,
+)
 from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.schemas import (
     AssignMechanicRequest,
@@ -9,8 +13,6 @@ from src.api.schemas import (
     ServiceOrderResponse,
     SetPriorityRequest,
 )
-from src.application.services.service_order_email_service import ServiceOrderEmailService
-from src.application.services.service_order_service import ServiceOrderService
 from src.domain.enums import ServiceOrderStatus
 from src.domain.exceptions import DomainError
 from src.infrastructure.database import UserModel, get_db
@@ -25,7 +27,7 @@ def list_service_orders(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    return ServiceOrderService(db).list_all(status)
+    return compose_service_order_service(db).list_all(status)
 
 
 @admin_router.get("/metrics/average-execution-time", response_model=AverageExecutionTimeResponse)
@@ -33,7 +35,7 @@ def average_execution_time(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    return ServiceOrderService(db).get_average_execution_time()
+    return compose_service_order_service(db).get_average_execution_time()
 
 
 @admin_router.get("/in-progress/with-withdrawals", response_model=list[ServiceOrderResponse])
@@ -52,7 +54,7 @@ def get_service_order(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return ServiceOrderService(db).get_by_id(service_order_id)
+        return compose_service_order_service(db).get_by_id(service_order_id)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -65,7 +67,10 @@ def assign_mechanic(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return ServiceOrderService(db).assign_mechanic(service_order_id, data.mechanic_name)
+        return compose_service_order_service(db).assign_mechanic(
+            service_order_id,
+            data.mechanic_name,
+        )
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -78,7 +83,7 @@ def set_priority(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return ServiceOrderService(db).set_priority(service_order_id, data.priority)
+        return compose_service_order_service(db).set_priority(service_order_id, data.priority)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -90,7 +95,7 @@ async def send_os_email(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        await ServiceOrderEmailService(db).send_os_email(service_order_id)
+        await compose_service_order_email_service(db).send_os_email(service_order_id)
         return MessageResponse(message="Email da OS enviado.")
     except DomainError as e:
         raise domain_error_handler(e)
@@ -103,6 +108,9 @@ def track_service_order(
     db: Session = Depends(get_db),
 ):
     try:
-        return ServiceOrderService(db).get_by_customer_document(service_order_id, document)
+        return compose_service_order_service(db).get_by_customer_document(
+            service_order_id,
+            document,
+        )
     except DomainError as e:
         raise domain_error_handler(e)
