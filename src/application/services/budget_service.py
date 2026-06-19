@@ -1,149 +1,146 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from sqlalchemy.orm import Session
-
-from src.domain.enums import BudgetStatus
-from src.domain.exceptions import NotFoundError, ValidationError
-from src.infrastructure.database import (
-    BudgetModel,
-    BudgetProductLineModel,
-    BudgetServiceLineModel,
-    CustomerModel,
-    ProductModel,
-    ReservationModel,
-    ServiceModel,
-    ServiceProductLineModel,
-    VehicleModel,
+from src.application.ports.budget_lookups import (
+    BudgetProductLookup,
+    BudgetServiceCatalogLookup,
+    ReservationLookup,
+    VehicleOwnershipLookup,
 )
-from src.domain.enums import ReservationStatus
+from src.application.ports.customer_lookup import CustomerLookup
+from src.application.ports.unit_of_work import UnitOfWork
+from src.domain.budget.entity import (
+    Budget,
+    BudgetProductLine,
+    BudgetServiceLine,
+    ProductAvailability,
+)
+from src.domain.budget.repository import BudgetRepository
+from src.domain.exceptions import NotFoundError
 
 
 class BudgetService:
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(
+        self,
+        budgets: BudgetRepository,
+        customers: CustomerLookup,
+        vehicles: VehicleOwnershipLookup,
+        services: BudgetServiceCatalogLookup,
+        products: BudgetProductLookup,
+        reservations: ReservationLookup,
+        uow: UnitOfWork,
+    ):
+        self.budgets = budgets
+        self.customers = customers
+        self.vehicles = vehicles
+        self.services = services
+        self.products = products
+        self.reservations = reservations
+        self.uow = uow
 
-    def create(self, customer_id: int, vehicle_id: int) -> BudgetModel:
-        customer = self.db.query(CustomerModel).filter(CustomerModel.id == customer_id).first()
-        vehicle = self.db.query(VehicleModel).filter(VehicleModel.id == vehicle_id).first()
-        if not customer:
+    def create(self, customer_id: int, vehicle_id: int) -> Budget:
+        if not self.customers.exists(customer_id):
             raise NotFoundError("Cliente não encontrado")
-        if not vehicle or vehicle.customer_id != customer_id:
+        if not self.vehicles.belongs_to_customer(vehicle_id, customer_id):
             raise NotFoundError("Veículo não encontrado para este cliente")
-        budget = BudgetModel(customer_id=customer_id, vehicle_id=vehicle_id)
-        self.db.add(budget)
-        self.db.commit()
-        self.db.refresh(budget)
-        return budget
+        created = self.budgets.add(Budget.create(customer_id, vehicle_id))
+        self.uow.commit()
+        return created
 
-    def get_by_id(self, budget_id: int) -> BudgetModel:
-        budget = self.db.query(BudgetModel).filter(BudgetModel.id == budget_id).first()
+    def get_by_id(self, budget_id: int) -> Budget:
+        budget = self.budgets.get_by_id(budget_id)
         if not budget:
             raise NotFoundError("Orçamento não encontrado")
         return budget
 
-    def list_all(self) -> list[BudgetModel]:
-        return self.db.query(BudgetModel).all()
+    def list_all(self) -> list[Budget]:
+        return self.budgets.list_all()
 
-    def add_service_line(self, budget_id: int, service_id: int, quantity: int = 1) -> BudgetServiceLineModel:
+    def add_service_line(
+        self,
+        budget_id: int,
+        service_id: int,
+        quantity: int = 1,
+    ) -> BudgetServiceLine:
         budget = self.get_by_id(budget_id)
-        service = self.db.query(ServiceModel).filter(ServiceModel.id == service_id).first()
+        service = self.services.get_service(service_id)
         if not service:
             raise NotFoundError("Serviço não encontrado")
-        line = BudgetServiceLineModel(
-            budget_id=budget.id,
-            service_id=service_id,
-            quantity=quantity,
-            unit_price=service.base_price,
-        )
-        self.db.add(line)
-        self.db.flush()
 
-        for spl in (
-            self.db.query(ServiceProductLineModel)
-            .filter(ServiceProductLineModel.service_id == service_id)
-            .all()
-        ):
-            product = self.db.query(ProductModel).filter(ProductModel.id == spl.product_id).first()
+        line = budget.add_service_line(service_id, quantity, service.base_price)
+        created_line = self.budgets.add_service_line(line)
+        budget.service_lines.append(created_line)
+
+        for requirement in service.product_requirements:
+            product = self.products.get_product(requirement.product_id)
             if product:
-                self._add_product_line(budget.id, product.id, spl.quantity * quantity, product.unit_price, True)
+                product_line = budget.add_product_line(
+                    product_id=product.id,
+                    quantity=requirement.quantity * quantity,
+                    unit_price=product.unit_price,
+                    from_service=True,
+                )
+                budget.product_lines.append(self.budgets.add_product_line(product_line))
 
         self._recalculate(budget)
-        self.db.commit()
-        self.db.refresh(line)
-        return line
+        self.budgets.save(budget)
+        self.uow.commit()
+        return created_line
 
     def add_product_line(
         self, budget_id: int, product_id: int, quantity: int = 1
-    ) -> BudgetProductLineModel:
+    ) -> BudgetProductLine:
         budget = self.get_by_id(budget_id)
-        product = self.db.query(ProductModel).filter(ProductModel.id == product_id).first()
+        product = self.products.get_product(product_id)
         if not product:
             raise NotFoundError("Produto não encontrado")
-        line = self._add_product_line(budget.id, product_id, quantity, product.unit_price, False)
-        self.db.flush()
-        self._recalculate(budget)
-        self.db.commit()
-        self.db.refresh(line)
-        return line
 
-    def _add_product_line(
-        self, budget_id: int, product_id: int, quantity: int, unit_price: float, from_service: bool
-    ) -> BudgetProductLineModel:
-        line = BudgetProductLineModel(
-            budget_id=budget_id,
-            product_id=product_id,
+        line = budget.add_product_line(
+            product_id=product.id,
             quantity=quantity,
-            unit_price=unit_price,
-            from_service=from_service,
+            unit_price=product.unit_price,
+            from_service=False,
         )
-        self.db.add(line)
-        return line
+        created_line = self.budgets.add_product_line(line)
+        budget.product_lines.append(created_line)
+        self._recalculate(budget)
+        self.budgets.save(budget)
+        self.uow.commit()
+        return created_line
 
-    def _recalculate(self, budget: BudgetModel) -> None:
-        self.db.refresh(budget)
-        service_total = sum(line.unit_price * line.quantity for line in budget.service_lines)
-        product_total = sum(line.unit_price * line.quantity for line in budget.product_lines)
-        budget.total_price = service_total + product_total
-
-        total_hours = 0.0
+    def _recalculate(self, budget: Budget) -> None:
+        service_hours: dict[int, float] = {}
         for line in budget.service_lines:
-            service = self.db.query(ServiceModel).filter(ServiceModel.id == line.service_id).first()
+            service = self.services.get_service(line.service_id)
             if service:
-                total_hours += service.estimated_hours * line.quantity
-        budget.estimated_delivery = datetime.utcnow() + timedelta(hours=max(total_hours, 1))
+                service_hours[line.service_id] = service.estimated_hours
+        budget.recalculate(service_hours)
 
     def check_availability(self, budget_id: int) -> list[dict]:
         budget = self.get_by_id(budget_id)
-        result = []
+        result: list[ProductAvailability] = []
         for line in budget.product_lines:
-            product = self.db.query(ProductModel).filter(ProductModel.id == line.product_id).first()
+            product = self.products.get_product(line.product_id)
             if not product:
                 continue
-            reserved = (
-                self.db.query(ReservationModel)
-                .filter(
-                    ReservationModel.product_id == product.id,
-                    ReservationModel.status == ReservationStatus.ACTIVE,
-                )
-                .with_entities(ReservationModel.quantity)
-                .all()
+            available = (
+                product.stock_quantity
+                - self.reservations.active_quantity_for_product(product.id)
             )
-            reserved_qty = sum(r[0] for r in reserved)
-            available = product.stock_quantity - reserved_qty
             result.append(
-                {
-                    "product_id": product.id,
-                    "product_name": product.name,
-                    "required": line.quantity,
-                    "available": available,
-                    "sufficient": available >= line.quantity,
-                }
+                ProductAvailability(
+                    product_id=product.id,
+                    product_name=product.name,
+                    required=line.quantity,
+                    available=available,
+                    sufficient=available >= line.quantity,
+                )
             )
-        return result
+        return [availability.as_dict() for availability in result]
 
     def get_estimated_delivery(self, budget_id: int) -> datetime:
         budget = self.get_by_id(budget_id)
         if not budget.estimated_delivery:
             self._recalculate(budget)
-            self.db.commit()
+            self.budgets.save(budget)
+            self.uow.commit()
         return budget.estimated_delivery

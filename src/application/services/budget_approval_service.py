@@ -1,48 +1,65 @@
-from sqlalchemy.orm import Session
-
-from src.config import settings
-from src.domain.enums import BudgetStatus, ServiceOrderStatus
-from src.domain.exceptions import NotFoundError, ValidationError
-from src.infrastructure.auth.tokens import create_signed_approval_token
-from src.infrastructure.database import (
-    BudgetModel,
-    CustomerModel,
-    ServiceOrderModel,
-    ServiceOrderProductLineModel,
-    ServiceOrderServiceLineModel,
-    VehicleModel,
+from src.application.ports.budget_approval import (
+    ApprovedBudgetServiceOrderCreator,
+    BudgetApprovalContactLookup,
+    BudgetApprovalTokenGenerator,
+    BudgetApprovalUrlBuilder,
+    BudgetPdfGenerator,
+    CreatedServiceOrder,
+    EmailSender,
 )
-from src.infrastructure.email.service import send_email
-from src.infrastructure.pdf.generator import generate_budget_pdf, generate_service_order_pdf
+from src.application.ports.unit_of_work import UnitOfWork
+from src.domain.budget.entity import Budget
+from src.domain.budget.repository import BudgetRepository
+from src.domain.exceptions import NotFoundError
 
 
 class BudgetApprovalService:
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(
+        self,
+        budgets: BudgetRepository,
+        contacts: BudgetApprovalContactLookup,
+        tokens: BudgetApprovalTokenGenerator,
+        urls: BudgetApprovalUrlBuilder,
+        pdfs: BudgetPdfGenerator,
+        emails: EmailSender,
+        service_orders: ApprovedBudgetServiceOrderCreator,
+        uow: UnitOfWork,
+    ):
+        self.budgets = budgets
+        self.contacts = contacts
+        self.tokens = tokens
+        self.urls = urls
+        self.pdfs = pdfs
+        self.emails = emails
+        self.service_orders = service_orders
+        self.uow = uow
 
-    async def send_budget_email(self, budget_id: int) -> BudgetModel:
-        budget = self.db.query(BudgetModel).filter(BudgetModel.id == budget_id).first()
-        if not budget:
+    async def send_budget_email(self, budget_id: int) -> Budget:
+        budget = self._get_by_id(budget_id)
+        if budget.id is None:
             raise NotFoundError("Orçamento não encontrado")
-        customer = self.db.query(CustomerModel).filter(CustomerModel.id == budget.customer_id).first()
-        vehicle = self.db.query(VehicleModel).filter(VehicleModel.id == budget.vehicle_id).first()
 
-        token = create_signed_approval_token(budget.id)
-        budget.approval_token = token
-        budget.status = BudgetStatus.SENT
+        token = self.tokens.create_for_budget(budget.id)
+        budget.mark_sent(token)
+        updated_budget = self.budgets.save(budget)
+
+        customer = self.contacts.get_customer(updated_budget.customer_id)
+        vehicle = self.contacts.get_vehicle(updated_budget.vehicle_id)
+        customer_name = customer.name if customer else ""
+        customer_email = customer.email if customer else ""
+        vehicle_plate = vehicle.plate if vehicle else ""
 
         service_lines = []
-        for line in budget.service_lines:
-            service = line.service_id
+        for line in updated_budget.service_lines:
             service_lines.append(
                 {
-                    "name": f"Serviço #{service}",
+                    "name": f"Serviço #{line.service_id}",
                     "quantity": line.quantity,
                     "total": line.unit_price * line.quantity,
                 }
             )
         product_lines = []
-        for line in budget.product_lines:
+        for line in updated_budget.product_lines:
             product_lines.append(
                 {
                     "name": f"Produto #{line.product_id}",
@@ -51,105 +68,54 @@ class BudgetApprovalService:
                 }
             )
 
-        pdf_bytes = generate_budget_pdf(
-            budget.id,
-            customer.name if customer else "",
-            vehicle.plate if vehicle else "",
+        self.pdfs.generate_budget_pdf(
+            updated_budget.id,
+            customer_name,
+            vehicle_plate,
             service_lines,
             product_lines,
-            budget.total_price,
+            updated_budget.total_price,
         )
 
-        approve_url = f"{settings.app_base_url}/api/v1/public/budgets/{token}/approve"
-        reject_url = f"{settings.app_base_url}/api/v1/public/budgets/{token}/reject"
+        approve_url = self.urls.approve_url(token)
+        reject_url = self.urls.reject_url(token)
         html = f"""
-        <p>Olá {customer.name},</p>
-        <p>Segue seu orçamento #{budget.id} no valor de R$ {budget.total_price:.2f}.</p>
+        <p>Olá {customer_name},</p>
+        <p>Segue seu orçamento #{updated_budget.id} no valor de R$ {updated_budget.total_price:.2f}.</p>
         <p><a href="{approve_url}">Aprovar orçamento</a> | <a href="{reject_url}">Recusar orçamento</a></p>
         """
-        await send_email(
-            customer.email,
-            f"Orçamento #{budget.id}",
-            f"Orçamento #{budget.id} - Total: R$ {budget.total_price:.2f}. Aprovar: {approve_url}",
+        await self.emails.send_email(
+            customer_email,
+            f"Orçamento #{updated_budget.id}",
+            f"Orçamento #{updated_budget.id} - Total: R$ {updated_budget.total_price:.2f}. Aprovar: {approve_url}",
             html,
         )
-        self.db.commit()
-        self.db.refresh(budget)
-        return budget
+        self.uow.commit()
+        return updated_budget
 
-    def approve_budget(self, token: str) -> ServiceOrderModel:
-        budget = self.db.query(BudgetModel).filter(BudgetModel.approval_token == token).first()
+    def approve_budget(self, token: str) -> CreatedServiceOrder:
+        budget = self.budgets.get_by_approval_token(token)
         if not budget:
             raise NotFoundError("Orçamento não encontrado")
-        if budget.status == BudgetStatus.APPROVED:
-            raise ValidationError("Orçamento já aprovado")
-        budget.status = BudgetStatus.APPROVED
-        return self._create_service_order_from_budget(budget)
 
-    def reject_budget(self, token: str) -> BudgetModel:
-        budget = self.db.query(BudgetModel).filter(BudgetModel.approval_token == token).first()
+        budget.approve()
+        updated_budget = self.budgets.save(budget)
+        service_order = self.service_orders.create_from_budget(updated_budget)
+        self.uow.commit()
+        return service_order
+
+    def reject_budget(self, token: str) -> Budget:
+        budget = self.budgets.get_by_approval_token(token)
         if not budget:
             raise NotFoundError("Orçamento não encontrado")
-        budget.status = BudgetStatus.REJECTED
-        self.db.commit()
-        self.db.refresh(budget)
+
+        budget.reject()
+        updated_budget = self.budgets.save(budget)
+        self.uow.commit()
+        return updated_budget
+
+    def _get_by_id(self, budget_id: int) -> Budget:
+        budget = self.budgets.get_by_id(budget_id)
+        if not budget:
+            raise NotFoundError("Orçamento não encontrado")
         return budget
-
-    def _create_service_order_from_budget(self, budget: BudgetModel) -> ServiceOrderModel:
-        os = ServiceOrderModel(
-            budget_id=budget.id,
-            customer_id=budget.customer_id,
-            vehicle_id=budget.vehicle_id,
-            status=ServiceOrderStatus.AGUARDANDO_APROVACAO,
-            total_price=budget.total_price,
-        )
-        self.db.add(os)
-        self.db.flush()
-
-        for line in budget.service_lines:
-            self.db.add(
-                ServiceOrderServiceLineModel(
-                    service_order_id=os.id,
-                    service_id=line.service_id,
-                    quantity=line.quantity,
-                    unit_price=line.unit_price,
-                )
-            )
-        for line in budget.product_lines:
-            self.db.add(
-                ServiceOrderProductLineModel(
-                    service_order_id=os.id,
-                    product_id=line.product_id,
-                    quantity=line.quantity,
-                    unit_price=line.unit_price,
-                )
-            )
-        self.db.commit()
-        self.db.refresh(os)
-        return os
-
-
-class ServiceOrderEmailService:
-    def __init__(self, db: Session):
-        self.db = db
-
-    async def send_os_email(self, service_order_id: int) -> None:
-        os = self.db.query(ServiceOrderModel).filter(ServiceOrderModel.id == service_order_id).first()
-        if not os:
-            raise NotFoundError("OS não encontrada")
-        customer = self.db.query(CustomerModel).filter(CustomerModel.id == os.customer_id).first()
-        vehicle = self.db.query(VehicleModel).filter(VehicleModel.id == os.vehicle_id).first()
-
-        pdf_bytes = generate_service_order_pdf(
-            os.id,
-            customer.name if customer else "",
-            vehicle.plate if vehicle else "",
-            os.status.value,
-            os.mechanic_name,
-            os.total_price,
-        )
-        await send_email(
-            customer.email,
-            f"Ordem de Serviço #{os.id}",
-            f"Sua OS #{os.id} está com status: {os.status.value}",
-        )

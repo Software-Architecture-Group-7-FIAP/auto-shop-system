@@ -1,56 +1,50 @@
-from sqlalchemy.orm import Session
-
+from src.application.ports.unit_of_work import UnitOfWork
+from src.domain.customer.entity import Customer
+from src.domain.customer.repository import CustomerRepository
+from src.domain.customer.value_objects import CustomerDocument
 from src.domain.exceptions import ConflictError, NotFoundError
-from src.domain.value_objects.validators import DocumentValidator
-from src.infrastructure.database import CustomerModel
 
 
 class CustomerService:
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(self, customers: CustomerRepository, uow: UnitOfWork):
+        self.customers = customers
+        self.uow = uow
 
-    def create(self, name: str, document: str, email: str, phone: str | None = None) -> CustomerModel:
-        cleaned_doc = DocumentValidator.validate(document)
-        existing = self.db.query(CustomerModel).filter(CustomerModel.document == cleaned_doc).first()
-        if existing:
+    def create(
+        self, name: str, document: str, email: str, phone: str | None = None
+    ) -> Customer:
+        customer = Customer.create(name=name, document=document, email=email, phone=phone)
+        if self.customers.exists_by_document(customer.document):
             raise ConflictError("Cliente com este documento já existe")
-        customer = CustomerModel(name=name, document=cleaned_doc, email=email, phone=phone)
-        self.db.add(customer)
-        self.db.commit()
-        self.db.refresh(customer)
-        return customer
+        created = self.customers.add(customer)
+        self.uow.commit()
+        return created
 
-    def get_by_id(self, customer_id: int) -> CustomerModel:
-        customer = self.db.query(CustomerModel).filter(CustomerModel.id == customer_id).first()
+    def get_by_id(self, customer_id: int) -> Customer:
+        customer = self.customers.get_by_id(customer_id)
         if not customer:
             raise NotFoundError("Cliente não encontrado")
         return customer
 
-    def get_by_document(self, document: str) -> CustomerModel:
-        cleaned_doc = DocumentValidator.validate(document)
-        customer = self.db.query(CustomerModel).filter(CustomerModel.document == cleaned_doc).first()
+    def get_by_document(self, document: str) -> Customer:
+        customer = self.customers.get_by_document(CustomerDocument.create(document))
         if not customer:
             raise NotFoundError("Cliente não encontrado")
         return customer
 
-    def list_all(self, skip: int = 0, limit: int = 100) -> list[CustomerModel]:
-        return self.db.query(CustomerModel).offset(skip).limit(limit).all()
+    def list_all(self, skip: int = 0, limit: int = 100) -> list[Customer]:
+        return self.customers.list_all(skip, limit)
 
     def update(
         self, customer_id: int, name: str | None, email: str | None, phone: str | None
-    ) -> CustomerModel:
+    ) -> Customer:
         customer = self.get_by_id(customer_id)
-        if name is not None:
-            customer.name = name
-        if email is not None:
-            customer.email = email
-        if phone is not None:
-            customer.phone = phone
-        self.db.commit()
-        self.db.refresh(customer)
-        return customer
+        customer.update_contact(name=name, email=email, phone=phone)
+        updated = self.customers.save(customer)
+        self.uow.commit()
+        return updated
 
     def delete(self, customer_id: int) -> None:
         customer = self.get_by_id(customer_id)
-        self.db.delete(customer)
-        self.db.commit()
+        self.customers.delete(customer)
+        self.uow.commit()

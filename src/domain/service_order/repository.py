@@ -1,0 +1,25 @@
+from typing import Protocol
+
+from src.domain.enums import ServiceOrderStatus
+from src.domain.service_order.entity import ServiceOrder
+
+
+class ServiceOrderRepository(Protocol):
+    def get_by_id(self, service_order_id: int) -> ServiceOrder | None:
+        ...
+
+    def list_all(self, status: ServiceOrderStatus | None = None) -> list[ServiceOrder]:
+        ...
+
+    def list_with_execution_times(self) -> list[ServiceOrder]:
+        ...
+
+    def list_by_ids_and_status(
+        self,
+        service_order_ids: list[int],
+        status: ServiceOrderStatus,
+    ) -> list[ServiceOrder]:
+        ...
+
+    def save(self, service_order: ServiceOrder) -> ServiceOrder:
+        ...

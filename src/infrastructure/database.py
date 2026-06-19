@@ -29,6 +29,14 @@ class Base(DeclarativeBase):
     pass
 
 
+def enum_values(enum_cls):
+    return [member.value for member in enum_cls]
+
+
+def db_enum(enum_cls):
+    return Enum(enum_cls, values_callable=enum_values)
+
+
 class UserModel(Base):
     __tablename__ = "users"
 
@@ -126,7 +134,7 @@ class BudgetModel(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
     vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id"))
-    status: Mapped[BudgetStatus] = mapped_column(Enum(BudgetStatus), default=BudgetStatus.DRAFT)
+    status: Mapped[BudgetStatus] = mapped_column(db_enum(BudgetStatus), default=BudgetStatus.DRAFT)
     total_price: Mapped[float] = mapped_column(Float, default=0.0)
     estimated_delivery: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     approval_token: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
@@ -176,9 +184,9 @@ class ServiceOrderModel(Base):
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
     vehicle_id: Mapped[int] = mapped_column(ForeignKey("vehicles.id"))
     status: Mapped[ServiceOrderStatus] = mapped_column(
-        Enum(ServiceOrderStatus), default=ServiceOrderStatus.RECEBIDA
+        db_enum(ServiceOrderStatus), default=ServiceOrderStatus.RECEBIDA
     )
-    priority: Mapped[Priority] = mapped_column(Enum(Priority), default=Priority.NORMAL)
+    priority: Mapped[Priority] = mapped_column(db_enum(Priority), default=Priority.NORMAL)
     mechanic_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     total_price: Mapped[float] = mapped_column(Float, default=0.0)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -228,7 +236,7 @@ class ReservationModel(Base):
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
     quantity: Mapped[int] = mapped_column(Integer)
     status: Mapped[ReservationStatus] = mapped_column(
-        Enum(ReservationStatus), default=ReservationStatus.ACTIVE
+        db_enum(ReservationStatus), default=ReservationStatus.ACTIVE
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -244,7 +252,7 @@ class PurchaseRequestModel(Base):
     )
     quantity: Mapped[int] = mapped_column(Integer)
     status: Mapped[PurchaseRequestStatus] = mapped_column(
-        Enum(PurchaseRequestStatus), default=PurchaseRequestStatus.PENDING
+        db_enum(PurchaseRequestStatus), default=PurchaseRequestStatus.PENDING
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -266,7 +274,7 @@ class StockWithdrawalModel(Base):
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
     quantity: Mapped[int] = mapped_column(Integer)
     status: Mapped[StockWithdrawalStatus] = mapped_column(
-        Enum(StockWithdrawalStatus), default=StockWithdrawalStatus.PENDING
+        db_enum(StockWithdrawalStatus), default=StockWithdrawalStatus.PENDING
     )
     requested_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     fulfilled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -279,7 +287,7 @@ class InvoiceModel(Base):
     service_order_id: Mapped[int] = mapped_column(ForeignKey("service_orders.id"), unique=True)
     amount: Mapped[float] = mapped_column(Float)
     status: Mapped[InvoiceStatus] = mapped_column(
-        Enum(InvoiceStatus), default=InvoiceStatus.PENDING
+        db_enum(InvoiceStatus), default=InvoiceStatus.PENDING
     )
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from src.api.composition.execution import compose_execution_service
 from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.schemas import MessageResponse, ServiceOrderResponse, StockWithdrawalCreate, StockWithdrawalResponse
-from src.application.services.execution_service import ExecutionService
 from src.domain.exceptions import DomainError
 from src.infrastructure.database import UserModel, get_db
 
@@ -18,7 +18,7 @@ def enqueue_service_order(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return ExecutionService(db).enqueue(service_order_id)
+        return compose_execution_service(db).enqueue(service_order_id)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -30,7 +30,7 @@ def start_service(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return ExecutionService(db).start_service(service_order_id)
+        return compose_execution_service(db).start_service(service_order_id)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -42,7 +42,7 @@ def finish_service(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return ExecutionService(db).finish_service(service_order_id)
+        return compose_execution_service(db).finish_service(service_order_id)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -54,7 +54,7 @@ async def request_stock_withdrawal(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return await ExecutionService(db).request_stock_withdrawal(
+        return await compose_execution_service(db).request_stock_withdrawal(
             data.service_order_id, data.product_id, data.quantity
         )
     except DomainError as e:
@@ -66,4 +66,4 @@ def list_pending_withdrawals(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    return ExecutionService(db).list_pending_withdrawals()
+    return compose_execution_service(db).list_pending_withdrawals()

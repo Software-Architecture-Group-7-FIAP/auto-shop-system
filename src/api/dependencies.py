@@ -2,9 +2,10 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from src.domain.exceptions import DomainError
-from src.infrastructure.auth.jwt import decode_token
-from src.infrastructure.database import UserModel, get_db
+from src.api.composition.auth import compose_auth_service
+from src.domain.auth.entity import User
+from src.domain.exceptions import DomainError, UnauthorizedError
+from src.infrastructure.database import get_db
 
 security = HTTPBearer()
 
@@ -12,12 +13,13 @@ security = HTTPBearer()
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
-) -> UserModel:
-    username = decode_token(credentials.credentials)
-    user = db.query(UserModel).filter(UserModel.username == username).first()
-    if not user or not user.is_active:
+) -> User:
+    try:
+        return compose_auth_service(db).get_current_user(credentials.credentials)
+    except UnauthorizedError as exc:
+        if exc.message != "Usuário inválido":
+            raise
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário inválido")
-    return user
 
 
 def domain_error_handler(exc: DomainError) -> HTTPException:

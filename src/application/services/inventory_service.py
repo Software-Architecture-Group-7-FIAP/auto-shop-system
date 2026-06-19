@@ -1,127 +1,119 @@
-from sqlalchemy.orm import Session
-
-from src.domain.enums import PurchaseRequestStatus, ReservationStatus
-from src.domain.exceptions import NotFoundError
-from src.infrastructure.database import (
-    GoodsReceiptModel,
-    ProductModel,
-    PurchaseRequestModel,
-    ReservationModel,
-    ServiceOrderModel,
-    ServiceOrderProductLineModel,
+from src.application.ports.inventory import (
+    InventoryProductGateway,
+    InventoryServiceOrderLookup,
 )
+from src.application.ports.unit_of_work import UnitOfWork
+from src.domain.exceptions import NotFoundError
+from src.domain.inventory.entity import GoodsReceipt, PurchaseRequest, Reservation
+from src.domain.inventory.repository import InventoryRepository
 
 
 class InventoryService:
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(
+        self,
+        inventory: InventoryRepository,
+        products: InventoryProductGateway,
+        service_orders: InventoryServiceOrderLookup,
+        uow: UnitOfWork,
+    ):
+        self.inventory = inventory
+        self.products = products
+        self.service_orders = service_orders
+        self.uow = uow
 
-    def create_reservation(self, service_order_id: int, product_id: int, quantity: int) -> ReservationModel:
-        reservation = ReservationModel(
-            service_order_id=service_order_id,
-            product_id=product_id,
-            quantity=quantity,
+    def create_reservation(
+        self,
+        service_order_id: int,
+        product_id: int,
+        quantity: int,
+    ) -> Reservation:
+        reservation = self.inventory.add_reservation(
+            Reservation.create(service_order_id, product_id, quantity)
         )
-        self.db.add(reservation)
-        self.db.commit()
-        self.db.refresh(reservation)
+        self.uow.commit()
         return reservation
 
-    def create_reservations_for_os(self, service_order_id: int) -> list[ReservationModel]:
-        os = self.db.query(ServiceOrderModel).filter(ServiceOrderModel.id == service_order_id).first()
-        if not os:
+    def create_reservations_for_os(self, service_order_id: int) -> list[Reservation]:
+        product_lines = self.service_orders.get_product_lines(service_order_id)
+        if product_lines is None:
             raise NotFoundError("OS não encontrada")
+
         reservations = []
-        for line in os.product_lines:
-            product = self.db.query(ProductModel).filter(ProductModel.id == line.product_id).first()
+        for line in product_lines:
+            product = self.products.get_product(line.product_id)
             if not product:
                 continue
-            available = self._available_stock(product.id)
-            if available < line.quantity:
-                pending = self.check_pending_receipt(product.id)
-                if not pending:
-                    self.create_purchase_request(product.id, line.quantity - available, service_order_id)
-            reservation = self.create_reservation(service_order_id, line.product_id, line.quantity)
+            available = self._available_stock(product.id, product.stock_quantity)
+            if available < line.quantity and not self.check_pending_receipt(product.id):
+                self._create_purchase_request(
+                    product.id,
+                    line.quantity - available,
+                    service_order_id,
+                )
+            reservation = self.inventory.add_reservation(
+                Reservation.create(service_order_id, line.product_id, line.quantity)
+            )
             reservations.append(reservation)
+        self.uow.commit()
         return reservations
 
-    def _available_stock(self, product_id: int) -> int:
-        product = self.db.query(ProductModel).filter(ProductModel.id == product_id).first()
-        if not product:
-            return 0
-        reserved = (
-            self.db.query(ReservationModel)
-            .filter(
-                ReservationModel.product_id == product_id,
-                ReservationModel.status == ReservationStatus.ACTIVE,
-            )
-            .all()
-        )
-        reserved_qty = sum(r.quantity for r in reserved)
-        return product.stock_quantity - reserved_qty
+    def _available_stock(self, product_id: int, stock_quantity: int) -> int:
+        return stock_quantity - self.inventory.active_quantity_for_product(product_id)
 
     def check_pending_receipt(self, product_id: int) -> bool:
-        pending = (
-            self.db.query(PurchaseRequestModel)
-            .filter(
-                PurchaseRequestModel.product_id == product_id,
-                PurchaseRequestModel.status.in_(
-                    [PurchaseRequestStatus.PENDING, PurchaseRequestStatus.ORDERED]
-                ),
-            )
-            .first()
-        )
-        return pending is not None
+        return self.inventory.has_pending_receipt(product_id)
 
     def create_purchase_request(
-        self, product_id: int, quantity: int, service_order_id: int | None = None
-    ) -> PurchaseRequestModel:
-        product = self.db.query(ProductModel).filter(ProductModel.id == product_id).first()
+        self,
+        product_id: int,
+        quantity: int,
+        service_order_id: int | None = None,
+    ) -> PurchaseRequest:
+        purchase_request = self._create_purchase_request(
+            product_id,
+            quantity,
+            service_order_id,
+        )
+        self.uow.commit()
+        return purchase_request
+
+    def _create_purchase_request(
+        self,
+        product_id: int,
+        quantity: int,
+        service_order_id: int | None,
+    ) -> PurchaseRequest:
+        product = self.products.get_product(product_id)
         if not product:
             raise NotFoundError("Produto não encontrado")
-        pr = PurchaseRequestModel(
-            product_id=product_id,
-            quantity=quantity,
-            service_order_id=service_order_id,
-            supplier_id=product.supplier_id,
+        return self.inventory.add_purchase_request(
+            PurchaseRequest.create(
+                product_id=product_id,
+                quantity=quantity,
+                supplier_id=product.supplier_id,
+                service_order_id=service_order_id,
+            )
         )
-        self.db.add(pr)
-        self.db.commit()
-        self.db.refresh(pr)
-        return pr
 
-    def list_purchase_requests(self) -> list[PurchaseRequestModel]:
-        return self.db.query(PurchaseRequestModel).all()
+    def list_purchase_requests(self) -> list[PurchaseRequest]:
+        return self.inventory.list_purchase_requests()
 
-    def list_reservations(self) -> list[ReservationModel]:
-        return self.db.query(ReservationModel).all()
+    def list_reservations(self) -> list[Reservation]:
+        return self.inventory.list_reservations()
 
-    def register_receipt(self, purchase_request_id: int, quantity: int) -> GoodsReceiptModel:
-        pr = (
-            self.db.query(PurchaseRequestModel)
-            .filter(PurchaseRequestModel.id == purchase_request_id)
-            .first()
-        )
-        if not pr:
+    def register_receipt(self, purchase_request_id: int, quantity: int) -> GoodsReceipt:
+        purchase_request = self.inventory.get_purchase_request(purchase_request_id)
+        if not purchase_request:
             raise NotFoundError("Solicitação de compra não encontrada")
-        receipt = GoodsReceiptModel(purchase_request_id=purchase_request_id, quantity=quantity)
-        product = self.db.query(ProductModel).filter(ProductModel.id == pr.product_id).first()
-        if product:
-            product.stock_quantity += quantity
-        pr.status = PurchaseRequestStatus.RECEIVED
-        self.db.add(receipt)
-        self.db.commit()
-        self.db.refresh(receipt)
+
+        receipt = self.inventory.add_receipt(
+            GoodsReceipt.create(purchase_request_id, quantity)
+        )
+        self.products.add_stock(purchase_request.product_id, quantity)
+        purchase_request.mark_received()
+        self.inventory.save_purchase_request(purchase_request)
+        self.uow.commit()
         return receipt
 
-    def get_pending_receipts(self, product_id: int) -> list[PurchaseRequestModel]:
-        return (
-            self.db.query(PurchaseRequestModel)
-            .filter(
-                PurchaseRequestModel.product_id == product_id,
-                PurchaseRequestModel.status.in_(
-                    [PurchaseRequestStatus.PENDING, PurchaseRequestStatus.ORDERED]
-                ),
-            )
-            .all()
-        )
+    def get_pending_receipts(self, product_id: int) -> list[PurchaseRequest]:
+        return self.inventory.get_pending_receipts(product_id)

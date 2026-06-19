@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from src.infrastructure import database as db_module
-from src.infrastructure.auth.jwt import hash_password
+from src.infrastructure.auth.jwt import BcryptPasswordHasher
 from src.infrastructure.database import Base, UserModel, get_db
 from src.main import app
 
@@ -31,7 +31,7 @@ def setup_db():
     admin = UserModel(
         username="admin",
         email="admin@test.local",
-        hashed_password=hash_password("admin123"),
+        hashed_password=BcryptPasswordHasher().hash("admin123"),
     )
     db.add(admin)
     db.commit()

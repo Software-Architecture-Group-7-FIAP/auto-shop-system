@@ -1,47 +1,52 @@
-from sqlalchemy.orm import Session
-
+from src.application.ports.customer_lookup import CustomerLookup
+from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.exceptions import ConflictError, NotFoundError
-from src.domain.value_objects.validators import PlateValidator
-from src.infrastructure.database import CustomerModel, VehicleModel
+from src.domain.vehicle.entity import Vehicle
+from src.domain.vehicle.repository import VehicleRepository
 
 
 class VehicleService:
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(
+        self,
+        vehicles: VehicleRepository,
+        customers: CustomerLookup,
+        uow: UnitOfWork,
+    ):
+        self.vehicles = vehicles
+        self.customers = customers
+        self.uow = uow
 
     def create(
         self, customer_id: int, plate: str, brand: str, model: str, year: int
-    ) -> VehicleModel:
-        customer = self.db.query(CustomerModel).filter(CustomerModel.id == customer_id).first()
-        if not customer:
+    ) -> Vehicle:
+        if not self.customers.exists(customer_id):
             raise NotFoundError("Cliente não encontrado")
-        normalized_plate = PlateValidator.validate(plate)
-        existing = self.db.query(VehicleModel).filter(VehicleModel.plate == normalized_plate).first()
-        if existing:
-            raise ConflictError("Veículo com esta placa já existe")
-        vehicle = VehicleModel(
+
+        vehicle = Vehicle.create(
             customer_id=customer_id,
-            plate=normalized_plate,
+            plate=plate,
             brand=brand,
             model=model,
             year=year,
         )
-        self.db.add(vehicle)
-        self.db.commit()
-        self.db.refresh(vehicle)
-        return vehicle
+        if self.vehicles.exists_by_plate(vehicle.plate):
+            raise ConflictError("Veículo com esta placa já existe")
 
-    def get_by_id(self, vehicle_id: int) -> VehicleModel:
-        vehicle = self.db.query(VehicleModel).filter(VehicleModel.id == vehicle_id).first()
+        created = self.vehicles.add(vehicle)
+        self.uow.commit()
+        return created
+
+    def get_by_id(self, vehicle_id: int) -> Vehicle:
+        vehicle = self.vehicles.get_by_id(vehicle_id)
         if not vehicle:
             raise NotFoundError("Veículo não encontrado")
         return vehicle
 
-    def list_all(self, skip: int = 0, limit: int = 100) -> list[VehicleModel]:
-        return self.db.query(VehicleModel).offset(skip).limit(limit).all()
+    def list_all(self, skip: int = 0, limit: int = 100) -> list[Vehicle]:
+        return self.vehicles.list_all(skip, limit)
 
-    def list_by_customer(self, customer_id: int) -> list[VehicleModel]:
-        return self.db.query(VehicleModel).filter(VehicleModel.customer_id == customer_id).all()
+    def list_by_customer(self, customer_id: int) -> list[Vehicle]:
+        return self.vehicles.list_by_customer(customer_id)
 
     def update(
         self,
@@ -49,19 +54,14 @@ class VehicleService:
         brand: str | None,
         model: str | None,
         year: int | None,
-    ) -> VehicleModel:
+    ) -> Vehicle:
         vehicle = self.get_by_id(vehicle_id)
-        if brand is not None:
-            vehicle.brand = brand
-        if model is not None:
-            vehicle.model = model
-        if year is not None:
-            vehicle.year = year
-        self.db.commit()
-        self.db.refresh(vehicle)
-        return vehicle
+        vehicle.update_details(brand, model, year)
+        updated = self.vehicles.save(vehicle)
+        self.uow.commit()
+        return updated
 
     def delete(self, vehicle_id: int) -> None:
         vehicle = self.get_by_id(vehicle_id)
-        self.db.delete(vehicle)
-        self.db.commit()
+        self.vehicles.delete(vehicle)
+        self.uow.commit()

@@ -17,7 +17,6 @@ from src.api.routers import (
     vehicles,
 )
 from src.domain.exceptions import DomainError
-from src.infrastructure.auth.jwt import ensure_default_admin
 
 
 @asynccontextmanager
@@ -27,7 +26,9 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        ensure_default_admin(db)
+        from src.api.composition.auth import compose_auth_service
+
+        compose_auth_service(db).ensure_default_admin()
     finally:
         db.close()
     yield

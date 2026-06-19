@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from src.api.composition.inventory import compose_inventory_service
 from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.schemas import (
     GoodsReceiptCreate,
@@ -9,7 +10,6 @@ from src.api.schemas import (
     PurchaseRequestResponse,
     ReservationResponse,
 )
-from src.application.services.inventory_service import InventoryService
 from src.domain.exceptions import DomainError
 from src.infrastructure.database import UserModel, get_db
 
@@ -21,7 +21,7 @@ def list_reservations(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    return InventoryService(db).list_reservations()
+    return compose_inventory_service(db).list_reservations()
 
 
 @router.post("/admin/reservations/os/{service_order_id}", response_model=list[ReservationResponse])
@@ -31,7 +31,7 @@ def create_reservations_for_os(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return InventoryService(db).create_reservations_for_os(service_order_id)
+        return compose_inventory_service(db).create_reservations_for_os(service_order_id)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -41,7 +41,7 @@ def list_purchase_requests(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    return InventoryService(db).list_purchase_requests()
+    return compose_inventory_service(db).list_purchase_requests()
 
 
 @router.post("/admin/purchase-requests", response_model=PurchaseRequestResponse, status_code=201)
@@ -51,7 +51,7 @@ def create_purchase_request(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return InventoryService(db).create_purchase_request(
+        return compose_inventory_service(db).create_purchase_request(
             data.product_id, data.quantity, data.service_order_id
         )
     except DomainError as e:
@@ -66,7 +66,10 @@ def register_receipt(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        receipt = InventoryService(db).register_receipt(purchase_request_id, data.quantity)
+        receipt = compose_inventory_service(db).register_receipt(
+            purchase_request_id,
+            data.quantity,
+        )
         return {"id": receipt.id, "purchase_request_id": receipt.purchase_request_id, "quantity": receipt.quantity}
     except DomainError as e:
         raise domain_error_handler(e)
@@ -78,4 +81,4 @@ def get_pending_receipts(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    return InventoryService(db).get_pending_receipts(product_id)
+    return compose_inventory_service(db).get_pending_receipts(product_id)
