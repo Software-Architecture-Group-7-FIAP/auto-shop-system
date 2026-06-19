@@ -13,13 +13,17 @@ def _setup_os_with_budget(db_session):
     from src.application.services.service_catalog_service import ServiceCatalogService
     from src.application.services.vehicle_service import VehicleService
     from src.infrastructure.auth.tokens import create_signed_approval_token
-    from src.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
-    from src.infrastructure.persistence.vehicle_repository import (
+    from src.infrastructure.persistence.customer_repository import (
         SqlAlchemyCustomerLookup,
-        SqlAlchemyVehicleRepository,
+        SqlAlchemyCustomerRepository,
     )
+    from src.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+    from src.infrastructure.persistence.vehicle_repository import SqlAlchemyVehicleRepository
 
-    customer = CustomerService(db_session).create("Test", "529.982.247-25", "t@test.com")
+    customer = CustomerService(
+        customers=SqlAlchemyCustomerRepository(db_session),
+        uow=SqlAlchemyUnitOfWork(db_session),
+    ).create("Test", "529.982.247-25", "t@test.com")
     vehicle_service = VehicleService(
         vehicles=SqlAlchemyVehicleRepository(db_session),
         customers=SqlAlchemyCustomerLookup(db_session),

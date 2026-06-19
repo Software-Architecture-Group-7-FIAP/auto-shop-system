@@ -6,11 +6,9 @@ from src.api.schemas import VehicleCreate, VehicleResponse, VehicleUpdate
 from src.application.services.vehicle_service import VehicleService
 from src.domain.exceptions import DomainError
 from src.infrastructure.database import UserModel, get_db
+from src.infrastructure.persistence.customer_repository import SqlAlchemyCustomerLookup
 from src.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
-from src.infrastructure.persistence.vehicle_repository import (
-    SqlAlchemyCustomerLookup,
-    SqlAlchemyVehicleRepository,
-)
+from src.infrastructure.persistence.vehicle_repository import SqlAlchemyVehicleRepository
 
 router = APIRouter(prefix="/admin/vehicles", tags=["Vehicles"])
 

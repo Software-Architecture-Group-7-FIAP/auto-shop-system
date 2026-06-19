@@ -3,11 +3,19 @@ from src.application.services.customer_service import CustomerService
 from src.application.services.product_service import ProductService
 from src.application.services.service_catalog_service import ServiceCatalogService
 from src.application.services.vehicle_service import VehicleService
-from src.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
-from src.infrastructure.persistence.vehicle_repository import (
+from src.infrastructure.persistence.customer_repository import (
     SqlAlchemyCustomerLookup,
-    SqlAlchemyVehicleRepository,
+    SqlAlchemyCustomerRepository,
 )
+from src.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from src.infrastructure.persistence.vehicle_repository import SqlAlchemyVehicleRepository
+
+
+def _customer_service(db_session):
+    return CustomerService(
+        customers=SqlAlchemyCustomerRepository(db_session),
+        uow=SqlAlchemyUnitOfWork(db_session),
+    )
 
 
 def _vehicle_service(db_session):
@@ -19,7 +27,7 @@ def _vehicle_service(db_session):
 
 
 def test_budget_total_calculation(db_session):
-    customer = CustomerService(db_session).create(
+    customer = _customer_service(db_session).create(
         "João", "529.982.247-25", "joao@test.com"
     )
     vehicle = _vehicle_service(db_session).create(

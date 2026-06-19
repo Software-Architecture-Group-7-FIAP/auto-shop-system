@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from src.api.composition.customers import compose_customer_service
 from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.schemas import CustomerCreate, CustomerResponse, CustomerUpdate
-from src.application.services.customer_service import CustomerService
 from src.domain.exceptions import DomainError
 from src.infrastructure.database import UserModel, get_db
 
@@ -17,7 +17,9 @@ def create_customer(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return CustomerService(db).create(data.name, data.document, data.email, data.phone)
+        return compose_customer_service(db).create(
+            data.name, data.document, data.email, data.phone
+        )
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -29,7 +31,7 @@ def list_customers(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    return CustomerService(db).list_all(skip, limit)
+    return compose_customer_service(db).list_all(skip, limit)
 
 
 @router.get("/{customer_id}", response_model=CustomerResponse)
@@ -39,7 +41,7 @@ def get_customer(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return CustomerService(db).get_by_id(customer_id)
+        return compose_customer_service(db).get_by_id(customer_id)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -52,7 +54,9 @@ def update_customer(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return CustomerService(db).update(customer_id, data.name, data.email, data.phone)
+        return compose_customer_service(db).update(
+            customer_id, data.name, data.email, data.phone
+        )
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -64,6 +68,6 @@ def delete_customer(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        CustomerService(db).delete(customer_id)
+        compose_customer_service(db).delete(customer_id)
     except DomainError as e:
         raise domain_error_handler(e)

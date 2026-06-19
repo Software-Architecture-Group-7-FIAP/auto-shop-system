@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from src.domain.exceptions import NotFoundError
 from src.domain.vehicle.entity import Vehicle
 from src.domain.vehicle.value_objects import Plate
-from src.infrastructure.database import CustomerModel, VehicleModel
+from src.infrastructure.database import VehicleModel
 
 
 class SqlAlchemyVehicleRepository:
@@ -85,17 +85,4 @@ class SqlAlchemyVehicleRepository:
             model=model.model,
             year=model.year,
             created_at=model.created_at,
-        )
-
-
-class SqlAlchemyCustomerLookup:
-    def __init__(self, db: Session):
-        self.db = db
-
-    def exists(self, customer_id: int) -> bool:
-        return (
-            self.db.query(CustomerModel)
-            .filter(CustomerModel.id == customer_id)
-            .first()
-            is not None
         )
