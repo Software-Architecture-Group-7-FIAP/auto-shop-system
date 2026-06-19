@@ -124,6 +124,109 @@ def test_service_catalog_crud_and_product_lines(client, auth_headers):
     assert missing.status_code == 404
 
 
+def test_products_and_suppliers_crud(client, auth_headers):
+    supplier = client.post(
+        "/api/v1/admin/suppliers",
+        headers=auth_headers,
+        json={
+            "name": "Fornecedor A",
+            "document": "04.252.011/0001-10",
+            "email": "fornecedor@test.com",
+            "phone": "11999999999",
+        },
+    )
+    assert supplier.status_code == 201
+    supplier_id = supplier.json()["id"]
+    assert supplier.json()["document"] == "04252011000110"
+
+    listed_suppliers = client.get("/api/v1/admin/suppliers", headers=auth_headers)
+    assert listed_suppliers.status_code == 200
+    assert any(item["id"] == supplier_id for item in listed_suppliers.json())
+
+    found_supplier = client.get(
+        f"/api/v1/admin/suppliers/{supplier_id}",
+        headers=auth_headers,
+    )
+    assert found_supplier.status_code == 200
+
+    updated_supplier = client.put(
+        f"/api/v1/admin/suppliers/{supplier_id}",
+        headers=auth_headers,
+        json={"name": "Fornecedor B"},
+    )
+    assert updated_supplier.status_code == 200
+    assert updated_supplier.json()["name"] == "Fornecedor B"
+
+    product = client.post(
+        "/api/v1/admin/products",
+        headers=auth_headers,
+        json={
+            "name": "Óleo 5W30",
+            "sku": "OLEO-API-001",
+            "unit_price": 50.0,
+            "stock_quantity": 10,
+            "description": "Lubrificante",
+            "supplier_id": supplier_id,
+        },
+    )
+    assert product.status_code == 201
+    product_id = product.json()["id"]
+
+    duplicate = client.post(
+        "/api/v1/admin/products",
+        headers=auth_headers,
+        json={"name": "Óleo", "sku": "OLEO-API-001", "unit_price": 55.0},
+    )
+    assert duplicate.status_code == 409
+
+    listed_products = client.get("/api/v1/admin/products", headers=auth_headers)
+    assert listed_products.status_code == 200
+    assert any(item["id"] == product_id for item in listed_products.json())
+
+    found_product = client.get(
+        f"/api/v1/admin/products/{product_id}",
+        headers=auth_headers,
+    )
+    assert found_product.status_code == 200
+    assert found_product.json()["sku"] == "OLEO-API-001"
+
+    updated_product = client.put(
+        f"/api/v1/admin/products/{product_id}",
+        headers=auth_headers,
+        json={"name": "Óleo premium", "unit_price": 75.0},
+    )
+    assert updated_product.status_code == 200
+    assert updated_product.json()["name"] == "Óleo premium"
+    assert updated_product.json()["unit_price"] == 75.0
+
+    stock = client.patch(
+        f"/api/v1/admin/products/{product_id}/stock",
+        headers=auth_headers,
+        json={"quantity": -3},
+    )
+    assert stock.status_code == 200
+    assert stock.json()["stock_quantity"] == 7
+
+    insufficient_stock = client.patch(
+        f"/api/v1/admin/products/{product_id}/stock",
+        headers=auth_headers,
+        json={"quantity": -8},
+    )
+    assert insufficient_stock.status_code == 422
+
+    delete_product = client.delete(
+        f"/api/v1/admin/products/{product_id}",
+        headers=auth_headers,
+    )
+    assert delete_product.status_code == 204
+
+    delete_supplier = client.delete(
+        f"/api/v1/admin/suppliers/{supplier_id}",
+        headers=auth_headers,
+    )
+    assert delete_supplier.status_code == 204
+
+
 def test_full_flow(client, auth_headers):
     customer = client.post(
         "/api/v1/admin/customers",

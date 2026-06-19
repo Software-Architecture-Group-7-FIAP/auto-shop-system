@@ -17,7 +17,10 @@ def _setup_os_with_budget(db_session):
         SqlAlchemyCustomerLookup,
         SqlAlchemyCustomerRepository,
     )
-    from src.infrastructure.persistence.product_repository import SqlAlchemyProductLookup
+    from src.infrastructure.persistence.product_repository import (
+        SqlAlchemyProductLookup,
+        SqlAlchemyProductRepository,
+    )
     from src.infrastructure.persistence.service_catalog_repository import (
         SqlAlchemyServiceCatalogRepository,
     )
@@ -39,7 +42,10 @@ def _setup_os_with_budget(db_session):
         products=SqlAlchemyProductLookup(db_session),
         uow=SqlAlchemyUnitOfWork(db_session),
     ).create("Serv", None, 100.0)
-    product = ProductService(db_session).create("Part", "P-1", 10.0, 50)
+    product = ProductService(
+        products=SqlAlchemyProductRepository(db_session),
+        uow=SqlAlchemyUnitOfWork(db_session),
+    ).create("Part", "P-1", 10.0, 50)
     budget = BudgetService(db_session).create(customer.id, vehicle.id)
     BudgetService(db_session).add_service_line(budget.id, service.id)
     BudgetService(db_session).add_product_line(budget.id, product.id, 1)

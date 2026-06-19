@@ -1,13 +1,15 @@
-from sqlalchemy.orm import Session
-
-from src.domain.exceptions import ConflictError, NotFoundError, ValidationError
-from src.domain.value_objects.validators import DocumentValidator
-from src.infrastructure.database import ProductModel, SupplierModel
+from src.application.ports.unit_of_work import UnitOfWork
+from src.domain.exceptions import ConflictError, NotFoundError
+from src.domain.product.entity import Product
+from src.domain.product.repository import ProductRepository
+from src.domain.supplier.entity import Supplier
+from src.domain.supplier.repository import SupplierRepository
 
 
 class ProductService:
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(self, products: ProductRepository, uow: UnitOfWork):
+        self.products = products
+        self.uow = uow
 
     def create(
         self,
@@ -17,11 +19,10 @@ class ProductService:
         stock_quantity: int = 0,
         description: str | None = None,
         supplier_id: int | None = None,
-    ) -> ProductModel:
-        existing = self.db.query(ProductModel).filter(ProductModel.sku == sku).first()
-        if existing:
+    ) -> Product:
+        if self.products.exists_by_sku(sku):
             raise ConflictError("Produto com este SKU já existe")
-        product = ProductModel(
+        product = Product.create(
             name=name,
             sku=sku,
             unit_price=unit_price,
@@ -29,19 +30,18 @@ class ProductService:
             description=description,
             supplier_id=supplier_id,
         )
-        self.db.add(product)
-        self.db.commit()
-        self.db.refresh(product)
-        return product
+        created = self.products.add(product)
+        self.uow.commit()
+        return created
 
-    def get_by_id(self, product_id: int) -> ProductModel:
-        product = self.db.query(ProductModel).filter(ProductModel.id == product_id).first()
+    def get_by_id(self, product_id: int) -> Product:
+        product = self.products.get_by_id(product_id)
         if not product:
             raise NotFoundError("Produto não encontrado")
         return product
 
-    def list_all(self) -> list[ProductModel]:
-        return self.db.query(ProductModel).all()
+    def list_all(self) -> list[Product]:
+        return self.products.list_all()
 
     def update(
         self,
@@ -50,58 +50,47 @@ class ProductService:
         unit_price: float | None,
         description: str | None,
         supplier_id: int | None,
-    ) -> ProductModel:
+    ) -> Product:
         product = self.get_by_id(product_id)
-        if name is not None:
-            product.name = name
-        if unit_price is not None:
-            product.unit_price = unit_price
-        if description is not None:
-            product.description = description
-        if supplier_id is not None:
-            product.supplier_id = supplier_id
-        self.db.commit()
-        self.db.refresh(product)
-        return product
+        product.update_details(name, unit_price, description, supplier_id)
+        updated = self.products.save(product)
+        self.uow.commit()
+        return updated
 
-    def update_stock(self, product_id: int, quantity: int) -> ProductModel:
+    def update_stock(self, product_id: int, quantity: int) -> Product:
         product = self.get_by_id(product_id)
-        new_qty = product.stock_quantity + quantity
-        if new_qty < 0:
-            raise ValidationError("Estoque insuficiente")
-        product.stock_quantity = new_qty
-        self.db.commit()
-        self.db.refresh(product)
-        return product
+        product.update_stock(quantity)
+        updated = self.products.save(product)
+        self.uow.commit()
+        return updated
 
     def delete(self, product_id: int) -> None:
         product = self.get_by_id(product_id)
-        self.db.delete(product)
-        self.db.commit()
+        self.products.delete(product)
+        self.uow.commit()
 
 
 class SupplierService:
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(self, suppliers: SupplierRepository, uow: UnitOfWork):
+        self.suppliers = suppliers
+        self.uow = uow
 
     def create(
         self, name: str, document: str, email: str, phone: str | None = None
-    ) -> SupplierModel:
-        cleaned_doc = DocumentValidator.validate(document)
-        supplier = SupplierModel(name=name, document=cleaned_doc, email=email, phone=phone)
-        self.db.add(supplier)
-        self.db.commit()
-        self.db.refresh(supplier)
-        return supplier
+    ) -> Supplier:
+        supplier = Supplier.create(name=name, document=document, email=email, phone=phone)
+        created = self.suppliers.add(supplier)
+        self.uow.commit()
+        return created
 
-    def get_by_id(self, supplier_id: int) -> SupplierModel:
-        supplier = self.db.query(SupplierModel).filter(SupplierModel.id == supplier_id).first()
+    def get_by_id(self, supplier_id: int) -> Supplier:
+        supplier = self.suppliers.get_by_id(supplier_id)
         if not supplier:
             raise NotFoundError("Fornecedor não encontrado")
         return supplier
 
-    def list_all(self) -> list[SupplierModel]:
-        return self.db.query(SupplierModel).all()
+    def list_all(self) -> list[Supplier]:
+        return self.suppliers.list_all()
 
     def update(
         self,
@@ -109,19 +98,14 @@ class SupplierService:
         name: str | None,
         email: str | None,
         phone: str | None,
-    ) -> SupplierModel:
+    ) -> Supplier:
         supplier = self.get_by_id(supplier_id)
-        if name is not None:
-            supplier.name = name
-        if email is not None:
-            supplier.email = email
-        if phone is not None:
-            supplier.phone = phone
-        self.db.commit()
-        self.db.refresh(supplier)
-        return supplier
+        supplier.update_contact(name=name, email=email, phone=phone)
+        updated = self.suppliers.save(supplier)
+        self.uow.commit()
+        return updated
 
     def delete(self, supplier_id: int) -> None:
         supplier = self.get_by_id(supplier_id)
-        self.db.delete(supplier)
-        self.db.commit()
+        self.suppliers.delete(supplier)
+        self.uow.commit()
