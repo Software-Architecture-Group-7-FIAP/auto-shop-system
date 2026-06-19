@@ -1,21 +1,22 @@
-from sqlalchemy.orm import Session
-
 from src.domain.customer.entity import Customer
 from src.domain.customer.value_objects import CustomerDocument
+from src.domain.enums import PersonType
 from src.domain.exceptions import NotFoundError
 from src.infrastructure.database import CustomerModel
 
 
 class SqlAlchemyCustomerRepository:
-    def __init__(self, db: Session):
+    def __init__(self, db):
         self.db = db
 
     def add(self, customer: Customer) -> Customer:
         model = CustomerModel(
             name=customer.name,
+            person_type=customer.person_type.value,
             document=str(customer.document),
             email=customer.email,
             phone=customer.phone,
+            address=customer.address,
         )
         self.db.add(model)
         self.db.flush()
@@ -61,6 +62,7 @@ class SqlAlchemyCustomerRepository:
         model.name = customer.name
         model.email = customer.email
         model.phone = customer.phone
+        model.address = customer.address
         self.db.flush()
         self.db.refresh(model)
         return self._to_domain(model)
@@ -81,15 +83,17 @@ class SqlAlchemyCustomerRepository:
         return Customer(
             id=model.id,
             name=model.name,
+            person_type=PersonType(model.person_type),
             document=CustomerDocument.create(model.document),
             email=model.email,
+            address=model.address,
             phone=model.phone,
             created_at=model.created_at,
         )
 
 
 class SqlAlchemyCustomerLookup:
-    def __init__(self, db: Session):
+    def __init__(self, db):
         self.db = db
 
     def exists(self, customer_id: int) -> bool:

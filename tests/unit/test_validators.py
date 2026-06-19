@@ -12,7 +12,7 @@ class TestDocumentValidator:
         assert DocumentValidator.validate("04.252.011/0001-10") == "04252011000110"
 
     def test_invalid_document(self):
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError, match="Cliente inválido"):
             DocumentValidator.validate("123")
 
 

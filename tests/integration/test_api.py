@@ -1,7 +1,25 @@
+from unittest.mock import patch
+
+from src.application.ports.cnpj_validator import CnpjValidationResult
+
+
 def test_health(client):
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+def _pf_customer_payload(**overrides):
+    payload = {
+        "name": "Maria Silva",
+        "person_type": "PF",
+        "document": "529.982.247-25",
+        "email": "maria@test.com",
+        "phone": "11999999999",
+        "address": "Rua A, 100",
+    }
+    payload.update(overrides)
+    return payload
 
 
 def test_login(client):
@@ -17,37 +35,80 @@ def test_customer_crud(client, auth_headers):
     create = client.post(
         "/api/v1/admin/customers",
         headers=auth_headers,
-        json={
-            "name": "Maria Silva",
-            "document": "529.982.247-25",
-            "email": "maria@test.com",
-            "phone": "11999999999",
-        },
+        json=_pf_customer_payload(),
     )
     assert create.status_code == 201
     customer_id = create.json()["id"]
+    assert create.json()["person_type"] == "PF"
+    assert create.json()["address"] == "Rua A, 100"
 
     get_doc = client.get("/api/v1/customers/by-document/52998224725")
     assert get_doc.status_code == 200
 
+    get_admin_doc = client.get(
+        "/api/v1/admin/customers/by-document/52998224725",
+        headers=auth_headers,
+    )
+    assert get_admin_doc.status_code == 200
+
     update = client.put(
         f"/api/v1/admin/customers/{customer_id}",
         headers=auth_headers,
-        json={"name": "Maria S."},
+        json={"name": "Maria S.", "address": "Rua B, 200"},
     )
     assert update.status_code == 200
     assert update.json()["name"] == "Maria S."
+    assert update.json()["address"] == "Rua B, 200"
+
+    delete = client.delete(
+        f"/api/v1/admin/customers/{customer_id}",
+        headers=auth_headers,
+    )
+    assert delete.status_code == 204
+
+
+def test_customer_rejects_invalid_document(client, auth_headers):
+    response = client.post(
+        "/api/v1/admin/customers",
+        headers=auth_headers,
+        json=_pf_customer_payload(document="123"),
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Cliente inválido"
+
+
+def test_customer_rejects_duplicate_document(client, auth_headers):
+    client.post(
+        "/api/v1/admin/customers",
+        headers=auth_headers,
+        json=_pf_customer_payload(),
+    )
+    response = client.post(
+        "/api/v1/admin/customers",
+        headers=auth_headers,
+        json=_pf_customer_payload(name="Maria 2", email="maria2@test.com"),
+    )
+    assert response.status_code == 409
+
+
+def test_customer_public_lookup_not_found(client):
+    response = client.get("/api/v1/customers/by-document/52998224725")
+    assert response.status_code == 404
+
+
+def test_admin_requires_valid_token(client):
+    response = client.get(
+        "/api/v1/admin/customers",
+        headers={"Authorization": "Bearer invalid-token"},
+    )
+    assert response.status_code == 401
 
 
 def test_vehicle_crud(client, auth_headers):
     customer = client.post(
         "/api/v1/admin/customers",
         headers=auth_headers,
-        json={
-            "name": "Pedro",
-            "document": "529.982.247-25",
-            "email": "pedro@test.com",
-        },
+        json=_pf_customer_payload(name="Pedro", email="pedro@test.com", phone=None),
     ).json()
 
     vehicle = client.post(
@@ -231,11 +292,7 @@ def test_full_flow(client, auth_headers):
     customer = client.post(
         "/api/v1/admin/customers",
         headers=auth_headers,
-        json={
-            "name": "Ana",
-            "document": "529.982.247-25",
-            "email": "ana@test.com",
-        },
+        json=_pf_customer_payload(name="Ana", email="ana@test.com", phone=None),
     ).json()
 
     vehicle = client.post(
@@ -346,6 +403,38 @@ def test_full_flow(client, auth_headers):
     )
     assert track.status_code == 200
     assert track.json()["status"] == "Entregue"
+
+
+@patch("src.infrastructure.external.brasil_api_cnpj.HttpBrasilApiCnpjValidator.validate")
+def test_validate_and_create_pj_customer(mock_validate, client, auth_headers):
+    mock_validate.return_value = CnpjValidationResult(
+        valid=True,
+        legal_name="Empresa LTDA",
+        trade_name="Empresa",
+    )
+
+    validate = client.get(
+        "/api/v1/admin/customers/validate-cnpj/04252011000110",
+        headers=auth_headers,
+    )
+    assert validate.status_code == 200
+    assert validate.json()["valid"] is True
+    assert validate.json()["legal_name"] == "Empresa LTDA"
+
+    create = client.post(
+        "/api/v1/admin/customers",
+        headers=auth_headers,
+        json={
+            "name": "Empresa LTDA",
+            "person_type": "PJ",
+            "document": "04.252.011/0001-10",
+            "email": "empresa@test.com",
+            "address": "Av. B, 200",
+        },
+    )
+    assert create.status_code == 201
+    assert create.json()["person_type"] == "PJ"
+    assert mock_validate.call_count == 2
 
 
 def test_admin_requires_auth(client):

@@ -53,9 +53,11 @@ class CustomerModel(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
+    person_type: Mapped[str] = mapped_column(String(2))
     document: Mapped[str] = mapped_column(String(14), unique=True, index=True)
     email: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str] = mapped_column(String(20), nullable=True)
+    address: Mapped[str] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
