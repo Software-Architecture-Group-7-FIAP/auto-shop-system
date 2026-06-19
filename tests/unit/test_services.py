@@ -13,9 +13,19 @@ def _setup_os_with_budget(db_session):
     from src.application.services.service_catalog_service import ServiceCatalogService
     from src.application.services.vehicle_service import VehicleService
     from src.infrastructure.auth.tokens import create_signed_approval_token
+    from src.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+    from src.infrastructure.persistence.vehicle_repository import (
+        SqlAlchemyCustomerLookup,
+        SqlAlchemyVehicleRepository,
+    )
 
     customer = CustomerService(db_session).create("Test", "529.982.247-25", "t@test.com")
-    vehicle = VehicleService(db_session).create(customer.id, "ABC1234", "Fiat", "Uno", 2020)
+    vehicle_service = VehicleService(
+        vehicles=SqlAlchemyVehicleRepository(db_session),
+        customers=SqlAlchemyCustomerLookup(db_session),
+        uow=SqlAlchemyUnitOfWork(db_session),
+    )
+    vehicle = vehicle_service.create(customer.id, "ABC1234", "Fiat", "Uno", 2020)
     service = ServiceCatalogService(db_session).create("Serv", None, 100.0)
     product = ProductService(db_session).create("Part", "P-1", 10.0, 50)
     budget = BudgetService(db_session).create(customer.id, vehicle.id)
