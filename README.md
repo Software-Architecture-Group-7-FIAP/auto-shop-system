@@ -31,8 +31,9 @@ src/
 docker compose up --build
 ```
 
-- API: http://localhost:8000
-- Swagger: http://localhost:8000/docs
+- API (Docker): http://localhost:8001
+- API (local `poetry run uvicorn`): http://localhost:8000
+- Swagger: http://localhost:8000/docs (local) or http://localhost:8001/docs (Docker)
 - MailHog UI: http://localhost:8025
 
 ## Executar localmente
@@ -45,8 +46,10 @@ cp .env.example .env
 # Subir o banco: docker compose up db -d  (ou PostgreSQL local)
 # DATABASE_URL usa localhost fora do Docker; dentro do Compose use host db
 poetry run alembic upgrade head
-poetry run uvicorn src.main:app --reload
+poetry run uvicorn src.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+> **Nota:** Se o container Docker `app` estiver rodando na porta 8000, `http://localhost:8000` pode responder pelo Docker (sem o painel `/app/`). Pare o container com `docker compose stop app` ou use a API Docker em http://localhost:8001.
 
 ## Autenticação
 
@@ -62,6 +65,14 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 ```
 
 Use o token JWT retornado no header `Authorization: Bearer <token>` para rotas `/api/v1/admin/*`.
+
+## Painel web (T02)
+
+Interface simples para login administrativo e cadastro de clientes:
+
+- **URL:** http://localhost:8000/app/ (desenvolvimento local com uvicorn)
+- Login com `admin` / `admin123`
+- Cadastro PF/PJ, validação de CNPJ via Brasil API, busca por documento
 
 ## Fluxos principais
 

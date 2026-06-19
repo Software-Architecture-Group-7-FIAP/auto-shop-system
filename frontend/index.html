@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Oficina — Clientes</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="layout">
+    <header class="header">
+      <div>
+        <p class="eyebrow">FIAP Tech Challenge · T02</p>
+        <h1>Gestão de Clientes</h1>
+      </div>
+      <div id="auth-badge" class="auth-badge hidden">
+        <span id="auth-user"></span>
+        <button type="button" id="logout-btn" class="btn btn-ghost">Sair</button>
+      </div>
+    </header>
+
+    <main class="grid">
+      <!-- Login -->
+      <section id="login-panel" class="card">
+        <h2>Acesso administrativo</h2>
+        <p class="hint">Use o usuário padrão <code>admin</code> / <code>admin123</code></p>
+        <form id="login-form" class="form">
+          <label>
+            Usuário
+            <input type="text" id="username" autocomplete="username" required value="admin">
+          </label>
+          <label>
+            Senha
+            <input type="password" id="password" autocomplete="current-password" required value="admin123">
+          </label>
+          <button type="submit" class="btn btn-primary">Entrar</button>
+        </form>
+      </section>
+
+      <!-- Customer registration -->
+      <section id="customer-panel" class="card hidden">
+        <h2>Cadastrar cliente</h2>
+        <form id="customer-form" class="form">
+          <label>
+            Nome
+            <input type="text" id="customer-name" required placeholder="Maria Silva">
+          </label>
+
+          <fieldset class="radio-group">
+            <legend>Tipo de pessoa</legend>
+            <label class="radio">
+              <input type="radio" name="person_type" value="PF" checked>
+              Pessoa Física (CPF)
+            </label>
+            <label class="radio">
+              <input type="radio" name="person_type" value="PJ">
+              Pessoa Jurídica (CNPJ)
+            </label>
+          </fieldset>
+
+          <label>
+            <span id="document-label">CPF</span>
+            <input type="text" id="customer-document" required placeholder="529.982.247-25">
+          </label>
+
+          <div id="cnpj-actions" class="inline-actions hidden">
+            <button type="button" id="validate-cnpj-btn" class="btn btn-secondary">
+              Validar CNPJ (Brasil API)
+            </button>
+          </div>
+
+          <label>
+            E-mail
+            <input type="email" id="customer-email" required placeholder="cliente@email.com">
+          </label>
+          <label>
+            Telefone
+            <input type="tel" id="customer-phone" placeholder="11999999999">
+          </label>
+          <label>
+            Endereço
+            <input type="text" id="customer-address" required placeholder="Rua Exemplo, 100 — São Paulo">
+          </label>
+
+          <button type="submit" class="btn btn-primary">Salvar cliente</button>
+        </form>
+      </section>
+
+      <!-- Search -->
+      <section id="search-panel" class="card hidden">
+        <h2>Buscar por documento</h2>
+        <form id="search-form" class="form form-inline">
+          <label class="grow">
+            CPF ou CNPJ
+            <input type="text" id="search-document" required placeholder="52998224725">
+          </label>
+          <button type="submit" class="btn btn-secondary">Buscar</button>
+        </form>
+      </section>
+
+      <!-- Results -->
+      <section id="results-panel" class="card hidden">
+        <div class="results-header">
+          <h2>Resultado</h2>
+          <button type="button" id="clear-results" class="btn btn-ghost">Limpar</button>
+        </div>
+        <pre id="results-output" class="results-output"></pre>
+      </section>
+
+      <!-- Customer list -->
+      <section id="list-panel" class="card hidden span-2">
+        <div class="results-header">
+          <h2>Clientes cadastrados</h2>
+          <button type="button" id="refresh-list" class="btn btn-secondary">Atualizar</button>
+        </div>
+        <div id="customer-list" class="customer-list"></div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

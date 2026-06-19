@@ -1,7 +1,8 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from src.api.routers import (
     auth,
@@ -106,7 +107,9 @@ def home(request: Request):
     <p>Porta: <strong>{port}</strong></p>
     <span class="status">Online</span>
     <p style="margin-top: 1.5rem;">
-      <a href="/docs">Abrir documentação da API</a>
+      <a href="/app/">Abrir painel de clientes</a>
+      &nbsp;·&nbsp;
+      <a href="/docs">Documentação da API</a>
     </p>
   </main>
 </body>
@@ -135,3 +138,37 @@ app.include_router(inventory.router, prefix=api_prefix)
 app.include_router(execution.execution_router, prefix=api_prefix)
 app.include_router(execution.withdrawals_router, prefix=api_prefix)
 app.include_router(invoices.router, prefix=api_prefix)
+
+frontend_dir = Path(__file__).resolve().parents[1] / "frontend"
+
+
+def _frontend_asset(filename: str) -> FileResponse:
+    asset = (frontend_dir / filename).resolve()
+    if not str(asset).startswith(str(frontend_dir.resolve())):
+        raise HTTPException(status_code=404, detail="Not found")
+    if not asset.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(asset)
+
+
+@app.get("/app", include_in_schema=False)
+def app_root():
+    return RedirectResponse(url="/app/", status_code=307)
+
+
+@app.get("/app/", include_in_schema=False)
+def app_index():
+    index = frontend_dir / "index.html"
+    if not index.is_file():
+        raise HTTPException(status_code=404, detail="Frontend not found")
+    return FileResponse(index)
+
+
+@app.get("/app/{filename}", include_in_schema=False)
+def app_assets(filename: str):
+    return _frontend_asset(filename)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return Response(status_code=204)
