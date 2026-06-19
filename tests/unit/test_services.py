@@ -1,6 +1,6 @@
 from src.api.composition.inventory import compose_inventory_service
+from src.api.composition.execution import compose_execution_service
 from src.api.composition.service_orders import compose_service_order_service
-from src.application.services.execution_service import ExecutionService
 from src.application.services.invoice_service import InvoiceService
 from src.domain.enums import ServiceOrderStatus
 
@@ -83,7 +83,7 @@ def test_service_order_status_transitions(db_session):
     updated = svc.assign_mechanic(os.id, "Mecânico A")
     assert updated.status == ServiceOrderStatus.EM_DIAGNOSTICO
 
-    exec_svc = ExecutionService(db_session)
+    exec_svc = compose_execution_service(db_session)
     exec_svc.start_service(os.id)
     exec_svc.finish_service(os.id)
 
@@ -94,8 +94,8 @@ def test_service_order_status_transitions(db_session):
 def test_invoice_and_payment(db_session):
     os, _ = _setup_os_with_budget(db_session)
     compose_service_order_service(db_session).assign_mechanic(os.id, "Mecânico B")
-    ExecutionService(db_session).start_service(os.id)
-    ExecutionService(db_session).finish_service(os.id)
+    compose_execution_service(db_session).start_service(os.id)
+    compose_execution_service(db_session).finish_service(os.id)
 
     invoice_svc = InvoiceService(db_session)
     invoice = invoice_svc.create_invoice(os.id)

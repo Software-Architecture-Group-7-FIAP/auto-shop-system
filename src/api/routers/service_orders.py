@@ -5,6 +5,7 @@ from src.api.composition.service_orders import (
     compose_service_order_email_service,
     compose_service_order_service,
 )
+from src.api.composition.execution import compose_execution_service
 from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.schemas import (
     AssignMechanicRequest,
@@ -43,8 +44,7 @@ def list_os_with_withdrawals(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    from src.application.services.execution_service import ExecutionService
-    return ExecutionService(db).list_os_with_withdrawals()
+    return compose_execution_service(db).list_os_with_withdrawals()
 
 
 @admin_router.get("/{service_order_id}", response_model=ServiceOrderResponse)

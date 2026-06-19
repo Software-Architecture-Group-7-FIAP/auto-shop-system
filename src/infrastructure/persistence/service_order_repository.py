@@ -48,6 +48,23 @@ class SqlAlchemyServiceOrderRepository:
         )
         return [self._to_domain(model) for model in models]
 
+    def list_by_ids_and_status(
+        self,
+        service_order_ids: list[int],
+        status: ServiceOrderStatus,
+    ) -> list[ServiceOrder]:
+        if not service_order_ids:
+            return []
+        models = (
+            self.db.query(ServiceOrderModel)
+            .filter(
+                ServiceOrderModel.id.in_(service_order_ids),
+                ServiceOrderModel.status == status,
+            )
+            .all()
+        )
+        return [self._to_domain(model) for model in models]
+
     def save(self, service_order: ServiceOrder) -> ServiceOrder:
         if service_order.id is None:
             raise NotFoundError("OS não encontrada")

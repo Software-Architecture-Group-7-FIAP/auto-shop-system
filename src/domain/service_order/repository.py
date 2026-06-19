@@ -14,5 +14,12 @@ class ServiceOrderRepository(Protocol):
     def list_with_execution_times(self) -> list[ServiceOrder]:
         ...
 
+    def list_by_ids_and_status(
+        self,
+        service_order_ids: list[int],
+        status: ServiceOrderStatus,
+    ) -> list[ServiceOrder]:
+        ...
+
     def save(self, service_order: ServiceOrder) -> ServiceOrder:
         ...
