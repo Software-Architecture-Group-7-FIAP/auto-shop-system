@@ -1,6 +1,6 @@
+from src.api.composition.inventory import compose_inventory_service
 from src.api.composition.service_orders import compose_service_order_service
 from src.application.services.execution_service import ExecutionService
-from src.application.services.inventory_service import InventoryService
 from src.application.services.invoice_service import InvoiceService
 from src.domain.enums import ServiceOrderStatus
 
@@ -80,7 +80,7 @@ def test_service_order_status_transitions(db_session):
     os, _ = _setup_os_with_budget(db_session)
     svc = compose_service_order_service(db_session)
 
-    updated = svc.assign_mechanic(os.id, "Mec?nico A")
+    updated = svc.assign_mechanic(os.id, "Mecânico A")
     assert updated.status == ServiceOrderStatus.EM_DIAGNOSTICO
 
     exec_svc = ExecutionService(db_session)
@@ -93,7 +93,7 @@ def test_service_order_status_transitions(db_session):
 
 def test_invoice_and_payment(db_session):
     os, _ = _setup_os_with_budget(db_session)
-    compose_service_order_service(db_session).assign_mechanic(os.id, "Mec?nico B")
+    compose_service_order_service(db_session).assign_mechanic(os.id, "Mecânico B")
     ExecutionService(db_session).start_service(os.id)
     ExecutionService(db_session).finish_service(os.id)
 
@@ -110,7 +110,7 @@ def test_invoice_and_payment(db_session):
 
 def test_inventory_reservation_and_purchase(db_session):
     os, product = _setup_os_with_budget(db_session)
-    inv = InventoryService(db_session)
+    inv = compose_inventory_service(db_session)
 
     reservations = inv.create_reservations_for_os(os.id)
     assert len(reservations) >= 1
@@ -123,5 +123,5 @@ def test_inventory_reservation_and_purchase(db_session):
 
     from src.infrastructure.database import ProductModel
 
-    updated_product = inv.db.query(ProductModel).filter(ProductModel.id == product.id).first()
+    updated_product = db_session.query(ProductModel).filter(ProductModel.id == product.id).first()
     assert updated_product.stock_quantity >= 50
