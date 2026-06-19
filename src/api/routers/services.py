@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from src.api.composition.service_catalog import compose_service_catalog_service
 from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.schemas import (
     ServiceCreate,
@@ -8,7 +9,6 @@ from src.api.schemas import (
     ServiceResponse,
     ServiceUpdate,
 )
-from src.application.services.service_catalog_service import ServiceCatalogService
 from src.domain.exceptions import DomainError
 from src.infrastructure.database import UserModel, get_db
 
@@ -22,7 +22,7 @@ def create_service(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return ServiceCatalogService(db).create(
+        return compose_service_catalog_service(db).create(
             data.name, data.description, data.base_price, data.estimated_hours
         )
     except DomainError as e:
@@ -34,7 +34,7 @@ def list_services(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    return ServiceCatalogService(db).list_all()
+    return compose_service_catalog_service(db).list_all()
 
 
 @router.get("/{service_id}", response_model=ServiceResponse)
@@ -44,7 +44,7 @@ def get_service(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return ServiceCatalogService(db).get_by_id(service_id)
+        return compose_service_catalog_service(db).get_by_id(service_id)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -57,7 +57,7 @@ def update_service(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return ServiceCatalogService(db).update(
+        return compose_service_catalog_service(db).update(
             service_id, data.name, data.description, data.base_price, data.estimated_hours
         )
     except DomainError as e:
@@ -71,7 +71,7 @@ def delete_service(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        ServiceCatalogService(db).delete(service_id)
+        compose_service_catalog_service(db).delete(service_id)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -84,8 +84,17 @@ def add_product_line(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        line = ServiceCatalogService(db).add_product_line(service_id, data.product_id, data.quantity)
-        return {"id": line.id, "service_id": line.service_id, "product_id": line.product_id, "quantity": line.quantity}
+        line = compose_service_catalog_service(db).add_product_line(
+            service_id,
+            data.product_id,
+            data.quantity,
+        )
+        return {
+            "id": line.id,
+            "service_id": line.service_id,
+            "product_id": line.product_id,
+            "quantity": line.quantity,
+        }
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -98,6 +107,6 @@ def remove_product_line(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        ServiceCatalogService(db).remove_product_line(service_id, line_id)
+        compose_service_catalog_service(db).remove_product_line(service_id, line_id)
     except DomainError as e:
         raise domain_error_handler(e)

@@ -1,0 +1,125 @@
+from sqlalchemy.orm import Session
+
+from src.domain.exceptions import NotFoundError
+from src.domain.service_catalog.entity import CatalogService, ServiceProductLine
+from src.infrastructure.database import ServiceModel, ServiceProductLineModel
+
+
+class SqlAlchemyServiceCatalogRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def add(self, service: CatalogService) -> CatalogService:
+        model = ServiceModel(
+            name=service.name,
+            description=service.description,
+            base_price=service.base_price,
+            estimated_hours=service.estimated_hours,
+        )
+        self.db.add(model)
+        self.db.flush()
+        self.db.refresh(model)
+        return self._to_domain(model)
+
+    def get_by_id(self, service_id: int) -> CatalogService | None:
+        model = self.db.query(ServiceModel).filter(ServiceModel.id == service_id).first()
+        if not model:
+            return None
+        return self._to_domain(model)
+
+    def list_all(self) -> list[CatalogService]:
+        models = self.db.query(ServiceModel).all()
+        return [self._to_domain(model) for model in models]
+
+    def save(self, service: CatalogService) -> CatalogService:
+        if service.id is None:
+            raise NotFoundError("Serviço não encontrado")
+
+        model = self.db.query(ServiceModel).filter(ServiceModel.id == service.id).first()
+        if not model:
+            raise NotFoundError("Serviço não encontrado")
+
+        model.name = service.name
+        model.description = service.description
+        model.base_price = service.base_price
+        model.estimated_hours = service.estimated_hours
+        self.db.flush()
+        self.db.refresh(model)
+        return self._to_domain(model)
+
+    def delete(self, service: CatalogService) -> None:
+        if service.id is None:
+            raise NotFoundError("Serviço não encontrado")
+
+        model = self.db.query(ServiceModel).filter(ServiceModel.id == service.id).first()
+        if not model:
+            raise NotFoundError("Serviço não encontrado")
+
+        self.db.delete(model)
+        self.db.flush()
+
+    def add_product_line(self, line: ServiceProductLine) -> ServiceProductLine:
+        model = ServiceProductLineModel(
+            service_id=line.service_id,
+            product_id=line.product_id,
+            quantity=line.quantity,
+        )
+        self.db.add(model)
+        self.db.flush()
+        self.db.refresh(model)
+        return self._line_to_domain(model)
+
+    def get_product_line(
+        self,
+        service_id: int,
+        line_id: int,
+    ) -> ServiceProductLine | None:
+        model = (
+            self.db.query(ServiceProductLineModel)
+            .filter(
+                ServiceProductLineModel.id == line_id,
+                ServiceProductLineModel.service_id == service_id,
+            )
+            .first()
+        )
+        if not model:
+            return None
+        return self._line_to_domain(model)
+
+    def delete_product_line(self, line: ServiceProductLine) -> None:
+        if line.id is None:
+            raise NotFoundError("Linha de produto não encontrada")
+
+        model = (
+            self.db.query(ServiceProductLineModel)
+            .filter(
+                ServiceProductLineModel.id == line.id,
+                ServiceProductLineModel.service_id == line.service_id,
+            )
+            .first()
+        )
+        if not model:
+            raise NotFoundError("Linha de produto não encontrada")
+
+        self.db.delete(model)
+        self.db.flush()
+
+    @staticmethod
+    def _to_domain(model: ServiceModel) -> CatalogService:
+        return CatalogService(
+            id=model.id,
+            name=model.name,
+            description=model.description,
+            base_price=model.base_price,
+            estimated_hours=model.estimated_hours,
+            created_at=model.created_at,
+        )
+
+    @staticmethod
+    def _line_to_domain(model: ServiceProductLineModel) -> ServiceProductLine:
+        return ServiceProductLine(
+            id=model.id,
+            service_id=model.service_id,
+            product_id=model.product_id,
+            quantity=model.quantity,
+        )

@@ -1,35 +1,42 @@
-from sqlalchemy.orm import Session
-
+from src.application.ports.product_lookup import ProductLookup
+from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.exceptions import NotFoundError
-from src.infrastructure.database import ProductModel, ServiceModel, ServiceProductLineModel
+from src.domain.service_catalog.entity import CatalogService, ServiceProductLine
+from src.domain.service_catalog.repository import ServiceCatalogRepository
 
 
 class ServiceCatalogService:
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(
+        self,
+        services: ServiceCatalogRepository,
+        products: ProductLookup,
+        uow: UnitOfWork,
+    ):
+        self.services = services
+        self.products = products
+        self.uow = uow
 
     def create(
         self, name: str, description: str | None, base_price: float, estimated_hours: float = 1.0
-    ) -> ServiceModel:
-        service = ServiceModel(
+    ) -> CatalogService:
+        service = CatalogService.create(
             name=name,
             description=description,
             base_price=base_price,
             estimated_hours=estimated_hours,
         )
-        self.db.add(service)
-        self.db.commit()
-        self.db.refresh(service)
-        return service
+        created = self.services.add(service)
+        self.uow.commit()
+        return created
 
-    def get_by_id(self, service_id: int) -> ServiceModel:
-        service = self.db.query(ServiceModel).filter(ServiceModel.id == service_id).first()
+    def get_by_id(self, service_id: int) -> CatalogService:
+        service = self.services.get_by_id(service_id)
         if not service:
             raise NotFoundError("Serviço não encontrado")
         return service
 
-    def list_all(self) -> list[ServiceModel]:
-        return self.db.query(ServiceModel).all()
+    def list_all(self) -> list[CatalogService]:
+        return self.services.list_all()
 
     def update(
         self,
@@ -38,46 +45,42 @@ class ServiceCatalogService:
         description: str | None,
         base_price: float | None,
         estimated_hours: float | None,
-    ) -> ServiceModel:
+    ) -> CatalogService:
         service = self.get_by_id(service_id)
-        if name is not None:
-            service.name = name
-        if description is not None:
-            service.description = description
-        if base_price is not None:
-            service.base_price = base_price
-        if estimated_hours is not None:
-            service.estimated_hours = estimated_hours
-        self.db.commit()
-        self.db.refresh(service)
-        return service
+        service.update_details(name, description, base_price, estimated_hours)
+        updated = self.services.save(service)
+        self.uow.commit()
+        return updated
 
     def delete(self, service_id: int) -> None:
         service = self.get_by_id(service_id)
-        self.db.delete(service)
-        self.db.commit()
+        self.services.delete(service)
+        self.uow.commit()
 
-    def add_product_line(self, service_id: int, product_id: int, quantity: int) -> ServiceProductLineModel:
+    def add_product_line(
+        self,
+        service_id: int,
+        product_id: int,
+        quantity: int,
+    ) -> ServiceProductLine:
         service = self.get_by_id(service_id)
-        product = self.db.query(ProductModel).filter(ProductModel.id == product_id).first()
-        if not product:
+        if not self.products.exists(product_id):
             raise NotFoundError("Produto não encontrado")
-        line = ServiceProductLineModel(service_id=service.id, product_id=product_id, quantity=quantity)
-        self.db.add(line)
-        self.db.commit()
-        self.db.refresh(line)
-        return line
+        if service.id is None:
+            raise NotFoundError("Serviço não encontrado")
+
+        line = ServiceProductLine.create(
+            service_id=service.id,
+            product_id=product_id,
+            quantity=quantity,
+        )
+        created = self.services.add_product_line(line)
+        self.uow.commit()
+        return created
 
     def remove_product_line(self, service_id: int, line_id: int) -> None:
-        line = (
-            self.db.query(ServiceProductLineModel)
-            .filter(
-                ServiceProductLineModel.id == line_id,
-                ServiceProductLineModel.service_id == service_id,
-            )
-            .first()
-        )
+        line = self.services.get_product_line(service_id, line_id)
         if not line:
             raise NotFoundError("Linha de produto não encontrada")
-        self.db.delete(line)
-        self.db.commit()
+        self.services.delete_product_line(line)
+        self.uow.commit()

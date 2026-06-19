@@ -7,6 +7,10 @@ from src.infrastructure.persistence.customer_repository import (
     SqlAlchemyCustomerLookup,
     SqlAlchemyCustomerRepository,
 )
+from src.infrastructure.persistence.product_repository import SqlAlchemyProductLookup
+from src.infrastructure.persistence.service_catalog_repository import (
+    SqlAlchemyServiceCatalogRepository,
+)
 from src.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from src.infrastructure.persistence.vehicle_repository import SqlAlchemyVehicleRepository
 
@@ -26,6 +30,14 @@ def _vehicle_service(db_session):
     )
 
 
+def _service_catalog_service(db_session):
+    return ServiceCatalogService(
+        services=SqlAlchemyServiceCatalogRepository(db_session),
+        products=SqlAlchemyProductLookup(db_session),
+        uow=SqlAlchemyUnitOfWork(db_session),
+    )
+
+
 def test_budget_total_calculation(db_session):
     customer = _customer_service(db_session).create(
         "João", "529.982.247-25", "joao@test.com"
@@ -33,7 +45,7 @@ def test_budget_total_calculation(db_session):
     vehicle = _vehicle_service(db_session).create(
         customer.id, "ABC1234", "Fiat", "Uno", 2020
     )
-    service = ServiceCatalogService(db_session).create("Troca de óleo", None, 100.0, 2.0)
+    service = _service_catalog_service(db_session).create("Troca de óleo", None, 100.0, 2.0)
     product = ProductService(db_session).create("Óleo 5W30", "OLEO-001", 50.0, 10)
 
     budget_svc = BudgetService(db_session)

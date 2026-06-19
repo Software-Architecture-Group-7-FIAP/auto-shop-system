@@ -64,6 +64,66 @@ def test_vehicle_crud(client, auth_headers):
     assert vehicle.status_code == 201
 
 
+def test_service_catalog_crud_and_product_lines(client, auth_headers):
+    create = client.post(
+        "/api/v1/admin/services",
+        headers=auth_headers,
+        json={"name": "Alinhamento", "base_price": 150.0, "estimated_hours": 1.5},
+    )
+    assert create.status_code == 201
+    service_id = create.json()["id"]
+
+    listed = client.get("/api/v1/admin/services", headers=auth_headers)
+    assert listed.status_code == 200
+    assert any(service["id"] == service_id for service in listed.json())
+
+    found = client.get(f"/api/v1/admin/services/{service_id}", headers=auth_headers)
+    assert found.status_code == 200
+    assert found.json()["name"] == "Alinhamento"
+
+    update = client.put(
+        f"/api/v1/admin/services/{service_id}",
+        headers=auth_headers,
+        json={"description": "Serviço completo", "base_price": 175.0},
+    )
+    assert update.status_code == 200
+    assert update.json()["description"] == "Serviço completo"
+    assert update.json()["base_price"] == 175.0
+
+    product = client.post(
+        "/api/v1/admin/products",
+        headers=auth_headers,
+        json={
+            "name": "Parafuso",
+            "sku": "PAR-SERV-001",
+            "unit_price": 5.0,
+            "stock_quantity": 100,
+        },
+    )
+    assert product.status_code == 201
+
+    line = client.post(
+        f"/api/v1/admin/services/{service_id}/product-lines",
+        headers=auth_headers,
+        json={"product_id": product.json()["id"], "quantity": 2},
+    )
+    assert line.status_code == 201
+    assert line.json()["service_id"] == service_id
+    assert line.json()["quantity"] == 2
+
+    delete_line = client.delete(
+        f"/api/v1/admin/services/{service_id}/product-lines/{line.json()['id']}",
+        headers=auth_headers,
+    )
+    assert delete_line.status_code == 204
+
+    delete = client.delete(f"/api/v1/admin/services/{service_id}", headers=auth_headers)
+    assert delete.status_code == 204
+
+    missing = client.get(f"/api/v1/admin/services/{service_id}", headers=auth_headers)
+    assert missing.status_code == 404
+
+
 def test_full_flow(client, auth_headers):
     customer = client.post(
         "/api/v1/admin/customers",
