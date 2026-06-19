@@ -44,3 +44,6 @@ class ServiceOrder:
 
     def set_priority(self, priority: Priority) -> None:
         self.priority = priority
+
+    def mark_delivered(self) -> None:
+        self.status = ServiceOrderStatus.ENTREGUE

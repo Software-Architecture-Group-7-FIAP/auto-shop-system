@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from src.api.composition.billing import compose_invoice_service
 from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.schemas import InvoiceResponse, ServiceOrderResponse
-from src.application.services.invoice_service import InvoiceService
 from src.domain.exceptions import DomainError
 from src.infrastructure.database import UserModel, get_db
 
@@ -17,7 +17,7 @@ def create_invoice(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return InvoiceService(db).create_invoice(service_order_id)
+        return compose_invoice_service(db).create_invoice(service_order_id)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -29,7 +29,7 @@ def pay_invoice(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return InvoiceService(db).pay_invoice(invoice_id)
+        return compose_invoice_service(db).pay_invoice(invoice_id)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -41,6 +41,6 @@ def deliver_service_order(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        return InvoiceService(db).deliver(service_order_id)
+        return compose_invoice_service(db).deliver(service_order_id)
     except DomainError as e:
         raise domain_error_handler(e)

@@ -1,7 +1,7 @@
 from src.api.composition.inventory import compose_inventory_service
 from src.api.composition.execution import compose_execution_service
+from src.api.composition.billing import compose_invoice_service
 from src.api.composition.service_orders import compose_service_order_service
-from src.application.services.invoice_service import InvoiceService
 from src.domain.enums import ServiceOrderStatus
 
 
@@ -97,7 +97,7 @@ def test_invoice_and_payment(db_session):
     compose_execution_service(db_session).start_service(os.id)
     compose_execution_service(db_session).finish_service(os.id)
 
-    invoice_svc = InvoiceService(db_session)
+    invoice_svc = compose_invoice_service(db_session)
     invoice = invoice_svc.create_invoice(os.id)
     assert invoice.amount == os.total_price
 

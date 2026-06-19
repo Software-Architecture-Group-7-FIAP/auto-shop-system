@@ -1,65 +1,65 @@
-from datetime import datetime
-
-from sqlalchemy.orm import Session
-
-from src.domain.enums import InvoiceStatus, ServiceOrderStatus
+from src.application.ports.billing import BillingClock
+from src.application.ports.unit_of_work import UnitOfWork
+from src.domain.billing.entity import Invoice
+from src.domain.billing.repository import InvoiceRepository
+from src.domain.enums import ServiceOrderStatus
 from src.domain.exceptions import NotFoundError, ValidationError
-from src.infrastructure.database import InvoiceModel, ServiceOrderModel
+from src.domain.service_order.entity import ServiceOrder
+from src.domain.service_order.repository import ServiceOrderRepository
 
 
 class InvoiceService:
-    def __init__(self, db: Session):
-        self.db = db
+    def __init__(
+        self,
+        invoices: InvoiceRepository,
+        service_orders: ServiceOrderRepository,
+        clock: BillingClock,
+        uow: UnitOfWork,
+    ):
+        self.invoices = invoices
+        self.service_orders = service_orders
+        self.clock = clock
+        self.uow = uow
 
-    def create_invoice(self, service_order_id: int) -> InvoiceModel:
-        os = self.db.query(ServiceOrderModel).filter(ServiceOrderModel.id == service_order_id).first()
-        if not os:
+    def create_invoice(self, service_order_id: int) -> Invoice:
+        service_order = self.service_orders.get_by_id(service_order_id)
+        if not service_order:
             raise NotFoundError("OS não encontrada")
-        if os.status != ServiceOrderStatus.FINALIZADA:
+        if service_order.status != ServiceOrderStatus.FINALIZADA:
             raise ValidationError("OS deve estar finalizada para gerar fatura")
-        existing = (
-            self.db.query(InvoiceModel)
-            .filter(InvoiceModel.service_order_id == service_order_id)
-            .first()
-        )
-        if existing:
+        if self.invoices.get_by_service_order_id(service_order_id):
             raise ValidationError("Fatura já existe para esta OS")
-        invoice = InvoiceModel(service_order_id=service_order_id, amount=os.total_price)
-        self.db.add(invoice)
-        self.db.commit()
-        self.db.refresh(invoice)
-        return invoice
 
-    def pay_invoice(self, invoice_id: int) -> InvoiceModel:
-        invoice = self.db.query(InvoiceModel).filter(InvoiceModel.id == invoice_id).first()
-        if not invoice:
-            raise NotFoundError("Fatura não encontrada")
-        invoice.status = InvoiceStatus.PAID
-        invoice.paid_at = datetime.utcnow()
-
-        os = (
-            self.db.query(ServiceOrderModel)
-            .filter(ServiceOrderModel.id == invoice.service_order_id)
-            .first()
+        invoice = self.invoices.add(
+            Invoice.create(service_order_id, service_order.total_price)
         )
-        if os:
-            os.status = ServiceOrderStatus.ENTREGUE
-
-        self.db.commit()
-        self.db.refresh(invoice)
+        self.uow.commit()
         return invoice
 
-    def deliver(self, service_order_id: int) -> ServiceOrderModel:
-        os = self.db.query(ServiceOrderModel).filter(ServiceOrderModel.id == service_order_id).first()
-        if not os:
-            raise NotFoundError("OS não encontrada")
-        os.status = ServiceOrderStatus.ENTREGUE
-        self.db.commit()
-        self.db.refresh(os)
-        return os
+    def pay_invoice(self, invoice_id: int) -> Invoice:
+        invoice = self.get_by_id(invoice_id)
+        invoice.pay(self.clock.now())
+        updated = self.invoices.save(invoice)
 
-    def get_by_id(self, invoice_id: int) -> InvoiceModel:
-        invoice = self.db.query(InvoiceModel).filter(InvoiceModel.id == invoice_id).first()
+        service_order = self.service_orders.get_by_id(invoice.service_order_id)
+        if service_order:
+            service_order.mark_delivered()
+            self.service_orders.save(service_order)
+
+        self.uow.commit()
+        return updated
+
+    def deliver(self, service_order_id: int) -> ServiceOrder:
+        service_order = self.service_orders.get_by_id(service_order_id)
+        if not service_order:
+            raise NotFoundError("OS não encontrada")
+        service_order.mark_delivered()
+        updated = self.service_orders.save(service_order)
+        self.uow.commit()
+        return updated
+
+    def get_by_id(self, invoice_id: int) -> Invoice:
+        invoice = self.invoices.get_by_id(invoice_id)
         if not invoice:
             raise NotFoundError("Fatura não encontrada")
         return invoice
