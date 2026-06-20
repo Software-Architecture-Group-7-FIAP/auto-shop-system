@@ -17,9 +17,7 @@
         *ngFor="let budget of budgets"
         class="list-item"
         (click)="selectBudget(budget.id)"
-        [ngStyle]="{
-          'border-color': budget.id === selectedBudgetId ? '#999' : 'transparent'
-        }"
+        [class.selected]="budget.id === selectedBudgetId"
       >
         <span class="col-1">{{ budget.id }}</span>
         <span class="col-2">{{ budget.customer_id }}</span>

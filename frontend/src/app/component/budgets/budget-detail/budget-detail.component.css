@@ -11,7 +11,7 @@
 
 .availability-list li {
   padding: 0.35rem 0;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .availability-list li.insufficient {

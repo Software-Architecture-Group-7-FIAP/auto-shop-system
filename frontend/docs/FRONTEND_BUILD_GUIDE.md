@@ -312,7 +312,7 @@ Template layout (always the same skeleton):
     <ul class="model-list">
       <li class="list-header">...</li>
       <li *ngFor="let item of entities" class="list-item" (click)="selectEntity(item.id)"
-          [ngStyle]="{'border-color': item.id == selectedEntityId ? '#999' : 'transparent'}">
+          [class.selected]="item.id == selectedEntityId">
         <!-- columns -->
       </li>
     </ul>
@@ -485,12 +485,16 @@ Use these class names consistently — they are defined in `src/styles.css`:
 | `.small-input`, `.medium-input`, `.big-input` | Widths |
 | `.button-list` | Centered action buttons |
 
-Color palette:
+Color palette (dark emerald theme — see `frontend/docs/instructions.md`):
 
-- Primary accent: `#4A8888`
-- Text/icons: `#6F6F6F`
-- Borders/selection: `#999`
-- Backgrounds: `#F5F5F5`, `#EAEAEA`
+| Token | Hex | Use |
+|-------|-----|-----|
+| `--color-base` | `#091413` | Page canvas |
+| `--color-surface` | `#285A48` | Nav bar, cards, list headers |
+| `--color-primary` | `#408A71` | Buttons, links, focus |
+| `--color-accent` | `#B0E4CC` | Titles, selected rows, readable text |
+
+Selected list row: add `[class.selected]="item.id === selectedEntityId"` on `.list-item`.
 
 Responsive: below 1024px, grid collapses to single column (already in `styles.css`).
 
@@ -615,7 +619,7 @@ app.include_router(router)
 - All CRUD operations hit the FastAPI backend successfully through the dev proxy
 - Forms validate required fields and numeric patterns before submit
 - Update buttons disabled until user changes something
-- Selected list row highlighted with `#999` border
+- Selected list row highlighted with `.selected` class (mint accent border)
 - Layout responsive on narrow screens
 
 ---

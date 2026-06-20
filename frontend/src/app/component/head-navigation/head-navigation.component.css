@@ -1,11 +1,11 @@
 .head-nav-back {
   display: flex;
   align-items: center;
-  color: #6f6f6f;
+  color: var(--color-text-muted);
   text-decoration: none;
 }
 
 .head-nav-back:hover {
-  color: #4a8888;
+  color: var(--color-accent);
   text-decoration: none;
 }

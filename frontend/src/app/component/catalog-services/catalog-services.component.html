@@ -16,9 +16,7 @@
         *ngFor="let service of catalogServices"
         class="list-item"
         (click)="selectCatalogService(service.id)"
-        [ngStyle]="{
-          'border-color': service.id === selectedCatalogServiceId ? '#999' : 'transparent'
-        }"
+        [class.selected]="service.id === selectedCatalogServiceId"
       >
         <span class="col-1">{{ service.id }}</span>
         <span class="col-2">{{ service.name }}</span>

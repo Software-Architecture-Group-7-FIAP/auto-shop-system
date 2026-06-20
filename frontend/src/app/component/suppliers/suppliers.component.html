@@ -16,9 +16,7 @@
         *ngFor="let supplier of suppliers"
         class="list-item"
         (click)="selectSupplier(supplier.id)"
-        [ngStyle]="{
-          'border-color': supplier.id === selectedSupplierId ? '#999' : 'transparent'
-        }"
+        [class.selected]="supplier.id === selectedSupplierId"
       >
         <span class="col-1">{{ supplier.id }}</span>
         <span class="col-2">{{ supplier.name }}</span>

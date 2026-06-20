@@ -16,9 +16,7 @@
         *ngFor="let customer of customers"
         class="list-item"
         (click)="selectCustomer(customer.id)"
-        [ngStyle]="{
-          'border-color': customer.id === selectedCustomerId ? '#999' : 'transparent'
-        }"
+        [class.selected]="customer.id === selectedCustomerId"
       >
         <span class="col-1">{{ customer.id }}</span>
         <span class="col-2">{{ customer.name }}</span>

@@ -18,9 +18,7 @@
         *ngFor="let product of products"
         class="list-item"
         (click)="selectProduct(product.id)"
-        [ngStyle]="{
-          'border-color': product.id === selectedProductId ? '#999' : 'transparent'
-        }"
+        [class.selected]="product.id === selectedProductId"
       >
         <span class="col-1">{{ product.id }}</span>
         <span class="col-2">{{ product.name }}</span>

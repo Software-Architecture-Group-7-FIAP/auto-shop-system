@@ -17,9 +17,7 @@
         *ngFor="let vehicle of vehicles"
         class="list-item"
         (click)="selectVehicle(vehicle.id)"
-        [ngStyle]="{
-          'border-color': vehicle.id === selectedVehicleId ? '#999' : 'transparent'
-        }"
+        [class.selected]="vehicle.id === selectedVehicleId"
       >
         <span class="col-1">{{ vehicle.id }}</span>
         <span class="col-2">{{ vehicle.plate }}</span>

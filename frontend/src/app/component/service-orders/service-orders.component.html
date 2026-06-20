@@ -18,9 +18,7 @@
         *ngFor="let order of serviceOrders"
         class="list-item"
         (click)="selectServiceOrder(order.id)"
-        [ngStyle]="{
-          'border-color': order.id === selectedServiceOrderId ? '#999' : 'transparent'
-        }"
+        [class.selected]="order.id === selectedServiceOrderId"
       >
         <span class="col-1">{{ order.id }}</span>
         <span class="col-2">{{ order.status }}</span>
