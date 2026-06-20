@@ -16,7 +16,7 @@ class DocumentValidator:
             if not CNPJ().validate(cleaned):
                 raise ValidationError("CNPJ inválido")
         else:
-            raise ValidationError("Documento deve ser CPF (11 dígitos) ou CNPJ (14 dígitos)")
+            raise ValidationError("Documento inválido")
         return cleaned
 
 

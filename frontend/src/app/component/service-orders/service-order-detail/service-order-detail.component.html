@@ -1,0 +1,114 @@
+<div *ngIf="serviceOrder">
+  <p class="detail-title-text">Ordem de Serviço #{{ serviceOrder.id }}</p>
+  <div class="field-list">
+    <div class="field-name">
+      <span>ID do orçamento</span>
+      <label class="readonly">{{ serviceOrder.budget_id ?? '—' }}</label>
+    </div>
+    <div class="field-name">
+      <span>ID do cliente</span>
+      <label class="readonly">{{ serviceOrder.customer_id }}</label>
+    </div>
+    <div class="field-name">
+      <span>ID do veículo</span>
+      <label class="readonly">{{ serviceOrder.vehicle_id }}</label>
+    </div>
+    <div class="field-name">
+      <span>Status</span>
+      <label class="readonly">{{ serviceOrder.status }}</label>
+    </div>
+    <div class="field-name">
+      <span>Prioridade</span>
+      <label class="readonly">{{ serviceOrder.priority }}</label>
+    </div>
+    <div class="field-name">
+      <span>Mecânico</span>
+      <label class="readonly">{{ serviceOrder.mechanic_name || '—' }}</label>
+    </div>
+    <div class="field-name">
+      <span>Preço total</span>
+      <label class="readonly">{{ serviceOrder.total_price | number: '1.2-2' }}</label>
+    </div>
+    <div class="field-name">
+      <span>Início</span>
+      <label class="readonly">
+        {{ serviceOrder.started_at ? (serviceOrder.started_at | date: 'dd/MM/yyyy HH:mm') : '—' }}
+      </label>
+    </div>
+    <div class="field-name">
+      <span>Finalização</span>
+      <label class="readonly">
+        {{ serviceOrder.finished_at ? (serviceOrder.finished_at | date: 'dd/MM/yyyy HH:mm') : '—' }}
+      </label>
+    </div>
+    <div class="field-name">
+      <span>Criado em</span>
+      <label class="readonly">{{ serviceOrder.created_at | date: 'dd/MM/yyyy HH:mm' }}</label>
+    </div>
+  </div>
+
+  <div class="action-section">
+    <h3>Atribuir mecânico</h3>
+    <div class="field-list">
+      <div class="field-name">
+        <span>Nome do mecânico</span>
+        <input
+          class="text-input medium-input"
+          type="text"
+          name="mechanicName"
+          [(ngModel)]="mechanicName"
+          [ngModelOptions]="{ standalone: true }"
+        />
+      </div>
+    </div>
+    <div class="button-list">
+      <button class="btn btn-secondary" type="button" (click)="assignMechanic()">
+        Atribuir mecânico
+      </button>
+    </div>
+  </div>
+
+  <div class="action-section">
+    <h3>Definir prioridade</h3>
+    <div class="field-list">
+      <div class="field-name">
+        <span>Prioridade</span>
+        <select
+          class="select-input medium-input"
+          name="priority"
+          [(ngModel)]="selectedPriority"
+          [ngModelOptions]="{ standalone: true }"
+        >
+          <option *ngFor="let p of priorityValues" [ngValue]="p">{{ p }}</option>
+        </select>
+      </div>
+    </div>
+    <div class="button-list">
+      <button class="btn btn-secondary" type="button" (click)="setPriority()">
+        Definir prioridade
+      </button>
+    </div>
+  </div>
+
+  <div class="action-section">
+    <h3>Ações</h3>
+    <div class="button-list">
+      <button class="btn btn-secondary" type="button" (click)="sendEmail()">
+        Enviar e-mail
+      </button>
+      <button class="btn btn-secondary" type="button" (click)="createInvoice()">
+        Criar fatura
+      </button>
+      <button class="btn btn-primary" type="button" (click)="deliver()">
+        Entregar
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="actionMessage" class="action-message">
+    {{ actionMessage }}
+  </div>
+  <div *ngIf="lastInvoice" class="action-message">
+    Fatura: #{{ lastInvoice.id }} — {{ lastInvoice.status }} — R$ {{ lastInvoice.amount | number: '1.2-2' }}
+  </div>
+</div>

@@ -45,3 +45,8 @@ class Priority(StrEnum):
     NORMAL = "Normal"
     HIGH = "Alta"
     URGENT = "Urgente"
+
+
+class PersonType(StrEnum):
+    PF = "PF"
+    PJ = "PJ"

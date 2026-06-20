@@ -1,0 +1,19 @@
+.col-1 {
+  flex-basis: 10%;
+}
+
+.col-2 {
+  flex-basis: 28%;
+}
+
+.col-3 {
+  flex-basis: 22%;
+}
+
+.col-4 {
+  flex-basis: 20%;
+}
+
+.col-5 {
+  flex-basis: 20%;
+}

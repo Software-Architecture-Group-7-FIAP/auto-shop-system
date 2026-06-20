@@ -1,22 +1,22 @@
-from sqlalchemy.orm import Session
-
 from src.domain.customer.entity import Customer
-from src.domain.customer.value_objects import CustomerDocument
+from src.domain.customer.value_objects import Document
 from src.domain.exceptions import NotFoundError
-from src.infrastructure.database import CustomerModel
+from src.infrastructure.database import CustomerDocumentModel, CustomerModel
 
 
 class SqlAlchemyCustomerRepository:
-    def __init__(self, db: Session):
+    def __init__(self, db):
         self.db = db
 
     def add(self, customer: Customer) -> Customer:
         model = CustomerModel(
             name=customer.name,
-            document=str(customer.document),
             email=customer.email,
             phone=customer.phone,
+            address=customer.address,
         )
+        for document in customer.documents:
+            model.documents.append(CustomerDocumentModel(document=str(document)))
         self.db.add(model)
         self.db.flush()
         self.db.refresh(model)
@@ -28,24 +28,24 @@ class SqlAlchemyCustomerRepository:
             return None
         return self._to_domain(model)
 
-    def get_by_document(self, document: CustomerDocument) -> Customer | None:
-        model = (
-            self.db.query(CustomerModel)
-            .filter(CustomerModel.document == str(document))
+    def get_by_document(self, document: Document) -> Customer | None:
+        doc_model = (
+            self.db.query(CustomerDocumentModel)
+            .filter(CustomerDocumentModel.document == str(document))
             .first()
         )
-        if not model:
+        if not doc_model:
             return None
-        return self._to_domain(model)
+        return self.get_by_id(doc_model.customer_id)
 
     def list_all(self, skip: int = 0, limit: int = 100) -> list[Customer]:
         models = self.db.query(CustomerModel).offset(skip).limit(limit).all()
         return [self._to_domain(model) for model in models]
 
-    def exists_by_document(self, document: CustomerDocument) -> bool:
+    def exists_by_document(self, document: Document) -> bool:
         return (
-            self.db.query(CustomerModel)
-            .filter(CustomerModel.document == str(document))
+            self.db.query(CustomerDocumentModel)
+            .filter(CustomerDocumentModel.document == str(document))
             .first()
             is not None
         )
@@ -61,6 +61,14 @@ class SqlAlchemyCustomerRepository:
         model.name = customer.name
         model.email = customer.email
         model.phone = customer.phone
+        model.address = customer.address
+
+        existing_documents = {doc_model.document for doc_model in model.documents}
+        for document in customer.documents:
+            normalized = str(document)
+            if normalized not in existing_documents:
+                model.documents.append(CustomerDocumentModel(document=normalized))
+
         self.db.flush()
         self.db.refresh(model)
         return self._to_domain(model)
@@ -78,18 +86,20 @@ class SqlAlchemyCustomerRepository:
 
     @staticmethod
     def _to_domain(model: CustomerModel) -> Customer:
+        documents = [Document.create(doc_model.document) for doc_model in model.documents]
         return Customer(
             id=model.id,
             name=model.name,
-            document=CustomerDocument.create(model.document),
             email=model.email,
+            address=model.address,
             phone=model.phone,
             created_at=model.created_at,
+            _documents=documents,
         )
 
 
 class SqlAlchemyCustomerLookup:
-    def __init__(self, db: Session):
+    def __init__(self, db):
         self.db = db
 
     def exists(self, customer_id: int) -> bool:

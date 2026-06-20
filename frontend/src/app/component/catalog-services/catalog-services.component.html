@@ -1,0 +1,37 @@
+<div class="wrapper">
+  <div class="navigation-block">
+    <app-head-navigation
+      [titleText]="'Serviços'"
+      [toCreatingMode]="toCreatingMode"
+    ></app-head-navigation>
+  </div>
+  <div class="model-list-block scrollbar">
+    <ul class="model-list">
+      <li class="list-header">
+        <span class="col-1">ID</span>
+        <span class="col-2">Nome</span>
+        <span class="col-3">Preço base</span>
+      </li>
+      <li
+        *ngFor="let service of catalogServices"
+        class="list-item"
+        (click)="selectCatalogService(service.id)"
+        [class.selected]="service.id === selectedCatalogServiceId"
+      >
+        <span class="col-1">{{ service.id }}</span>
+        <span class="col-2">{{ service.name }}</span>
+        <span class="col-3">{{ service.base_price | number: '1.2-2' }}</span>
+      </li>
+    </ul>
+  </div>
+  <div class="model-detail-block scrollbar">
+    <span *ngIf="!selectedCatalogServiceId && !creatingNewCatalogService" class="model-detail-message">
+      Nenhum serviço selecionado.
+    </span>
+    <app-catalog-service-detail
+      *ngIf="selectedCatalogServiceId"
+      [catalogServiceId]="selectedCatalogServiceId"
+    ></app-catalog-service-detail>
+    <app-new-catalog-service *ngIf="creatingNewCatalogService"></app-new-catalog-service>
+  </div>
+</div>

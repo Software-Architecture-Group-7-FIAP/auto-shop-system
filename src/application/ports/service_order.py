@@ -6,7 +6,7 @@ from typing import Protocol
 class ServiceOrderCustomer:
     name: str
     email: str
-    document: str
+    documents: tuple[str, ...]
 
 
 @dataclass(frozen=True)

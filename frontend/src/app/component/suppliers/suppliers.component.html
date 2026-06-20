@@ -1,0 +1,37 @@
+<div class="wrapper">
+  <div class="navigation-block">
+    <app-head-navigation
+      [titleText]="'Fornecedores'"
+      [toCreatingMode]="toCreatingMode"
+    ></app-head-navigation>
+  </div>
+  <div class="model-list-block scrollbar">
+    <ul class="model-list">
+      <li class="list-header">
+        <span class="col-1">ID</span>
+        <span class="col-2">Nome</span>
+        <span class="col-3">Documento</span>
+      </li>
+      <li
+        *ngFor="let supplier of suppliers"
+        class="list-item"
+        (click)="selectSupplier(supplier.id)"
+        [class.selected]="supplier.id === selectedSupplierId"
+      >
+        <span class="col-1">{{ supplier.id }}</span>
+        <span class="col-2">{{ supplier.name }}</span>
+        <span class="col-3">{{ supplier.document }}</span>
+      </li>
+    </ul>
+  </div>
+  <div class="model-detail-block scrollbar">
+    <span *ngIf="!selectedSupplierId && !creatingNewSupplier" class="model-detail-message">
+      Nenhum fornecedor selecionado.
+    </span>
+    <app-supplier-detail
+      *ngIf="selectedSupplierId"
+      [supplierId]="selectedSupplierId"
+    ></app-supplier-detail>
+    <app-new-supplier *ngIf="creatingNewSupplier"></app-new-supplier>
+  </div>
+</div>

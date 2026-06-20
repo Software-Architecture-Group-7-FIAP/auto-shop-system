@@ -1,0 +1,39 @@
+<div class="wrapper">
+  <div class="navigation-block">
+    <app-head-navigation
+      [titleText]="'Orçamentos'"
+      [toCreatingMode]="toCreatingMode"
+    ></app-head-navigation>
+  </div>
+  <div class="model-list-block scrollbar">
+    <ul class="model-list">
+      <li class="list-header">
+        <span class="col-1">ID</span>
+        <span class="col-2">Cliente</span>
+        <span class="col-3">Status</span>
+        <span class="col-4">Total</span>
+      </li>
+      <li
+        *ngFor="let budget of budgets"
+        class="list-item"
+        (click)="selectBudget(budget.id)"
+        [class.selected]="budget.id === selectedBudgetId"
+      >
+        <span class="col-1">{{ budget.id }}</span>
+        <span class="col-2">{{ budget.customer_id }}</span>
+        <span class="col-3">{{ budget.status }}</span>
+        <span class="col-4">{{ budget.total_price | number: '1.2-2' }}</span>
+      </li>
+    </ul>
+  </div>
+  <div class="model-detail-block scrollbar">
+    <span *ngIf="!selectedBudgetId && !creatingNewBudget" class="model-detail-message">
+      Nenhum orçamento selecionado.
+    </span>
+    <app-budget-detail
+      *ngIf="selectedBudgetId"
+      [budgetId]="selectedBudgetId"
+    ></app-budget-detail>
+    <app-new-budget *ngIf="creatingNewBudget"></app-new-budget>
+  </div>
+</div>

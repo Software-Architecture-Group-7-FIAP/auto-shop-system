@@ -1,0 +1,19 @@
+.inline-fields {
+  flex-direction: row;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.availability-list {
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.availability-list li {
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.availability-list li.insufficient {
+  color: #c44;
+}

@@ -1,0 +1,39 @@
+<div class="wrapper">
+  <div class="navigation-block">
+    <app-head-navigation
+      [titleText]="'Veículos'"
+      [toCreatingMode]="toCreatingMode"
+    ></app-head-navigation>
+  </div>
+  <div class="model-list-block scrollbar">
+    <ul class="model-list">
+      <li class="list-header">
+        <span class="col-1">ID</span>
+        <span class="col-2">Placa</span>
+        <span class="col-3">Marca</span>
+        <span class="col-4">Modelo</span>
+      </li>
+      <li
+        *ngFor="let vehicle of vehicles"
+        class="list-item"
+        (click)="selectVehicle(vehicle.id)"
+        [class.selected]="vehicle.id === selectedVehicleId"
+      >
+        <span class="col-1">{{ vehicle.id }}</span>
+        <span class="col-2">{{ vehicle.plate }}</span>
+        <span class="col-3">{{ vehicle.brand }}</span>
+        <span class="col-4">{{ vehicle.model }}</span>
+      </li>
+    </ul>
+  </div>
+  <div class="model-detail-block scrollbar">
+    <span *ngIf="!selectedVehicleId && !creatingNewVehicle" class="model-detail-message">
+      Nenhum veículo selecionado.
+    </span>
+    <app-vehicle-detail
+      *ngIf="selectedVehicleId"
+      [vehicleId]="selectedVehicleId"
+    ></app-vehicle-detail>
+    <app-new-vehicle *ngIf="creatingNewVehicle"></app-new-vehicle>
+  </div>
+</div>

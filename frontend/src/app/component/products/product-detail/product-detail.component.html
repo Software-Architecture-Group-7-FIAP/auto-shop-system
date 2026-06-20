@@ -1,0 +1,91 @@
+<div *ngIf="product">
+  <p class="detail-title-text">Produto #{{ product.id }}</p>
+  <form #formRef="ngForm">
+    <div class="field-list">
+      <div class="field-name">
+        <span>Nome</span>
+        <input
+          class="text-input big-input"
+          type="text"
+          name="name"
+          [(ngModel)]="product.name"
+          (ngModelChange)="productChanged()"
+          required
+        />
+      </div>
+      <div class="field-name">
+        <span>SKU</span>
+        <label class="readonly">{{ product.sku }}</label>
+      </div>
+      <div class="field-name">
+        <span>Preço unitário</span>
+        <input
+          class="text-input medium-input"
+          type="number"
+          name="unit_price"
+          [(ngModel)]="product.unit_price"
+          (ngModelChange)="productChanged()"
+          required
+          min="0.01"
+          step="0.01"
+        />
+      </div>
+      <div class="field-name">
+        <span>Estoque atual</span>
+        <label class="readonly">{{ product.stock_quantity }}</label>
+      </div>
+      <div class="field-name">
+        <span>Descrição</span>
+        <input
+          class="text-input big-input"
+          type="text"
+          name="description"
+          [(ngModel)]="product.description"
+          (ngModelChange)="productChanged()"
+        />
+      </div>
+      <div class="field-name">
+        <span>ID do fornecedor</span>
+        <input
+          class="text-input small-input"
+          type="number"
+          name="supplier_id"
+          [(ngModel)]="product.supplier_id"
+          (ngModelChange)="productChanged()"
+        />
+      </div>
+    </div>
+    <div class="button-list">
+      <button
+        class="btn btn-primary"
+        type="button"
+        [disabled]="formRef.invalid || !isProductChanged"
+        (click)="updateProduct()"
+      >
+        Atualizar
+      </button>
+    </div>
+  </form>
+
+  <div class="action-section">
+    <h3>Atualizar estoque</h3>
+    <div class="field-list">
+      <div class="field-name">
+        <span>Quantidade</span>
+        <input
+          class="text-input small-input"
+          type="number"
+          name="stockQuantity"
+          [(ngModel)]="stockQuantity"
+          [ngModelOptions]="{ standalone: true }"
+          min="0"
+        />
+      </div>
+    </div>
+    <div class="button-list">
+      <button class="btn btn-secondary" type="button" (click)="updateStock()">
+        Atualizar estoque
+      </button>
+    </div>
+  </div>
+</div>

@@ -9,3 +9,5 @@ htmlcov/
 postgres_data/
 requirements-export/
 pdf-extract.txt
+.cursor/
+debug-*.log

@@ -1,0 +1,41 @@
+<div class="wrapper">
+  <div class="navigation-block">
+    <app-head-navigation
+      [titleText]="'Produtos'"
+      [toCreatingMode]="toCreatingMode"
+    ></app-head-navigation>
+  </div>
+  <div class="model-list-block scrollbar">
+    <ul class="model-list">
+      <li class="list-header">
+        <span class="col-1">ID</span>
+        <span class="col-2">Nome</span>
+        <span class="col-3">SKU</span>
+        <span class="col-4">Preço</span>
+        <span class="col-5">Estoque</span>
+      </li>
+      <li
+        *ngFor="let product of products"
+        class="list-item"
+        (click)="selectProduct(product.id)"
+        [class.selected]="product.id === selectedProductId"
+      >
+        <span class="col-1">{{ product.id }}</span>
+        <span class="col-2">{{ product.name }}</span>
+        <span class="col-3">{{ product.sku }}</span>
+        <span class="col-4">{{ product.unit_price | number: '1.2-2' }}</span>
+        <span class="col-5">{{ product.stock_quantity }}</span>
+      </li>
+    </ul>
+  </div>
+  <div class="model-detail-block scrollbar">
+    <span *ngIf="!selectedProductId && !creatingNewProduct" class="model-detail-message">
+      Nenhum produto selecionado.
+    </span>
+    <app-product-detail
+      *ngIf="selectedProductId"
+      [productId]="selectedProductId"
+    ></app-product-detail>
+    <app-new-product *ngIf="creatingNewProduct"></app-new-product>
+  </div>
+</div>

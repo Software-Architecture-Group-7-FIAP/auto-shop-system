@@ -1,0 +1,53 @@
+<p class="detail-title-text">Novo serviço</p>
+<form #formRef="ngForm" (ngSubmit)="saveCatalogService(formRef.value)">
+  <div class="field-list">
+    <div class="field-name">
+      <span>Nome</span>
+      <input
+        class="text-input big-input"
+        type="text"
+        name="name"
+        ngModel
+        required
+      />
+    </div>
+    <div class="field-name">
+      <span>Descrição</span>
+      <input
+        class="text-input big-input"
+        type="text"
+        name="description"
+        ngModel
+      />
+    </div>
+    <div class="field-name">
+      <span>Preço base</span>
+      <input
+        class="text-input medium-input"
+        type="number"
+        name="base_price"
+        ngModel
+        required
+        min="0.01"
+        step="0.01"
+      />
+    </div>
+    <div class="field-name">
+      <span>Horas estimadas</span>
+      <input
+        class="text-input small-input"
+        type="number"
+        name="estimated_hours"
+        ngModel
+        value="1"
+        min="0.01"
+        step="0.01"
+      />
+    </div>
+  </div>
+  <div class="button-list">
+    <button class="btn btn-primary" type="submit" [disabled]="formRef.invalid">
+      Salvar
+    </button>
+  </div>
+</form>

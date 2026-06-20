@@ -1,0 +1,8 @@
+.action-message {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: var(--color-surface);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: var(--color-text);
+}

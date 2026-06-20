@@ -35,23 +35,44 @@ class CustomerCreate(BaseModel):
     document: str
     email: EmailStr
     phone: str | None = None
+    address: str = Field(..., min_length=1)
 
 
 class CustomerUpdate(BaseModel):
     name: str | None = None
     email: EmailStr | None = None
     phone: str | None = None
+    address: str | None = Field(default=None, min_length=1)
+
+
+class CustomerDocumentAdd(BaseModel):
+    document: str
 
 
 class CustomerResponse(BaseModel):
     id: int
     name: str
-    document: str
+    documents: list[str]
     email: str
     phone: str | None
+    address: str
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+
+class CustomerPublicResponse(BaseModel):
+    id: int
+    name: str
+
+
+class CnpjValidationResponse(BaseModel):
+    valid: bool
+    legal_name: str | None = None
+    trade_name: str | None = None
+
+
+class CpfValidationResponse(BaseModel):
+    valid: bool
+    formatted: str | None = None
 
 
 class VehicleCreate(BaseModel):

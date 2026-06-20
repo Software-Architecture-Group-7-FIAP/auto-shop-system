@@ -145,7 +145,7 @@ class SqlAlchemyServiceOrderContactLookup:
         return ServiceOrderCustomer(
             name=model.name,
             email=model.email,
-            document=model.document,
+            documents=tuple(doc_model.document for doc_model in model.documents),
         )
 
     def get_vehicle(self, vehicle_id: int) -> ServiceOrderVehicle | None:

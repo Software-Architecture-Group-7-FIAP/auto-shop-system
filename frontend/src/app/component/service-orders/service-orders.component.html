@@ -1,0 +1,39 @@
+<div class="wrapper">
+  <div class="navigation-block">
+    <app-head-navigation
+      [titleText]="'Ordens de Serviço'"
+      [toCreatingMode]="toCreatingMode"
+      [showAdd]="false"
+    ></app-head-navigation>
+  </div>
+  <div class="model-list-block scrollbar">
+    <ul class="model-list">
+      <li class="list-header">
+        <span class="col-1">ID</span>
+        <span class="col-2">Status</span>
+        <span class="col-3">Prioridade</span>
+        <span class="col-4">Mecânico</span>
+      </li>
+      <li
+        *ngFor="let order of serviceOrders"
+        class="list-item"
+        (click)="selectServiceOrder(order.id)"
+        [class.selected]="order.id === selectedServiceOrderId"
+      >
+        <span class="col-1">{{ order.id }}</span>
+        <span class="col-2">{{ order.status }}</span>
+        <span class="col-3">{{ order.priority }}</span>
+        <span class="col-4">{{ order.mechanic_name || '—' }}</span>
+      </li>
+    </ul>
+  </div>
+  <div class="model-detail-block scrollbar">
+    <span *ngIf="!selectedServiceOrderId" class="model-detail-message">
+      Nenhuma ordem de serviço selecionada.
+    </span>
+    <app-service-order-detail
+      *ngIf="selectedServiceOrderId"
+      [serviceOrderId]="selectedServiceOrderId"
+    ></app-service-order-detail>
+  </div>
+</div>

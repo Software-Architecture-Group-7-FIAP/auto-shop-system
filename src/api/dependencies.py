@@ -17,9 +17,10 @@ def get_current_user(
     try:
         return compose_auth_service(db).get_current_user(credentials.credentials)
     except UnauthorizedError as exc:
-        if exc.message != "Usuário inválido":
-            raise
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário inválido")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=exc.message,
+        )
 
 
 def domain_error_handler(exc: DomainError) -> HTTPException:
