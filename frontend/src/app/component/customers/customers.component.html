@@ -1,0 +1,39 @@
+<div class="wrapper">
+  <div class="navigation-block">
+    <app-head-navigation
+      [titleText]="'Clientes'"
+      [toCreatingMode]="toCreatingMode"
+    ></app-head-navigation>
+  </div>
+  <div class="model-list-block scrollbar">
+    <ul class="model-list">
+      <li class="list-header">
+        <span class="col-1">ID</span>
+        <span class="col-2">Nome</span>
+        <span class="col-3">E-mail</span>
+      </li>
+      <li
+        *ngFor="let customer of customers"
+        class="list-item"
+        (click)="selectCustomer(customer.id)"
+        [ngStyle]="{
+          'border-color': customer.id === selectedCustomerId ? '#999' : 'transparent'
+        }"
+      >
+        <span class="col-1">{{ customer.id }}</span>
+        <span class="col-2">{{ customer.name }}</span>
+        <span class="col-3">{{ customer.email }}</span>
+      </li>
+    </ul>
+  </div>
+  <div class="model-detail-block scrollbar">
+    <span *ngIf="!selectedCustomerId && !creatingNewCustomer" class="model-detail-message">
+      Nenhum cliente selecionado.
+    </span>
+    <app-customer-detail
+      *ngIf="selectedCustomerId"
+      [customerId]="selectedCustomerId"
+    ></app-customer-detail>
+    <app-new-customer *ngIf="creatingNewCustomer"></app-new-customer>
+  </div>
+</div>

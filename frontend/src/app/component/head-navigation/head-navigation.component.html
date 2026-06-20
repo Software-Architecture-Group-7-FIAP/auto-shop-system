@@ -1,0 +1,14 @@
+<div class="head-nav">
+  <div class="head-nav-left">
+    <a href="/" class="head-nav-back" title="Voltar ao menu">
+      <span class="material-symbols-outlined">arrow_back</span>
+    </a>
+    <span class="head-nav-title">{{ titleText }}</span>
+  </div>
+  <span
+    *ngIf="showAdd"
+    class="material-symbols-outlined head-nav-icon"
+    title="Novo registro"
+    (click)="toCreatingMode()"
+  >add</span>
+</div>

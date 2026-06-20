@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from src.api.routers import (
@@ -40,6 +41,14 @@ app = FastAPI(
     description="Sistema Integrado de Atendimento e Execução de Serviços - FIAP 15SOAT Tech Challenge",
     version="1.0.0",
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:4200"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -107,7 +116,9 @@ def home(request: Request):
     <p>Porta: <strong>{port}</strong></p>
     <span class="status">Online</span>
     <p style="margin-top: 1.5rem;">
-      <a href="/app/">Abrir painel de clientes</a>
+      <a href="http://localhost:4200">Painel Angular (dev)</a>
+      &nbsp;·&nbsp;
+      <a href="/app/">Painel legado (clientes)</a>
       &nbsp;·&nbsp;
       <a href="/docs">Documentação da API</a>
     </p>
@@ -139,7 +150,7 @@ app.include_router(execution.execution_router, prefix=api_prefix)
 app.include_router(execution.withdrawals_router, prefix=api_prefix)
 app.include_router(invoices.router, prefix=api_prefix)
 
-frontend_dir = Path(__file__).resolve().parents[1] / "frontend"
+frontend_dir = Path(__file__).resolve().parents[1] / "frontend" / "legacy-panel"
 
 
 def _frontend_asset(filename: str) -> FileResponse:

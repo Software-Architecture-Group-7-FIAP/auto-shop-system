@@ -1,0 +1,53 @@
+<div *ngIf="supplier">
+  <p class="detail-title-text">Fornecedor #{{ supplier.id }}</p>
+  <form #formRef="ngForm">
+    <div class="field-list">
+      <div class="field-name">
+        <span>Nome</span>
+        <input
+          class="text-input big-input"
+          type="text"
+          name="name"
+          [(ngModel)]="supplier.name"
+          (ngModelChange)="supplierChanged()"
+          required
+        />
+      </div>
+      <div class="field-name">
+        <span>Documento</span>
+        <label class="readonly">{{ supplier.document }}</label>
+      </div>
+      <div class="field-name">
+        <span>E-mail</span>
+        <input
+          class="text-input big-input"
+          type="email"
+          name="email"
+          [(ngModel)]="supplier.email"
+          (ngModelChange)="supplierChanged()"
+          required
+        />
+      </div>
+      <div class="field-name">
+        <span>Telefone</span>
+        <input
+          class="text-input medium-input"
+          type="text"
+          name="phone"
+          [(ngModel)]="supplier.phone"
+          (ngModelChange)="supplierChanged()"
+        />
+      </div>
+    </div>
+    <div class="button-list">
+      <button
+        class="btn btn-primary"
+        type="button"
+        [disabled]="formRef.invalid || !isSupplierChanged"
+        (click)="updateSupplier()"
+      >
+        Atualizar
+      </button>
+    </div>
+  </form>
+</div>

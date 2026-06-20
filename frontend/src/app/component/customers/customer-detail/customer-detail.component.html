@@ -1,0 +1,104 @@
+<div *ngIf="customer">
+  <p class="detail-title-text">Cliente #{{ customer.id }}</p>
+  <form #formRef="ngForm">
+    <div class="field-list">
+      <div class="field-name">
+        <span>Nome</span>
+        <input
+          class="text-input big-input"
+          type="text"
+          name="name"
+          [(ngModel)]="customer.name"
+          (ngModelChange)="customerChanged()"
+          required
+        />
+      </div>
+      <div class="field-name">
+        <span>E-mail</span>
+        <input
+          class="text-input big-input"
+          type="email"
+          name="email"
+          [(ngModel)]="customer.email"
+          (ngModelChange)="customerChanged()"
+          required
+        />
+      </div>
+      <div class="field-name">
+        <span>Telefone</span>
+        <input
+          class="text-input medium-input"
+          type="text"
+          name="phone"
+          [(ngModel)]="customer.phone"
+          (ngModelChange)="customerChanged()"
+        />
+      </div>
+      <div class="field-name">
+        <span>Endereço</span>
+        <input
+          class="text-input big-input"
+          type="text"
+          name="address"
+          [(ngModel)]="customer.address"
+          (ngModelChange)="customerChanged()"
+          required
+        />
+      </div>
+      <div class="field-name">
+        <span>Documentos</span>
+        <label class="readonly">{{ customer.documents.join(', ') || '—' }}</label>
+      </div>
+      <div class="field-name">
+        <span>Criado em</span>
+        <label class="readonly">{{ customer.created_at | date: 'dd/MM/yyyy HH:mm' }}</label>
+      </div>
+    </div>
+    <div class="button-list">
+      <button
+        class="btn btn-primary"
+        type="button"
+        [disabled]="formRef.invalid || !isCustomerChanged"
+        (click)="updateCustomer()"
+      >
+        Atualizar
+      </button>
+    </div>
+  </form>
+
+  <div class="action-section">
+    <h3>Adicionar documento</h3>
+    <div class="field-list">
+      <div class="field-name">
+        <span>Documento (CPF/CNPJ)</span>
+        <input
+          class="text-input medium-input"
+          type="text"
+          name="newDocument"
+          [(ngModel)]="newDocument"
+          [ngModelOptions]="{ standalone: true }"
+        />
+      </div>
+    </div>
+    <div class="button-list">
+      <button class="btn btn-secondary" type="button" (click)="addDocument()">
+        Adicionar documento
+      </button>
+      <button
+        *ngIf="looksLikeCnpj(newDocument)"
+        class="btn btn-secondary"
+        type="button"
+        (click)="validateCnpj(newDocument)"
+      >
+        Validar CNPJ
+      </button>
+    </div>
+    <div *ngIf="cnpjValidation" class="validation-result">
+      <p *ngIf="cnpjValidation.valid">
+        CNPJ válido — {{ cnpjValidation.legal_name }}
+        <span *ngIf="cnpjValidation.trade_name">({{ cnpjValidation.trade_name }})</span>
+      </p>
+      <p *ngIf="!cnpjValidation.valid">CNPJ inválido</p>
+    </div>
+  </div>
+</div>

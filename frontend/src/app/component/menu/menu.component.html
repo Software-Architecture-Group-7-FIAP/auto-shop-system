@@ -1,0 +1,17 @@
+<div class="menu">
+  <h1 class="menu-title">Oficina Mecânica</h1>
+  <p class="menu-subtitle">Painel administrativo</p>
+  <ul>
+    <li><a routerLink="/customers">Clientes</a></li>
+    <li><a routerLink="/vehicles">Veículos</a></li>
+    <li><a routerLink="/catalog-services">Serviços</a></li>
+    <li><a routerLink="/products">Produtos</a></li>
+    <li><a routerLink="/suppliers">Fornecedores</a></li>
+    <li><a routerLink="/budgets">Orçamentos</a></li>
+    <li><a routerLink="/service-orders">Ordens de Serviço</a></li>
+  </ul>
+  <div class="menu-auth" *ngIf="username">
+    Logado como {{ username }} —
+    <button type="button" (click)="logout()">Sair</button>
+  </div>
+</div>

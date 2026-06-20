@@ -1,0 +1,32 @@
+<p class="detail-title-text">Novo orçamento</p>
+<form #formRef="ngForm" (ngSubmit)="saveBudget(formRef.value)">
+  <div class="field-list">
+    <div class="field-name">
+      <span>ID do cliente</span>
+      <input
+        class="text-input small-input"
+        type="number"
+        name="customer_id"
+        ngModel
+        required
+        min="1"
+      />
+    </div>
+    <div class="field-name">
+      <span>ID do veículo</span>
+      <input
+        class="text-input small-input"
+        type="number"
+        name="vehicle_id"
+        ngModel
+        required
+        min="1"
+      />
+    </div>
+  </div>
+  <div class="button-list">
+    <button class="btn btn-primary" type="submit" [disabled]="formRef.invalid">
+      Salvar
+    </button>
+  </div>
+</form>

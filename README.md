@@ -111,9 +111,25 @@ Resposta admin inclui `documents: ["52998224725"]` (lista normalizada, sem másc
 
 Por segurança, a rota pública retorna apenas `{ "id", "name" }` — sem e-mail, telefone ou endereço.
 
-## Painel web (T02)
+## Painel web Angular (admin completo)
 
-Interface simples servida pelo FastAPI em `/app/`:
+Frontend em **Angular 15** com CRUD master-detail para todas as entidades administrativas.
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+- **URL:** http://localhost:4200
+- Login: `admin` / `admin123`
+- Proxy dev encaminha `/api/*` → `http://localhost:8000`
+
+Rotas: clientes, veículos, serviços, produtos, fornecedores, orçamentos e ordens de serviço. Detalhes em `frontend/README.md`.
+
+## Painel web legado (T02)
+
+Interface vanilla servida pelo FastAPI em `/app/`:
 
 - **URL (local):** http://localhost:8000/app/
 - **URL (Docker):** http://localhost:8001/app/

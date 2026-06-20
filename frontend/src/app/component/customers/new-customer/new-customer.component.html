@@ -1,0 +1,75 @@
+<p class="detail-title-text">Novo cliente</p>
+<form #formRef="ngForm" (ngSubmit)="saveCustomer(formRef.value)">
+  <div class="field-list">
+    <div class="field-name">
+      <span>Nome</span>
+      <input
+        class="text-input big-input"
+        type="text"
+        name="name"
+        ngModel
+        required
+      />
+    </div>
+    <div class="field-name">
+      <span>Documento (CPF/CNPJ)</span>
+      <input
+        class="text-input medium-input"
+        type="text"
+        name="document"
+        ngModel
+        #documentInput="ngModel"
+        required
+      />
+    </div>
+    <div class="field-name">
+      <span>E-mail</span>
+      <input
+        class="text-input big-input"
+        type="email"
+        name="email"
+        ngModel
+        required
+      />
+    </div>
+    <div class="field-name">
+      <span>Telefone</span>
+      <input
+        class="text-input medium-input"
+        type="text"
+        name="phone"
+        ngModel
+      />
+    </div>
+    <div class="field-name">
+      <span>Endereço</span>
+      <input
+        class="text-input big-input"
+        type="text"
+        name="address"
+        ngModel
+        required
+      />
+    </div>
+  </div>
+  <div class="button-list">
+    <button
+      *ngIf="documentInput.value && looksLikeCnpj(documentInput.value)"
+      class="btn btn-secondary"
+      type="button"
+      (click)="validateCnpj(documentInput.value)"
+    >
+      Validar CNPJ
+    </button>
+    <button class="btn btn-primary" type="submit" [disabled]="formRef.invalid">
+      Salvar
+    </button>
+  </div>
+  <div *ngIf="cnpjValidation" class="validation-result">
+    <p *ngIf="cnpjValidation.valid">
+      CNPJ válido — {{ cnpjValidation.legal_name }}
+      <span *ngIf="cnpjValidation.trade_name">({{ cnpjValidation.trade_name }})</span>
+    </p>
+    <p *ngIf="!cnpjValidation.valid">CNPJ inválido</p>
+  </div>
+</form>

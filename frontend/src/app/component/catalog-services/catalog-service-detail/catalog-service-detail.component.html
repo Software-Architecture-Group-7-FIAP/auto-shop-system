@@ -1,0 +1,64 @@
+<div *ngIf="catalogService">
+  <p class="detail-title-text">Serviço #{{ catalogService.id }}</p>
+  <form #formRef="ngForm">
+    <div class="field-list">
+      <div class="field-name">
+        <span>Nome</span>
+        <input
+          class="text-input big-input"
+          type="text"
+          name="name"
+          [(ngModel)]="catalogService.name"
+          (ngModelChange)="catalogServiceChanged()"
+          required
+        />
+      </div>
+      <div class="field-name">
+        <span>Descrição</span>
+        <input
+          class="text-input big-input"
+          type="text"
+          name="description"
+          [(ngModel)]="catalogService.description"
+          (ngModelChange)="catalogServiceChanged()"
+        />
+      </div>
+      <div class="field-name">
+        <span>Preço base</span>
+        <input
+          class="text-input medium-input"
+          type="number"
+          name="base_price"
+          [(ngModel)]="catalogService.base_price"
+          (ngModelChange)="catalogServiceChanged()"
+          required
+          min="0.01"
+          step="0.01"
+        />
+      </div>
+      <div class="field-name">
+        <span>Horas estimadas</span>
+        <input
+          class="text-input small-input"
+          type="number"
+          name="estimated_hours"
+          [(ngModel)]="catalogService.estimated_hours"
+          (ngModelChange)="catalogServiceChanged()"
+          required
+          min="0.01"
+          step="0.01"
+        />
+      </div>
+    </div>
+    <div class="button-list">
+      <button
+        class="btn btn-primary"
+        type="button"
+        [disabled]="formRef.invalid || !isCatalogServiceChanged"
+        (click)="updateCatalogService()"
+      >
+        Atualizar
+      </button>
+    </div>
+  </form>
+</div>

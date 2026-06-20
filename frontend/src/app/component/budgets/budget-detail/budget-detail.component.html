@@ -1,0 +1,119 @@
+<div *ngIf="budget">
+  <p class="detail-title-text">Orçamento #{{ budget.id }}</p>
+  <div class="field-list">
+    <div class="field-name">
+      <span>ID do cliente</span>
+      <label class="readonly">{{ budget.customer_id }}</label>
+    </div>
+    <div class="field-name">
+      <span>ID do veículo</span>
+      <label class="readonly">{{ budget.vehicle_id }}</label>
+    </div>
+    <div class="field-name">
+      <span>Status</span>
+      <label class="readonly">{{ budget.status }}</label>
+    </div>
+    <div class="field-name">
+      <span>Preço total</span>
+      <label class="readonly">{{ budget.total_price | number: '1.2-2' }}</label>
+    </div>
+    <div class="field-name">
+      <span>Previsão de entrega</span>
+      <label class="readonly">
+        {{ budget.estimated_delivery ? (budget.estimated_delivery | date: 'dd/MM/yyyy HH:mm') : '—' }}
+      </label>
+    </div>
+    <div class="field-name">
+      <span>Criado em</span>
+      <label class="readonly">{{ budget.created_at | date: 'dd/MM/yyyy HH:mm' }}</label>
+    </div>
+  </div>
+
+  <div class="action-section">
+    <h3>Adicionar linha de serviço</h3>
+    <div class="field-list inline-fields">
+      <div class="field-name">
+        <span>ID do serviço</span>
+        <input
+          class="text-input small-input"
+          type="number"
+          name="serviceId"
+          [(ngModel)]="serviceId"
+          [ngModelOptions]="{ standalone: true }"
+          min="1"
+        />
+      </div>
+      <div class="field-name">
+        <span>Quantidade</span>
+        <input
+          class="text-input small-input"
+          type="number"
+          name="serviceQuantity"
+          [(ngModel)]="serviceQuantity"
+          [ngModelOptions]="{ standalone: true }"
+          min="1"
+        />
+      </div>
+    </div>
+    <div class="button-list">
+      <button class="btn btn-secondary" type="button" (click)="addServiceLine()">
+        Adicionar serviço
+      </button>
+    </div>
+  </div>
+
+  <div class="action-section">
+    <h3>Adicionar linha de produto</h3>
+    <div class="field-list inline-fields">
+      <div class="field-name">
+        <span>ID do produto</span>
+        <input
+          class="text-input small-input"
+          type="number"
+          name="productId"
+          [(ngModel)]="productId"
+          [ngModelOptions]="{ standalone: true }"
+          min="1"
+        />
+      </div>
+      <div class="field-name">
+        <span>Quantidade</span>
+        <input
+          class="text-input small-input"
+          type="number"
+          name="productQuantity"
+          [(ngModel)]="productQuantity"
+          [ngModelOptions]="{ standalone: true }"
+          min="1"
+        />
+      </div>
+    </div>
+    <div class="button-list">
+      <button class="btn btn-secondary" type="button" (click)="addProductLine()">
+        Adicionar produto
+      </button>
+    </div>
+  </div>
+
+  <div class="action-section">
+    <h3>Ações</h3>
+    <div class="button-list">
+      <button class="btn btn-secondary" type="button" (click)="checkAvailability()">
+        Verificar disponibilidade
+      </button>
+      <button class="btn btn-primary" type="button" (click)="sendEmail()">
+        Enviar e-mail
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="availabilityItems.length" class="action-section">
+    <h3>Disponibilidade de estoque</h3>
+    <ul class="availability-list">
+      <li *ngFor="let item of availabilityItems" [class.insufficient]="!item.sufficient">
+        {{ item.product_name }} — necessário: {{ item.required }}, disponível: {{ item.available }}
+        <span *ngIf="!item.sufficient"> (insuficiente)</span>
+      </li>
+    </ul>
+  </div>
+</div>

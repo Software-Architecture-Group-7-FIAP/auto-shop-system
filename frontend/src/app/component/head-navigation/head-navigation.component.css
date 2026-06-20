@@ -1,0 +1,11 @@
+.head-nav-back {
+  display: flex;
+  align-items: center;
+  color: #6f6f6f;
+  text-decoration: none;
+}
+
+.head-nav-back:hover {
+  color: #4a8888;
+  text-decoration: none;
+}
