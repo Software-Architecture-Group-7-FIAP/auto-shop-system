@@ -1,0 +1,204 @@
+%% Sistema Auto Shop - Esquema do Banco de Dados
+%% Fonte: src/infrastructure/database.py | alembic/versions/001_initial_schema.py
+
+erDiagram
+    users {
+        int id PK
+        string username UK "nome de usuario"
+        string email UK
+        string hashed_password "senha criptografada"
+        bool is_active "ativo"
+        datetime created_at "criado em"
+    }
+
+    customers {
+        int id PK
+        string name "nome"
+        string document UK "documento"
+        string email
+        string phone "telefone"
+        datetime created_at "criado em"
+        datetime updated_at "atualizado em"
+    }
+
+    vehicles {
+        int id PK
+        int customer_id FK "cliente"
+        string plate UK "placa"
+        string brand "marca"
+        string model "modelo"
+        int year "ano"
+        datetime created_at "criado em"
+    }
+
+    suppliers {
+        int id PK
+        string name "nome"
+        string document UK "documento"
+        string email
+        string phone "telefone"
+        datetime created_at "criado em"
+    }
+
+    products {
+        int id PK
+        string name "nome"
+        string description "descricao"
+        string sku UK
+        float unit_price "preco unitario"
+        int stock_quantity "quantidade em estoque"
+        int supplier_id FK "fornecedor"
+        datetime created_at "criado em"
+    }
+
+    services {
+        int id PK
+        string name "nome"
+        string description "descricao"
+        float base_price "preco base"
+        float estimated_hours "horas estimadas"
+        datetime created_at "criado em"
+    }
+
+    service_product_lines {
+        int id PK
+        int service_id FK "servico"
+        int product_id FK "produto"
+        int quantity "quantidade"
+    }
+
+    budgets {
+        int id PK
+        int customer_id FK "cliente"
+        int vehicle_id FK "veiculo"
+        string status "Rascunho, Enviado, Aprovado, Recusado"
+        float total_price "preco total"
+        datetime estimated_delivery "previsao de entrega"
+        string approval_token UK "token de aprovacao"
+        datetime created_at "criado em"
+        datetime updated_at "atualizado em"
+    }
+
+    budget_service_lines {
+        int id PK
+        int budget_id FK "orcamento"
+        int service_id FK "servico"
+        int quantity "quantidade"
+        float unit_price "preco unitario"
+    }
+
+    budget_product_lines {
+        int id PK
+        int budget_id FK "orcamento"
+        int product_id FK "produto"
+        int quantity "quantidade"
+        float unit_price "preco unitario"
+        bool from_service "originado do servico"
+    }
+
+    service_orders {
+        int id PK
+        int budget_id FK "orcamento opcional"
+        int customer_id FK "cliente"
+        int vehicle_id FK "veiculo"
+        string status "Recebida, Em diagnostico, Aguardando aprovacao, Em execucao, Finalizada, Entregue"
+        string priority "Baixa, Normal, Alta, Urgente"
+        string mechanic_name "nome do mecanico"
+        float total_price "preco total"
+        datetime started_at "iniciado em"
+        datetime finished_at "finalizado em"
+        datetime created_at "criado em"
+        datetime updated_at "atualizado em"
+    }
+
+    service_order_service_lines {
+        int id PK
+        int service_order_id FK "ordem de servico"
+        int service_id FK "servico"
+        int quantity "quantidade"
+        float unit_price "preco unitario"
+    }
+
+    service_order_product_lines {
+        int id PK
+        int service_order_id FK "ordem de servico"
+        int product_id FK "produto"
+        int quantity "quantidade"
+        float unit_price "preco unitario"
+    }
+
+    reservations {
+        int id PK
+        int service_order_id FK "ordem de servico"
+        int product_id FK "produto"
+        int quantity "quantidade"
+        string status "Ativa, Liberada, Consumida"
+        datetime created_at "criado em"
+    }
+
+    purchase_requests {
+        int id PK
+        int product_id FK "produto"
+        int supplier_id FK "fornecedor opcional"
+        int service_order_id FK "ordem de servico opcional"
+        int quantity "quantidade"
+        string status "Pendente, Pedido, Recebido"
+        datetime created_at "criado em"
+    }
+
+    goods_receipts {
+        int id PK
+        int purchase_request_id FK "pedido de compra"
+        int quantity "quantidade"
+        datetime received_at "recebido em"
+    }
+
+    stock_withdrawals {
+        int id PK
+        int service_order_id FK "ordem de servico"
+        int product_id FK "produto"
+        int quantity "quantidade"
+        string status "Pendente, Atendida, Cancelada"
+        datetime requested_at "solicitado em"
+        datetime fulfilled_at "atendido em"
+    }
+
+    invoices {
+        int id PK
+        int service_order_id FK, UK "ordem de servico unica"
+        float amount "valor"
+        string status "Pendente, Paga"
+        datetime paid_at "pago em"
+        datetime created_at "criado em"
+    }
+
+    customers ||--o{ vehicles : possui
+    customers ||--o{ budgets : solicita
+    customers ||--o{ service_orders : possui
+    vehicles ||--o{ budgets : referente_a
+    vehicles ||--o{ service_orders : referente_a
+
+    suppliers ||--o{ products : fornece
+    suppliers ||--o{ purchase_requests : atende
+    services ||--o{ service_product_lines : requer
+    products ||--o{ service_product_lines : usado_em
+
+    budgets ||--o{ budget_service_lines : contem
+    budgets ||--o{ budget_product_lines : contem
+    budgets ||--o| service_orders : pode_gerar
+    services ||--o{ budget_service_lines : cotado
+    products ||--o{ budget_product_lines : cotado
+
+    service_orders ||--o{ service_order_service_lines : executa
+    service_orders ||--o{ service_order_product_lines : utiliza
+    service_orders ||--|| invoices : faturado_como
+    service_orders ||--o{ reservations : reserva
+    service_orders ||--o{ stock_withdrawals : retira
+    service_orders ||--o{ purchase_requests : dispara
+    services ||--o{ service_order_service_lines : realizado
+    products ||--o{ service_order_product_lines : consumido
+    products ||--o{ reservations : reservado
+    products ||--o{ stock_withdrawals : retirado
+    products ||--o{ purchase_requests : pedido
+
+    purchase_requests ||--o{ goods_receipts : recebido_via
