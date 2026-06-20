@@ -85,6 +85,14 @@
         Adicionar documento
       </button>
       <button
+        *ngIf="looksLikeCpf(newDocument)"
+        class="btn btn-secondary"
+        type="button"
+        (click)="validateCpf(newDocument)"
+      >
+        Validar CPF
+      </button>
+      <button
         *ngIf="looksLikeCnpj(newDocument)"
         class="btn btn-secondary"
         type="button"
@@ -92,6 +100,12 @@
       >
         Validar CNPJ
       </button>
+    </div>
+    <div *ngIf="cpfValidation" class="validation-result">
+      <p *ngIf="cpfValidation.valid">
+        CPF válido — {{ cpfValidation.formatted }}
+      </p>
+      <p *ngIf="!cpfValidation.valid">CPF inválido</p>
     </div>
     <div *ngIf="cnpjValidation" class="validation-result">
       <p *ngIf="cnpjValidation.valid">

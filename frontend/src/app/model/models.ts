@@ -116,6 +116,11 @@ export interface CnpjValidation {
   trade_name: string | null;
 }
 
+export interface CpfValidation {
+  valid: boolean;
+  formatted: string | null;
+}
+
 export interface AvailabilityItem {
   product_id: number;
   product_name: string;

@@ -1,5 +1,5 @@
 import { Component } from '@angular/core';
-import { CnpjValidation } from '../../../model/models';
+import { CnpjValidation, CpfValidation } from '../../../model/models';
 import { CustomerService } from '../../../service/customer.service';
 
 @Component({
@@ -9,17 +9,31 @@ import { CustomerService } from '../../../service/customer.service';
 })
 export class NewCustomerComponent {
   cnpjValidation: CnpjValidation | null = null;
+  cpfValidation: CpfValidation | null = null;
 
   constructor(private customerService: CustomerService) {}
 
+  looksLikeCpf(value: string): boolean {
+    return value.replace(/\D/g, '').length === 11;
+  }
+
   looksLikeCnpj(value: string): boolean {
     return value.replace(/\D/g, '').length === 14;
+  }
+
+  validateCpf(document: string): void {
+    const cpf = document.replace(/\D/g, '');
+    this.customerService.validateCpf(cpf).subscribe((result) => {
+      this.cpfValidation = result;
+      this.cnpjValidation = null;
+    });
   }
 
   validateCnpj(document: string): void {
     const cnpj = document.replace(/\D/g, '');
     this.customerService.validateCnpj(cnpj).subscribe((result) => {
       this.cnpjValidation = result;
+      this.cpfValidation = null;
     });
   }
 

@@ -71,6 +71,7 @@ Cada cliente possui **um ou mais documentos** (CPF e/ou CNPJ). O tipo é inferid
 - No máximo **um CPF** por cliente; **vários CNPJs** permitidos
 - Documento duplicado no sistema → HTTP 409
 - Endereço **obrigatório** no cadastro
+- CPF validado externamente via [Invertexto API](docs/cpf-validation-invertexto.md) antes de persistir
 - CNPJ validado externamente via [Brasil API](https://brasilapi.com.br/docs) antes de persistir
 
 ### APIs administrativas (JWT)
@@ -83,6 +84,7 @@ Cada cliente possui **um ou mais documentos** (CPF e/ou CNPJ). O tipo é inferid
 | `PUT` | `/api/v1/admin/customers/{id}` | Atualizar contato |
 | `DELETE` | `/api/v1/admin/customers/{id}` | Remover cliente |
 | `GET` | `/api/v1/admin/customers/by-document/{documento}` | Buscar por CPF/CNPJ (dados completos) |
+| `GET` | `/api/v1/admin/customers/validate-cpf/{cpf}` | Pré-validar CPF na Invertexto API |
 | `GET` | `/api/v1/admin/customers/validate-cnpj/{cnpj}` | Pré-validar CNPJ na Brasil API |
 | `POST` | `/api/v1/admin/customers/{id}/documents` | Adicionar documento a cliente existente |
 
@@ -134,7 +136,7 @@ Interface vanilla servida pelo FastAPI em `/app/`:
 - **URL (local):** http://localhost:8000/app/
 - **URL (Docker):** http://localhost:8001/app/
 - Login com `admin` / `admin123`
-- Cadastro de clientes (CPF ou CNPJ), validação de CNPJ, busca por documento e listagem
+- Cadastro de clientes (CPF ou CNPJ), validação externa de CPF/CNPJ, busca por documento e listagem
 
 > **Nota:** Se o container Docker `app` estiver rodando na porta 8000, `http://localhost:8000` pode responder pelo Docker (sem o painel `/app/`). Pare o container com `docker compose stop app` ou use a API Docker em http://localhost:8001.
 

@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -19,6 +20,19 @@ from src.api.routers import (
     vehicles,
 )
 from src.domain.exceptions import DomainError
+
+
+def _configure_app_logging() -> None:
+    app_logger = logging.getLogger("src")
+    app_logger.setLevel(logging.INFO)
+    if app_logger.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s - %(message)s"))
+    app_logger.addHandler(handler)
+
+
+_configure_app_logging()
 
 
 @asynccontextmanager

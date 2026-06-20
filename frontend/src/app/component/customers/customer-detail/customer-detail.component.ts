@@ -1,5 +1,5 @@
 import { Component, Input, OnChanges } from '@angular/core';
-import { CnpjValidation, Customer } from '../../../model/models';
+import { CnpjValidation, CpfValidation, Customer } from '../../../model/models';
 import { CustomerService } from '../../../service/customer.service';
 import { CustomersComponent } from '../customers.component';
 
@@ -15,6 +15,7 @@ export class CustomerDetailComponent implements OnChanges {
   isCustomerChanged = false;
   newDocument = '';
   cnpjValidation: CnpjValidation | null = null;
+  cpfValidation: CpfValidation | null = null;
 
   constructor(
     private customerService: CustomerService,
@@ -26,6 +27,7 @@ export class CustomerDetailComponent implements OnChanges {
       this.isCustomerChanged = false;
       this.newDocument = '';
       this.cnpjValidation = null;
+      this.cpfValidation = null;
       this.loadCustomer();
     }
   }
@@ -58,14 +60,27 @@ export class CustomerDetailComponent implements OnChanges {
     });
   }
 
+  looksLikeCpf(value: string): boolean {
+    return value.replace(/\D/g, '').length === 11;
+  }
+
   looksLikeCnpj(value: string): boolean {
     return value.replace(/\D/g, '').length === 14;
+  }
+
+  validateCpf(document: string): void {
+    const cpf = document.replace(/\D/g, '');
+    this.customerService.validateCpf(cpf).subscribe((result) => {
+      this.cpfValidation = result;
+      this.cnpjValidation = null;
+    });
   }
 
   validateCnpj(document: string): void {
     const cnpj = document.replace(/\D/g, '');
     this.customerService.validateCnpj(cnpj).subscribe((result) => {
       this.cnpjValidation = result;
+      this.cpfValidation = null;
     });
   }
 

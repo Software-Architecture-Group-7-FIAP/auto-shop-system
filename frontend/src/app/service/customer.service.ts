@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { CnpjValidation, Customer } from '../model/models';
+import { CnpjValidation, CpfValidation, Customer } from '../model/models';
 
 @Injectable({ providedIn: 'root' })
 export class CustomerService {
@@ -34,6 +34,10 @@ export class CustomerService {
 
   validateCnpj(cnpj: string): Observable<CnpjValidation> {
     return this.http.get<CnpjValidation>(`${this.url}/validate-cnpj/${encodeURIComponent(cnpj)}`);
+  }
+
+  validateCpf(cpf: string): Observable<CpfValidation> {
+    return this.http.get<CpfValidation>(`${this.url}/validate-cpf/${encodeURIComponent(cpf)}`);
   }
 
   addDocument(id: number, document: string): Observable<Customer> {

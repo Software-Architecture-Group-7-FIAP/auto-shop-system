@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = "noreply@oficina.local"
     app_base_url: str = "http://localhost:8000"
+    invertexto_api_token: str = ""
 
 
 settings = Settings()

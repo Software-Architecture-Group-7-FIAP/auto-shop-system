@@ -3,6 +3,7 @@ from dataclasses import replace
 import pytest
 
 from src.application.ports.cnpj_validator import CnpjValidationResult
+from src.application.ports.cpf_validator import CpfValidationResult
 from src.application.services.customer_service import CustomerService
 from src.domain.customer.entity import Customer
 from src.domain.customer.value_objects import Document
@@ -71,6 +72,19 @@ class FakeCnpjValidator:
         return self.result
 
 
+class FakeCpfValidator:
+    def __init__(self, result: CpfValidationResult | None = None):
+        self.result = result or CpfValidationResult(
+            valid=True,
+            formatted="529.982.247-25",
+        )
+        self.calls: list[str] = []
+
+    def validate(self, cpf: str) -> CpfValidationResult:
+        self.calls.append(cpf)
+        return self.result
+
+
 def _pf_payload(**overrides):
     data = {
         "name": "Maria",
@@ -85,7 +99,7 @@ def _pf_payload(**overrides):
 def test_customer_service_creates_customer_without_sqlalchemy():
     customers = InMemoryCustomerRepository()
     uow = FakeUnitOfWork()
-    service = CustomerService(customers, uow)
+    service = CustomerService(customers, uow, cpf_validator=FakeCpfValidator())
 
     customer = service.create(**_pf_payload())
 
@@ -96,7 +110,11 @@ def test_customer_service_creates_customer_without_sqlalchemy():
 
 
 def test_customer_service_rejects_duplicate_document():
-    service = CustomerService(InMemoryCustomerRepository(), FakeUnitOfWork())
+    service = CustomerService(
+        InMemoryCustomerRepository(),
+        FakeUnitOfWork(),
+        cpf_validator=FakeCpfValidator(),
+    )
     service.create(**_pf_payload())
 
     with pytest.raises(ConflictError):
@@ -129,7 +147,11 @@ def test_customer_service_checks_duplicate_before_external_cnpj_validation():
 
 
 def test_customer_service_gets_customer_by_document():
-    service = CustomerService(InMemoryCustomerRepository(), FakeUnitOfWork())
+    service = CustomerService(
+        InMemoryCustomerRepository(),
+        FakeUnitOfWork(),
+        cpf_validator=FakeCpfValidator(),
+    )
     service.create(**_pf_payload())
 
     customer = service.get_by_document("52998224725")
@@ -138,7 +160,11 @@ def test_customer_service_gets_customer_by_document():
 
 
 def test_customer_service_updates_customer_contact_fields():
-    service = CustomerService(InMemoryCustomerRepository(), FakeUnitOfWork())
+    service = CustomerService(
+        InMemoryCustomerRepository(),
+        FakeUnitOfWork(),
+        cpf_validator=FakeCpfValidator(),
+    )
     customer = service.create(**_pf_payload(phone="111"))
 
     updated = service.update(customer.id, "Maria S.", None, "222", "Rua B, 200")
@@ -219,3 +245,58 @@ def test_customer_service_validate_cnpj_rejects_cpf():
 
     with pytest.raises(ValidationError, match="CNPJ inválido"):
         service.validate_cnpj("529.982.247-25")
+
+
+def test_customer_service_creates_pf_with_external_cpf_validation():
+    cpf_validator = FakeCpfValidator()
+    service = CustomerService(
+        InMemoryCustomerRepository(),
+        FakeUnitOfWork(),
+        cpf_validator=cpf_validator,
+    )
+
+    customer = service.create(**_pf_payload())
+
+    assert customer.documents == ["52998224725"]
+    assert cpf_validator.calls == ["52998224725"]
+
+
+def test_customer_service_checks_duplicate_before_external_cpf_validation():
+    cpf_validator = FakeCpfValidator()
+    service = CustomerService(
+        InMemoryCustomerRepository(),
+        FakeUnitOfWork(),
+        cpf_validator=cpf_validator,
+    )
+    service.create(**_pf_payload())
+
+    with pytest.raises(ConflictError):
+        service.create(**_pf_payload(name="Maria 2", email="maria2@test.com"))
+
+    assert cpf_validator.calls == ["52998224725"]
+
+
+def test_customer_service_validate_cpf_delegates_to_external_validator():
+    cpf_validator = FakeCpfValidator()
+    service = CustomerService(
+        InMemoryCustomerRepository(),
+        FakeUnitOfWork(),
+        cpf_validator=cpf_validator,
+    )
+
+    result = service.validate_cpf("529.982.247-25")
+
+    assert result.valid is True
+    assert result.formatted == "529.982.247-25"
+    assert cpf_validator.calls == ["52998224725"]
+
+
+def test_customer_service_validate_cpf_rejects_cnpj():
+    service = CustomerService(
+        InMemoryCustomerRepository(),
+        FakeUnitOfWork(),
+        cpf_validator=FakeCpfValidator(),
+    )
+
+    with pytest.raises(ValidationError, match="CPF inválido"):
+        service.validate_cpf("04.252.011/0001-10")

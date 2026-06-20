@@ -70,6 +70,11 @@ class CnpjValidationResponse(BaseModel):
     trade_name: str | None = None
 
 
+class CpfValidationResponse(BaseModel):
+    valid: bool
+    formatted: str | None = None
+
+
 class VehicleCreate(BaseModel):
     customer_id: int
     plate: str

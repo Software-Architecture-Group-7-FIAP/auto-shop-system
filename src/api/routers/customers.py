@@ -6,6 +6,7 @@ from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.mappers.customers import customer_to_response
 from src.api.schemas import (
     CnpjValidationResponse,
+    CpfValidationResponse,
     CustomerCreate,
     CustomerDocumentAdd,
     CustomerResponse,
@@ -73,6 +74,22 @@ def validate_cnpj(
             valid=result.valid,
             legal_name=result.legal_name,
             trade_name=result.trade_name,
+        )
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+
+@router.get("/validate-cpf/{cpf:path}", response_model=CpfValidationResponse)
+def validate_cpf(
+    cpf: str,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    try:
+        result = compose_customer_service(db).validate_cpf(cpf)
+        return CpfValidationResponse(
+            valid=result.valid,
+            formatted=result.formatted,
         )
     except DomainError as e:
         raise domain_error_handler(e)

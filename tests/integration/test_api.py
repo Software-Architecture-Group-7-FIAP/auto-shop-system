@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from src.application.ports.cnpj_validator import CnpjValidationResult
+from src.application.ports.cpf_validator import CpfValidationResult
 
 
 def test_health(client):
@@ -442,6 +443,31 @@ def test_validate_and_create_pj_customer(mock_validate, client, auth_headers):
     )
     assert create.status_code == 201
     assert create.json()["documents"] == ["04252011000110"]
+    assert mock_validate.call_count == 2
+
+
+@patch("src.infrastructure.external.invertexto_cpf.HttpInvertextoCpfValidator.validate")
+def test_validate_and_create_pf_customer(mock_validate, client, auth_headers):
+    mock_validate.return_value = CpfValidationResult(
+        valid=True,
+        formatted="529.982.247-25",
+    )
+
+    validate = client.get(
+        "/api/v1/admin/customers/validate-cpf/52998224725",
+        headers=auth_headers,
+    )
+    assert validate.status_code == 200
+    assert validate.json()["valid"] is True
+    assert validate.json()["formatted"] == "529.982.247-25"
+
+    create = client.post(
+        "/api/v1/admin/customers",
+        headers=auth_headers,
+        json=_pf_customer_payload(),
+    )
+    assert create.status_code == 201
+    assert create.json()["documents"] == ["52998224725"]
     assert mock_validate.call_count == 2
 
 
