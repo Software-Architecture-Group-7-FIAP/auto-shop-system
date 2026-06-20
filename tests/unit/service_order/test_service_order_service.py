@@ -52,7 +52,7 @@ class FakeContactLookup:
         return ServiceOrderCustomer(
             name="Ana",
             email="ana@test.com",
-            document=self.document,
+            documents=(self.document,),
         )
 
     def get_vehicle(self, vehicle_id: int) -> ServiceOrderVehicle | None:

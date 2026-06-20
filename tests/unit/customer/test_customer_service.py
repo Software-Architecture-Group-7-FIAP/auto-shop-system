@@ -5,8 +5,7 @@ import pytest
 from src.application.ports.cnpj_validator import CnpjValidationResult
 from src.application.services.customer_service import CustomerService
 from src.domain.customer.entity import Customer
-from src.domain.customer.value_objects import CustomerDocument
-from src.domain.enums import PersonType
+from src.domain.customer.value_objects import Document
 from src.domain.exceptions import ConflictError, NotFoundError, ValidationError
 
 
@@ -24,16 +23,16 @@ class InMemoryCustomerRepository:
     def get_by_id(self, customer_id: int) -> Customer | None:
         return self.customers.get(customer_id)
 
-    def get_by_document(self, document: CustomerDocument) -> Customer | None:
+    def get_by_document(self, document: Document) -> Customer | None:
         for customer in self.customers.values():
-            if customer.document == document:
+            if customer.has_document(document):
                 return customer
         return None
 
     def list_all(self, skip: int = 0, limit: int = 100) -> list[Customer]:
         return list(self.customers.values())[skip : skip + limit]
 
-    def exists_by_document(self, document: CustomerDocument) -> bool:
+    def exists_by_document(self, document: Document) -> bool:
         return self.get_by_document(document) is not None
 
     def save(self, customer: Customer) -> Customer:
@@ -75,7 +74,6 @@ class FakeCnpjValidator:
 def _pf_payload(**overrides):
     data = {
         "name": "Maria",
-        "person_type": PersonType.PF,
         "document": "529.982.247-25",
         "email": "maria@test.com",
         "address": "Rua A, 100",
@@ -92,8 +90,7 @@ def test_customer_service_creates_customer_without_sqlalchemy():
     customer = service.create(**_pf_payload())
 
     assert customer.id == 1
-    assert customer.document == "52998224725"
-    assert customer.person_type == PersonType.PF
+    assert customer.documents == ["52998224725"]
     assert customer.address == "Rua A, 100"
     assert uow.commits == 1
 
@@ -104,6 +101,31 @@ def test_customer_service_rejects_duplicate_document():
 
     with pytest.raises(ConflictError):
         service.create(**_pf_payload(name="Maria 2", email="maria2@test.com"))
+
+
+def test_customer_service_checks_duplicate_before_external_cnpj_validation():
+    cnpj_validator = FakeCnpjValidator()
+    service = CustomerService(
+        InMemoryCustomerRepository(),
+        FakeUnitOfWork(),
+        cnpj_validator=cnpj_validator,
+    )
+    service.create(
+        name="Empresa LTDA",
+        document="04.252.011/0001-10",
+        email="empresa@test.com",
+        address="Av. B, 200",
+    )
+
+    with pytest.raises(ConflictError):
+        service.create(
+            name="Empresa 2 LTDA",
+            document="04.252.011/0001-10",
+            email="empresa2@test.com",
+            address="Av. C, 300",
+        )
+
+    assert cnpj_validator.calls == ["04252011000110"]
 
 
 def test_customer_service_gets_customer_by_document():
@@ -127,6 +149,26 @@ def test_customer_service_updates_customer_contact_fields():
     assert updated.address == "Rua B, 200"
 
 
+def test_customer_service_adds_document_to_existing_customer():
+    cnpj_validator = FakeCnpjValidator()
+    service = CustomerService(
+        InMemoryCustomerRepository(),
+        FakeUnitOfWork(),
+        cnpj_validator=cnpj_validator,
+    )
+    customer = service.create(
+        name="Empresa LTDA",
+        document="04.252.011/0001-10",
+        email="empresa@test.com",
+        address="Av. B, 200",
+    )
+
+    updated = service.add_document(customer.id, "11.444.777/0001-61")
+
+    assert len(updated.documents) == 2
+    assert cnpj_validator.calls == ["04252011000110", "11444777000161"]
+
+
 def test_customer_service_raises_when_customer_is_missing():
     service = CustomerService(InMemoryCustomerRepository(), FakeUnitOfWork())
 
@@ -144,13 +186,12 @@ def test_customer_service_creates_pj_with_external_cnpj_validation():
 
     customer = service.create(
         name="Empresa LTDA",
-        person_type=PersonType.PJ,
         document="04.252.011/0001-10",
         email="empresa@test.com",
         address="Av. B, 200",
     )
 
-    assert customer.person_type == PersonType.PJ
+    assert customer.documents == ["04252011000110"]
     assert cnpj_validator.calls == ["04252011000110"]
 
 
@@ -176,5 +217,5 @@ def test_customer_service_validate_cnpj_rejects_cpf():
         cnpj_validator=FakeCnpjValidator(),
     )
 
-    with pytest.raises(ValidationError, match="Cliente inválido"):
+    with pytest.raises(ValidationError, match="CNPJ inválido"):
         service.validate_cnpj("529.982.247-25")

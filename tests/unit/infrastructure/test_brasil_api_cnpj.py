@@ -30,7 +30,7 @@ def test_brasil_api_cnpj_validator_rejects_not_found():
     client = httpx.Client(transport=httpx.MockTransport(handler))
     validator = HttpBrasilApiCnpjValidator(client=client)
 
-    with pytest.raises(ValidationError, match="Cliente inválido"):
+    with pytest.raises(ValidationError, match="CNPJ não encontrado"):
         validator.validate("04252011000110")
 
 

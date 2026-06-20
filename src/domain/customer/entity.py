@@ -1,8 +1,7 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
-from src.domain.customer.value_objects import CustomerDocument
-from src.domain.enums import PersonType
+from src.domain.customer.value_objects import Document
 from src.domain.exceptions import ValidationError
 
 
@@ -10,34 +9,52 @@ from src.domain.exceptions import ValidationError
 class Customer:
     id: int | None
     name: str
-    person_type: PersonType
-    document: CustomerDocument
     email: str
     address: str
     phone: str | None = None
     created_at: datetime | None = None
+    _documents: list[Document] = field(default_factory=list)
+
+    @property
+    def documents(self) -> list[Document]:
+        return self._documents.copy()
 
     @classmethod
     def create(
         cls,
         name: str,
-        person_type: PersonType,
         document: str,
         email: str,
         address: str,
         phone: str | None = None,
     ) -> "Customer":
-        customer_document = CustomerDocument.create(document)
-        cls._validate_person_type_matches_document(person_type, customer_document)
-        return cls(
+        cls._validate_address(address)
+        customer = cls(
             id=None,
             name=name,
-            person_type=person_type,
-            document=customer_document,
             email=email,
-            address=address,
+            address=address.strip(),
             phone=phone,
         )
+        customer.add_document(document)
+        return customer
+
+    def add_document(self, document_raw: str) -> None:
+        new_document = Document.create(document_raw)
+        is_cpf = len(new_document) == 11
+        has_cpf = any(len(document) == 11 for document in self._documents)
+
+        if is_cpf and has_cpf:
+            raise ValidationError("CPF já cadastrado.")
+
+        if new_document in self._documents:
+            raise ValidationError("Documento já cadastrado.")
+
+        self._documents.append(new_document)
+
+    def has_document(self, document: str | Document) -> bool:
+        normalized = Document.create(document) if isinstance(document, str) else document
+        return normalized in self._documents
 
     def update_contact(
         self,
@@ -53,12 +70,10 @@ class Customer:
         if phone is not None:
             self.phone = phone
         if address is not None:
-            self.address = address
+            self._validate_address(address)
+            self.address = address.strip()
 
     @staticmethod
-    def _validate_person_type_matches_document(
-        person_type: PersonType, document: CustomerDocument
-    ) -> None:
-        expected_length = 11 if person_type == PersonType.PF else 14
-        if len(document) != expected_length:
-            raise ValidationError("Cliente inválido")
+    def _validate_address(address: str) -> None:
+        if not address or not address.strip():
+            raise ValidationError("Endereço é obrigatório")

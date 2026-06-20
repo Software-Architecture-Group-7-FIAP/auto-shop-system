@@ -86,6 +86,14 @@ async function api(path, options = {}) {
   return body;
 }
 
+function documentBadge(documents) {
+  const hasCpf = documents.some((doc) => doc.length === 11);
+  const hasCnpj = documents.some((doc) => doc.length === 14);
+  if (hasCpf && hasCnpj) return "PF/PJ";
+  if (hasCnpj) return "PJ";
+  return "PF";
+}
+
 function renderCustomers(customers) {
   if (!customers.length) {
     customerList.innerHTML = '<p class="empty-state">Nenhum cliente cadastrado.</p>';
@@ -102,8 +110,8 @@ function renderCustomers(customers) {
         <span>${escapeHtml(c.address)}</span>
       </div>
       <div style="text-align:right">
-        <span class="badge badge-${c.person_type.toLowerCase()}">${c.person_type}</span>
-        <div><span>${formatDocument(c.document)}</span></div>
+        <span class="badge badge-${documentBadge(c.documents).toLowerCase()}">${documentBadge(c.documents)}</span>
+        <div>${c.documents.map((doc) => `<span>${formatDocument(doc)}</span>`).join("<br>")}</div>
       </div>
     </article>`
     )
@@ -185,7 +193,6 @@ $("customer-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const payload = {
     name: $("customer-name").value.trim(),
-    person_type: getPersonType(),
     document: $("customer-document").value.trim(),
     email: $("customer-email").value.trim(),
     phone: $("customer-phone").value.trim() || null,

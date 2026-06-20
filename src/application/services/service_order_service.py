@@ -31,7 +31,7 @@ class ServiceOrderService:
         cleaned = DocumentValidator.validate(document)
         service_order = self.get_by_id(service_order_id)
         customer = self.contacts.get_customer(service_order.customer_id)
-        if not customer or customer.document != cleaned:
+        if not customer or cleaned not in customer.documents:
             raise NotFoundError("OS não encontrada para este documento")
         return service_order
 

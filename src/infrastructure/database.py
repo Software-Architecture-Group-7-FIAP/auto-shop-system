@@ -48,13 +48,22 @@ class UserModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class CustomerDocumentModel(Base):
+    __tablename__ = "customer_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id", ondelete="CASCADE"))
+    document: Mapped[str] = mapped_column(String(14), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    customer: Mapped["CustomerModel"] = relationship(back_populates="documents")
+
+
 class CustomerModel(Base):
     __tablename__ = "customers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
-    person_type: Mapped[str] = mapped_column(String(2))
-    document: Mapped[str] = mapped_column(String(14), unique=True, index=True)
     email: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str] = mapped_column(String(20), nullable=True)
     address: Mapped[str] = mapped_column(String(500))
@@ -64,6 +73,10 @@ class CustomerModel(Base):
     )
 
     vehicles: Mapped[list["VehicleModel"]] = relationship(back_populates="customer")
+    documents: Mapped[list["CustomerDocumentModel"]] = relationship(
+        back_populates="customer",
+        cascade="all, delete-orphan",
+    )
 
 
 class VehicleModel(Base):

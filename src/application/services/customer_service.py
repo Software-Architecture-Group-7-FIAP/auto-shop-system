@@ -2,8 +2,7 @@ from src.application.ports.cnpj_validator import CnpjExternalValidator, CnpjVali
 from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.customer.entity import Customer
 from src.domain.customer.repository import CustomerRepository
-from src.domain.customer.value_objects import CustomerDocument
-from src.domain.enums import PersonType
+from src.domain.customer.value_objects import Document
 from src.domain.exceptions import ConflictError, NotFoundError, ValidationError
 
 
@@ -21,7 +20,6 @@ class CustomerService:
     def create(
         self,
         name: str,
-        person_type: PersonType,
         document: str,
         email: str,
         address: str,
@@ -29,19 +27,31 @@ class CustomerService:
     ) -> Customer:
         customer = Customer.create(
             name=name,
-            person_type=person_type,
             document=document,
             email=email,
             address=address,
             phone=phone,
         )
-        if person_type == PersonType.PJ:
-            self._validate_cnpj_externally(str(customer.document))
-        if self.customers.exists_by_document(customer.document):
+        initial_document = customer.documents[0]
+        if self.customers.exists_by_document(initial_document):
             raise ConflictError("Cliente com este documento já existe")
+        if len(initial_document) == 14:
+            self._validate_cnpj_externally(str(initial_document))
         created = self.customers.add(customer)
         self.uow.commit()
         return created
+
+    def add_document(self, customer_id: int, document: str) -> Customer:
+        customer = self.get_by_id(customer_id)
+        new_document = Document.create(document)
+        if self.customers.exists_by_document(new_document):
+            raise ConflictError("Cliente com este documento já existe")
+        if len(new_document) == 14:
+            self._validate_cnpj_externally(str(new_document))
+        customer.add_document(document)
+        updated = self.customers.save(customer)
+        self.uow.commit()
+        return updated
 
     def get_by_id(self, customer_id: int) -> Customer:
         customer = self.customers.get_by_id(customer_id)
@@ -50,7 +60,7 @@ class CustomerService:
         return customer
 
     def get_by_document(self, document: str) -> Customer:
-        customer = self.customers.get_by_document(CustomerDocument.create(document))
+        customer = self.customers.get_by_document(Document.create(document))
         if not customer:
             raise NotFoundError("Cliente não encontrado")
         return customer
@@ -78,9 +88,9 @@ class CustomerService:
         self.uow.commit()
 
     def validate_cnpj(self, document: str) -> CnpjValidationResult:
-        customer_document = CustomerDocument.create(document)
+        customer_document = Document.create(document)
         if len(customer_document) != 14:
-            raise ValidationError("Cliente inválido")
+            raise ValidationError("CNPJ inválido")
         return self._validate_cnpj_externally(customer_document)
 
     def _validate_cnpj_externally(self, cnpj: str) -> CnpjValidationResult:

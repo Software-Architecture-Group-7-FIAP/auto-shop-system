@@ -3,9 +3,11 @@ from sqlalchemy.orm import Session
 
 from src.api.composition.customers import compose_customer_service
 from src.api.dependencies import domain_error_handler, get_current_user
+from src.api.mappers.customers import customer_to_response
 from src.api.schemas import (
     CnpjValidationResponse,
     CustomerCreate,
+    CustomerDocumentAdd,
     CustomerResponse,
     CustomerUpdate,
 )
@@ -23,14 +25,14 @@ def create_customer(
     _: User = Depends(get_current_user),
 ):
     try:
-        return compose_customer_service(db).create(
+        customer = compose_customer_service(db).create(
             data.name,
-            data.person_type,
             data.document,
             data.email,
             data.address,
             data.phone,
         )
+        return customer_to_response(customer)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -42,7 +44,8 @@ def list_customers(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    return compose_customer_service(db).list_all(skip, limit)
+    customers = compose_customer_service(db).list_all(skip, limit)
+    return [customer_to_response(customer) for customer in customers]
 
 
 @router.get("/by-document/{document}", response_model=CustomerResponse)
@@ -52,7 +55,8 @@ def get_customer_by_document_admin(
     _: User = Depends(get_current_user),
 ):
     try:
-        return compose_customer_service(db).get_by_document(document)
+        customer = compose_customer_service(db).get_by_document(document)
+        return customer_to_response(customer)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -81,7 +85,22 @@ def get_customer(
     _: User = Depends(get_current_user),
 ):
     try:
-        return compose_customer_service(db).get_by_id(customer_id)
+        customer = compose_customer_service(db).get_by_id(customer_id)
+        return customer_to_response(customer)
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+
+@router.post("/{customer_id}/documents", response_model=CustomerResponse)
+def add_customer_document(
+    customer_id: int,
+    data: CustomerDocumentAdd,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    try:
+        customer = compose_customer_service(db).add_document(customer_id, data.document)
+        return customer_to_response(customer)
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -94,9 +113,10 @@ def update_customer(
     _: User = Depends(get_current_user),
 ):
     try:
-        return compose_customer_service(db).update(
+        customer = compose_customer_service(db).update(
             customer_id, data.name, data.email, data.phone, data.address
         )
+        return customer_to_response(customer)
     except DomainError as e:
         raise domain_error_handler(e)
 

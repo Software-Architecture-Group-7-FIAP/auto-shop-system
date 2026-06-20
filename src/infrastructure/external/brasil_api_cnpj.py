@@ -4,6 +4,10 @@ from src.application.ports.cnpj_validator import CnpjValidationResult
 from src.domain.exceptions import ValidationError
 
 BRASIL_API_CNPJ_URL = "https://brasilapi.com.br/api/cnpj/v1/{cnpj}"
+CNPJ_NOT_FOUND_MESSAGE = (
+    "CNPJ não encontrado. Verifique se os números estão corretos ou se o documento "
+    "foi emitido recentemente e ainda não reflete nas bases governamentais."
+)
 
 
 class HttpBrasilApiCnpjValidator:
@@ -24,7 +28,7 @@ class HttpBrasilApiCnpjValidator:
             ) from exc
 
         if response.status_code == 404:
-            raise ValidationError("Cliente inválido")
+            raise ValidationError(CNPJ_NOT_FOUND_MESSAGE)
         if response.status_code >= 500:
             raise ValidationError("Serviço de validação de CNPJ indisponível")
         if response.status_code != 200:

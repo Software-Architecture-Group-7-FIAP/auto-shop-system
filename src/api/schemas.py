@@ -6,7 +6,6 @@ from pydantic import BaseModel, EmailStr, Field
 from src.domain.enums import (
     BudgetStatus,
     InvoiceStatus,
-    PersonType,
     Priority,
     PurchaseRequestStatus,
     ReservationStatus,
@@ -33,31 +32,36 @@ class LoginRequest(BaseModel):
 
 class CustomerCreate(BaseModel):
     name: str
-    person_type: PersonType
     document: str
     email: EmailStr
     phone: str | None = None
-    address: str
+    address: str = Field(..., min_length=1)
 
 
 class CustomerUpdate(BaseModel):
     name: str | None = None
     email: EmailStr | None = None
     phone: str | None = None
-    address: str | None = None
+    address: str | None = Field(default=None, min_length=1)
+
+
+class CustomerDocumentAdd(BaseModel):
+    document: str
 
 
 class CustomerResponse(BaseModel):
     id: int
     name: str
-    person_type: PersonType
-    document: str
+    documents: list[str]
     email: str
     phone: str | None
     address: str
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+
+class CustomerPublicResponse(BaseModel):
+    id: int
+    name: str
 
 
 class CnpjValidationResponse(BaseModel):

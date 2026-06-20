@@ -12,7 +12,6 @@ def test_health(client):
 def _pf_customer_payload(**overrides):
     payload = {
         "name": "Maria Silva",
-        "person_type": "PF",
         "document": "529.982.247-25",
         "email": "maria@test.com",
         "phone": "11999999999",
@@ -39,11 +38,12 @@ def test_customer_crud(client, auth_headers):
     )
     assert create.status_code == 201
     customer_id = create.json()["id"]
-    assert create.json()["person_type"] == "PF"
+    assert create.json()["documents"] == ["52998224725"]
     assert create.json()["address"] == "Rua A, 100"
 
     get_doc = client.get("/api/v1/customers/by-document/52998224725")
     assert get_doc.status_code == 200
+    assert get_doc.json() == {"id": customer_id, "name": "Maria Silva"}
 
     get_admin_doc = client.get(
         "/api/v1/admin/customers/by-document/52998224725",
@@ -74,7 +74,16 @@ def test_customer_rejects_invalid_document(client, auth_headers):
         json=_pf_customer_payload(document="123"),
     )
     assert response.status_code == 422
-    assert response.json()["detail"] == "Cliente inválido"
+    assert response.json()["detail"] == "Documento inválido"
+
+
+def test_customer_rejects_empty_address(client, auth_headers):
+    response = client.post(
+        "/api/v1/admin/customers",
+        headers=auth_headers,
+        json=_pf_customer_payload(address=""),
+    )
+    assert response.status_code == 422
 
 
 def test_customer_rejects_duplicate_document(client, auth_headers):
@@ -426,14 +435,13 @@ def test_validate_and_create_pj_customer(mock_validate, client, auth_headers):
         headers=auth_headers,
         json={
             "name": "Empresa LTDA",
-            "person_type": "PJ",
             "document": "04.252.011/0001-10",
             "email": "empresa@test.com",
             "address": "Av. B, 200",
         },
     )
     assert create.status_code == 201
-    assert create.json()["person_type"] == "PJ"
+    assert create.json()["documents"] == ["04252011000110"]
     assert mock_validate.call_count == 2
 
 

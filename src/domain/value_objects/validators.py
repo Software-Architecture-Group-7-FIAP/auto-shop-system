@@ -11,12 +11,12 @@ class DocumentValidator:
         cleaned = re.sub(r"\D", "", document)
         if len(cleaned) == 11:
             if not CPF().validate(cleaned):
-                raise ValidationError("Cliente inválido")
+                raise ValidationError("CPF inválido")
         elif len(cleaned) == 14:
             if not CNPJ().validate(cleaned):
-                raise ValidationError("Cliente inválido")
+                raise ValidationError("CNPJ inválido")
         else:
-            raise ValidationError("Cliente inválido")
+            raise ValidationError("Documento inválido")
         return cleaned
 
 
