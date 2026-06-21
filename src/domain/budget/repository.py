@@ -22,5 +22,15 @@ class BudgetRepository(Protocol):
     def add_product_line(self, line: BudgetProductLine) -> BudgetProductLine:
         ...
 
+    def get_product_line(
+            self,
+            budget_id: int,
+            line_id: int,
+    ) -> BudgetProductLine | None:
+        ...
+
+    def delete_product_line(self, line: BudgetProductLine) -> None:
+        ...
+
     def save(self, budget: Budget) -> Budget:
         ...
