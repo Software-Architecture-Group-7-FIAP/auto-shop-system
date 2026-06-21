@@ -144,3 +144,10 @@ class BudgetService:
             self.budgets.save(budget)
             self.uow.commit()
         return budget.estimated_delivery
+
+    def remove_product_line(self, budget_id: int, line_id: int) -> None:
+        line = self.budgets.get_product_line(budget_id, line_id)
+        if not line:
+            raise NotFoundError("Linha de produto não encontrada")
+        self.budgets.delete_product_line(line)
+        self.uow.commit()
