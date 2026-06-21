@@ -203,6 +203,10 @@ class BudgetProductLineCreate(BaseModel):
     quantity: int = Field(default=1, gt=0)
 
 
+class BudgetProductLineUpdate(BaseModel):
+    quantity: int | None = None
+
+
 class BudgetProductLineResponse(BaseModel):
     id: int
     product_id: int

@@ -111,6 +111,19 @@ class SqlAlchemyBudgetRepository:
 
         return self._product_line_to_domain(model)
 
+    def update_product_line(self, line: BudgetProductLine) -> BudgetProductLine:
+        model = (
+            self.db.query(BudgetProductLineModel)
+            .filter(BudgetProductLineModel.id == line.id)
+            .first()
+        )
+
+        model.quantity = line.quantity
+        self.db.flush()
+        self.db.refresh(model)
+
+        return self._product_line_to_domain(model)
+
     def delete_product_line(self, line: BudgetProductLine) -> None:
         model = (
             self.db.query(BudgetProductLineModel)

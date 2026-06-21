@@ -28,6 +28,9 @@ class BudgetRepository(Protocol):
     def get_product_line(self, budget_id: int, line_id: int) -> BudgetProductLine | None:
         ...
 
+    def update_product_line(self, line: BudgetProductLine) -> BudgetProductLine:
+        ...
+
     def delete_product_line(self, line: BudgetProductLine) -> None:
         ...
 
