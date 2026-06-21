@@ -22,11 +22,10 @@ class BudgetRepository(Protocol):
     def add_product_line(self, line: BudgetProductLine) -> BudgetProductLine:
         ...
 
-    def get_product_line(
-            self,
-            budget_id: int,
-            line_id: int,
-    ) -> BudgetProductLine | None:
+    def get_all_product_lines(self, budget_id: int) -> list[BudgetProductLine]:
+        ...
+
+    def get_product_line(self, budget_id: int, line_id: int) -> BudgetProductLine | None:
         ...
 
     def delete_product_line(self, line: BudgetProductLine) -> None:
