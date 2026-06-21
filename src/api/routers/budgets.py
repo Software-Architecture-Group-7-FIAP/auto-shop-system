@@ -96,6 +96,17 @@ def add_product_line(
     except DomainError as e:
         raise domain_error_handler(e)
 
+@admin_router.delete("/{budget_id}/product-lines/{line_id}", status_code=204)
+def remove_product_line(
+    budget_id: int,
+    line_id: int,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        compose_budget_service(db).remove_product_line(budget_id, line_id)
+    except DomainError as e:
+        raise domain_error_handler(e)
 
 @admin_router.get("/{budget_id}/availability", response_model=list[AvailabilityItem])
 def check_availability(
