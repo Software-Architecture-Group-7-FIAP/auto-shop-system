@@ -107,6 +107,38 @@ class BudgetService:
         self.uow.commit()
         return created_line
 
+    def get_all_product_lines(self, budget_id: int) -> list[dict]:
+        self.get_by_id(budget_id)
+
+        lines = self.budgets.get_all_product_lines(budget_id)
+        result = []
+
+        for line in lines:
+            product = self.products.get_product(line.product_id)
+            if not product:
+                continue
+
+            result.append(
+                {
+                    "id": line.id,
+                    "product_id": line.product_id,
+                    "product_name": product.name,
+                    "quantity": line.quantity,
+                    "unit_price": line.unit_price,
+                    "from_service": line.from_service,
+                }
+            )
+
+        return result
+
+    def remove_product_line(self, budget_id: int, line_id: int) -> None:
+        line = self.budgets.get_product_line(budget_id, line_id)
+        if not line:
+            raise NotFoundError("Linha de produto não encontrada")
+        self.budgets.delete_product_line(line)
+        self.uow.commit()
+
+
     def _recalculate(self, budget: Budget) -> None:
         service_hours: dict[int, float] = {}
         for line in budget.service_lines:
@@ -144,10 +176,3 @@ class BudgetService:
             self.budgets.save(budget)
             self.uow.commit()
         return budget.estimated_delivery
-
-    def remove_product_line(self, budget_id: int, line_id: int) -> None:
-        line = self.budgets.get_product_line(budget_id, line_id)
-        if not line:
-            raise NotFoundError("Linha de produto não encontrada")
-        self.budgets.delete_product_line(line)
-        self.uow.commit()
