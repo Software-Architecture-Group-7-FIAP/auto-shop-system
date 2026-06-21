@@ -83,6 +83,15 @@ class SqlAlchemyBudgetRepository:
         self.db.refresh(model)
         return self._product_line_to_domain(model)
 
+    def get_all_product_lines(self, budget_id: int) -> list[BudgetProductLine]:
+        models = (
+            self.db.query(BudgetProductLineModel)
+            .filter(BudgetProductLineModel.budget_id == budget_id)
+            .order_by(BudgetProductLineModel.id)
+            .all()
+        )
+        return [self._product_line_to_domain(model) for model in models]
+
     def get_product_line(
             self,
             budget_id: int,
