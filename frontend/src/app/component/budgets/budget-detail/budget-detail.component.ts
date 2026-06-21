@@ -1,6 +1,12 @@
 import { Component, Input, OnChanges } from '@angular/core';
-import { AvailabilityItem, Budget } from '../../../model/models';
+import {
+  AvailabilityItem,
+  Budget,
+  BudgetProductLine,
+  Product,
+} from '../../../model/models';
 import { BudgetService } from '../../../service/budget.service';
+import { ProductService } from '../../../service/product.service';
 import { BudgetsComponent } from '../budgets.component';
 
 @Component({
@@ -12,6 +18,8 @@ export class BudgetDetailComponent implements OnChanges {
   @Input() budgetId!: number;
 
   budget: Budget | undefined;
+  products: Product[] = [];
+  productLines: BudgetProductLine[] = [];
   serviceId = 0;
   serviceQuantity = 1;
   productId = 0;
@@ -20,6 +28,7 @@ export class BudgetDetailComponent implements OnChanges {
 
   constructor(
     private budgetService: BudgetService,
+    private productService: ProductService,
     private parent: BudgetsComponent
   ) {}
 
@@ -27,12 +36,26 @@ export class BudgetDetailComponent implements OnChanges {
     if (this.budgetId) {
       this.availabilityItems = [];
       this.loadBudget();
+      this.loadProducts();
+      this.loadProductLines();
     }
   }
 
   loadBudget(): void {
     this.budgetService.getById(this.budgetId).subscribe((data) => {
       this.budget = data;
+    });
+  }
+
+  loadProducts(): void {
+    this.productService.getAll().subscribe((products) => {
+      this.products = products;
+    });
+  }
+
+  loadProductLines(): void {
+    this.budgetService.listProductLines(this.budgetId).subscribe((lines) => {
+      this.productLines = lines;
     });
   }
 
@@ -47,6 +70,14 @@ export class BudgetDetailComponent implements OnChanges {
   addProductLine(): void {
     this.budgetService
       .addProductLine(this.budgetId, this.productId, this.productQuantity)
+      .subscribe(() => {
+        this.reloadBudget();
+      });
+  }
+
+  removeProductLine(productId: number): void {
+    this.budgetService
+      .removeProductLine(this.budgetId, productId)
       .subscribe(() => {
         this.reloadBudget();
       });
@@ -70,5 +101,7 @@ export class BudgetDetailComponent implements OnChanges {
       this.budget = data;
       this.parent.updateBudgetInList(data);
     });
+
+    this.loadProductLines();
   }
 }

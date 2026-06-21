@@ -17,3 +17,73 @@
 .availability-list li.insufficient {
   color: #c44;
 }
+
+.product-lines-table {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.product-id-column {
+  width: 110px;
+}
+
+.product-name-column {
+  width: auto;
+}
+
+.product-quantity-column {
+  width: 64px;
+}
+
+.product-action-column {
+  width: 120px;
+}
+
+.product-lines-table th,
+.product-lines-table td {
+  padding: 8px;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.product-lines-table th:nth-child(1),
+.product-lines-table th:nth-child(3),
+.product-lines-table td:nth-child(1),
+.product-lines-table td:nth-child(3) {
+  text-align: center;
+}
+
+.product-lines-table th:nth-child(2),
+.product-lines-table td:nth-child(2) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.product-lines-table .btn {
+  width: 100%;
+  max-width: 100%;
+}
+
+.product-line-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.product-add-action {
+  display: flex;
+  align-items: flex-end;
+}
+
+.product-add-action .btn {
+  height: 38px;
+}
+
+.product-line-fields select.text-input {
+  background: #1e2e28;
+  color: #408A71;
+}
