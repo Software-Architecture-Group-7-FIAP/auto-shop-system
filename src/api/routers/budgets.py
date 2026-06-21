@@ -8,6 +8,7 @@ from src.api.schemas import (
     AvailabilityItem,
     BudgetCreate,
     BudgetProductLineCreate,
+    BudgetProductLineResponse,
     BudgetResponse,
     BudgetServiceLineCreate,
     MessageResponse,
@@ -50,7 +51,7 @@ def get_budget(
     except DomainError as e:
         raise domain_error_handler(e)
 
-
+# Service Lines Management
 @admin_router.post("/{budget_id}/service-lines", status_code=201)
 def add_service_line(
     budget_id: int,
@@ -73,7 +74,7 @@ def add_service_line(
     except DomainError as e:
         raise domain_error_handler(e)
 
-
+# Product Lines
 @admin_router.post("/{budget_id}/product-lines", status_code=201)
 def add_product_line(
     budget_id: int,
@@ -93,6 +94,16 @@ def add_product_line(
             "product_id": line.product_id,
             "quantity": line.quantity,
         }
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+@admin_router.get("/{budget_id}/product-lines", response_model=list[BudgetProductLineResponse])
+def list_product_lines(
+    budget_id: int,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user)):
+    try:
+        return compose_budget_service(db).get_all_product_lines(budget_id)
     except DomainError as e:
         raise domain_error_handler(e)
 
