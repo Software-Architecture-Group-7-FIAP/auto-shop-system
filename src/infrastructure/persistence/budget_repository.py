@@ -83,6 +83,38 @@ class SqlAlchemyBudgetRepository:
         self.db.refresh(model)
         return self._product_line_to_domain(model)
 
+    def get_product_line(
+            self,
+            budget_id: int,
+            line_id: int,
+    ) -> BudgetProductLine | None:
+        model = (
+            self.db.query(BudgetProductLineModel)
+            .filter(
+                BudgetProductLineModel.id == line_id,
+                BudgetProductLineModel.budget_id == budget_id,
+            )
+            .first()
+        )
+
+        if not model:
+            return None
+
+        return self._product_line_to_domain(model)
+
+    def delete_product_line(self, line: BudgetProductLine) -> None:
+        model = (
+            self.db.query(BudgetProductLineModel)
+            .filter(BudgetProductLineModel.id == line.id)
+            .first()
+        )
+
+        if not model:
+            raise NotFoundError("Linha de produto não encontrada")
+
+        self.db.delete(model)
+        self.db.flush()
+
     def save(self, budget: Budget) -> Budget:
         if budget.id is None:
             raise NotFoundError("Orçamento não encontrado")
