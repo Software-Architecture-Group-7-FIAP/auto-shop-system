@@ -203,6 +203,15 @@ class BudgetProductLineCreate(BaseModel):
     quantity: int = Field(default=1, gt=0)
 
 
+class BudgetProductLineResponse(BaseModel):
+    id: int
+    product_id: int
+    product_name: str
+    quantity: int
+    unit_price: float
+    from_service: bool
+
+
 class BudgetResponse(BaseModel):
     id: int
     customer_id: int
