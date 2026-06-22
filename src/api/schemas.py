@@ -197,6 +197,13 @@ class BudgetServiceLineCreate(BaseModel):
     service_id: int
     quantity: int = Field(default=1, gt=0)
 
+class BudgetServiceLineResponse(BaseModel):
+    id: int
+    service_id: int
+    service_name: str
+    quantity: int
+    unit_price: float
+
 
 class BudgetProductLineCreate(BaseModel):
     product_id: int
@@ -204,6 +211,10 @@ class BudgetProductLineCreate(BaseModel):
 
 
 class BudgetProductLineUpdate(BaseModel):
+    quantity: int | None = None
+
+
+class BudgetServiceLineUpdate(BaseModel):
     quantity: int | None = None
 
 

@@ -70,6 +70,60 @@ class SqlAlchemyBudgetRepository:
         self.db.refresh(model)
         return self._service_line_to_domain(model)
 
+    def get_all_service_lines(self, budget_id: int) -> list[BudgetServiceLine]:
+        models = (
+            self.db.query(BudgetServiceLineModel)
+            .filter(BudgetServiceLineModel.budget_id == budget_id)
+            .order_by(BudgetServiceLineModel.id)
+            .all()
+        )
+        return [self._service_line_to_domain(model) for model in models]
+
+    def get_service_line(
+            self,
+            budget_id: int,
+            service_id: int,
+    ) -> BudgetServiceLine | None:
+        model = (
+            self.db.query(BudgetServiceLineModel)
+            .filter(
+                BudgetServiceLineModel.id == service_id,
+                BudgetServiceLineModel.budget_id == budget_id,
+            )
+            .first()
+        )
+
+        if not model:
+            return None
+
+        return self._service_line_to_domain(model)
+
+    def update_service_line(self, line: BudgetServiceLine) -> BudgetServiceLine:
+        model = (
+            self.db.query(BudgetServiceLineModel)
+            .filter(BudgetServiceLineModel.id == line.id)
+            .first()
+        )
+
+        model.quantity = line.quantity
+        self.db.flush()
+        self.db.refresh(model)
+
+        return self._service_line_to_domain(model)
+
+    def delete_service_line(self, line: BudgetServiceLine) -> None:
+        model = (
+            self.db.query(BudgetServiceLineModel)
+            .filter(BudgetServiceLineModel.id == line.id)
+            .first()
+        )
+
+        if not model:
+            raise NotFoundError("Linha de serviço não encontrada")
+
+        self.db.delete(model)
+        self.db.flush()
+
     def add_product_line(self, line: BudgetProductLine) -> BudgetProductLine:
         model = BudgetProductLineModel(
             budget_id=line.budget_id,
@@ -226,6 +280,7 @@ class SqlAlchemyBudgetServiceCatalogLookup:
         )
         return BudgetServiceDetails(
             id=model.id,
+            name=model.name,
             base_price=model.base_price,
             estimated_hours=model.estimated_hours,
             product_requirements=tuple(

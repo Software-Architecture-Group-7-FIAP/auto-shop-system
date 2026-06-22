@@ -86,6 +86,29 @@ class BudgetService:
         self.uow.commit()
         return created_line
 
+    def get_all_service_lines(self, budget_id: int) -> list[dict]:
+        self.get_by_id(budget_id)
+
+        lines = self.budgets.get_all_service_lines(budget_id)
+        result = []
+
+        for line in lines:
+            service = self.services.get_service(line.service_id)
+            if not service:
+                continue
+
+            result.append(
+                {
+                    "id": line.id,
+                    "service_id": line.service_id,
+                    "service_name": service.name,
+                    "quantity": line.quantity,
+                    "unit_price": line.unit_price,
+                }
+            )
+
+        return result
+
     def add_product_line(
         self, budget_id: int, product_id: int, quantity: int = 1
     ) -> BudgetProductLine:
@@ -174,6 +197,13 @@ class BudgetService:
         if not line:
             raise NotFoundError("Linha de produto não encontrada")
         self.budgets.delete_product_line(line)
+        self.uow.commit()
+
+    def remove_service_line(self, budget_id: int, service_id: int) -> None:
+        line = self.budgets.get_service_line(budget_id, service_id)
+        if not line:
+            raise NotFoundError("Linha de serviço não encontrada")
+        self.budgets.delete_service_line(line)
         self.uow.commit()
 
     def _recalculate(self, budget: Budget) -> None:

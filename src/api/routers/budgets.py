@@ -12,6 +12,7 @@ from src.api.schemas import (
     BudgetProductLineResponse,
     BudgetResponse,
     BudgetServiceLineCreate,
+    BudgetServiceLineResponse,
     MessageResponse,
 )
 from src.domain.exceptions import DomainError
@@ -72,6 +73,28 @@ def add_service_line(
             "service_id": line.service_id,
             "quantity": line.quantity,
         }
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+@admin_router.get("/{budget_id}/service-lines", response_model=list[BudgetServiceLineResponse])
+def list_service_lines(
+    budget_id: int,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user)):
+    try:
+        return compose_budget_service(db).get_all_service_lines(budget_id)
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+@admin_router.delete("/{budget_id}/service-lines/{service_id}", status_code=204)
+def remove_service_line(
+    budget_id: int,
+    service_id: int,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        compose_budget_service(db).remove_service_line(budget_id, service_id)
     except DomainError as e:
         raise domain_error_handler(e)
 
