@@ -96,6 +96,13 @@ export interface Budget {
   created_at: string;
 }
 
+export interface BudgetServiceLine {
+  id: number;
+  service_id: number;
+  service_name: string;
+  quantity: number;
+}
+
 export interface BudgetProductLine {
   id: number;
   product_id: number;

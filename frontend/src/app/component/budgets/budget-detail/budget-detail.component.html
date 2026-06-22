@@ -36,6 +36,86 @@
     </div>
 
     <div class="action-section">
+        <h3>Adicionar linha de serviço</h3>
+
+        <div class="field-list inline-fields product-line-fields">
+            <div class="field-name">
+                <span>Serviço</span>
+
+                <select
+                        class="text-input"
+                        name="serviceId"
+                        [(ngModel)]="serviceId"
+                        [ngModelOptions]="{ standalone: true }"
+                >
+                    <option [ngValue]="0" disabled>Selecione um serviço</option>
+
+                    <option *ngFor="let service of catalogServices" [ngValue]="service.id">
+                        {{ service.name }} (ID: {{ service.id }})
+                    </option>
+                </select>
+            </div>
+
+            <div class="field-name">
+                <span>Quantidade</span>
+                <input
+                        class="text-input small-input"
+                        type="number"
+                        name="serviceQuantity"
+                        [(ngModel)]="serviceQuantity"
+                        [ngModelOptions]="{ standalone: true }"
+                        min="1"
+                />
+            </div>
+
+            <div class="product-add-action">
+                <button class="btn btn-secondary" type="button" (click)="addServiceLine()">
+                    Adicionar serviço
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="action-section" *ngIf="serviceLines.length">
+        <h3>Serviços adicionados</h3>
+
+        <table class="product-lines-table">
+            <colgroup>
+                <col class="product-id-column"/>
+                <col class="product-name-column"/>
+                <col class="product-quantity-column"/>
+                <col class="product-action-column"/>
+            </colgroup>
+
+            <thead>
+            <tr>
+                <th>Service ID</th>
+                <th>Service Name</th>
+                <th>Qtde</th>
+                <th>Remover</th>
+            </tr>
+            </thead>
+
+            <tbody>
+            <tr *ngFor="let line of serviceLines">
+                <td>{{ line.service_id }}</td>
+                <td>{{ line.service_name }}</td>
+                <td>{{ line.quantity }}</td>
+                <td>
+                    <button
+                            class="btn btn-secondary"
+                            type="button"
+                            (click)="removeServiceLine(line.id)"
+                    >
+                        Remover
+                    </button>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="action-section">
         <h3>Adicionar linha de produto</h3>
 
         <div class="field-list inline-fields product-line-fields">
@@ -113,42 +193,6 @@
             </tr>
             </tbody>
         </table>
-    </div>
-
-    <div class="action-section">
-        <h3>Adicionar linha de serviço</h3>
-
-        <div class="field-list inline-fields">
-            <div class="field-name">
-                <span>ID do serviço</span>
-                <input
-                        class="text-input small-input"
-                        type="number"
-                        name="serviceId"
-                        [(ngModel)]="serviceId"
-                        [ngModelOptions]="{ standalone: true }"
-                        min="1"
-                />
-            </div>
-
-            <div class="field-name">
-                <span>Quantidade</span>
-                <input
-                        class="text-input small-input"
-                        type="number"
-                        name="serviceQuantity"
-                        [(ngModel)]="serviceQuantity"
-                        [ngModelOptions]="{ standalone: true }"
-                        min="1"
-                />
-            </div>
-        </div>
-
-        <div class="button-list">
-            <button class="btn btn-secondary" type="button" (click)="addServiceLine()">
-                Adicionar serviço
-            </button>
-        </div>
     </div>
 
     <div class="action-section">

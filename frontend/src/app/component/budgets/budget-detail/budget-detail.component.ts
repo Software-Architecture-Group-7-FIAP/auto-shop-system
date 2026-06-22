@@ -3,9 +3,12 @@ import {
   AvailabilityItem,
   Budget,
   BudgetProductLine,
+  BudgetServiceLine,
+  CatalogService,
   Product,
 } from '../../../model/models';
 import { BudgetService } from '../../../service/budget.service';
+import { CatalogServiceService } from '../../../service/catalog-service.service';
 import { ProductService } from '../../../service/product.service';
 import { BudgetsComponent } from '../budgets.component';
 
@@ -19,7 +22,9 @@ export class BudgetDetailComponent implements OnChanges {
 
   budget: Budget | undefined;
   products: Product[] = [];
+  catalogServices: CatalogService[] = [];
   productLines: BudgetProductLine[] = [];
+  serviceLines: BudgetServiceLine[] = [];
   serviceId = 0;
   serviceQuantity = 1;
   productId = 0;
@@ -29,6 +34,7 @@ export class BudgetDetailComponent implements OnChanges {
   constructor(
     private budgetService: BudgetService,
     private productService: ProductService,
+    private catalogService: CatalogServiceService,
     private parent: BudgetsComponent
   ) {}
 
@@ -37,7 +43,9 @@ export class BudgetDetailComponent implements OnChanges {
       this.availabilityItems = [];
       this.loadBudget();
       this.loadProducts();
+      this.loadCatalogServices();
       this.loadProductLines();
+      this.loadServiceLines();
     }
   }
 
@@ -53,15 +61,35 @@ export class BudgetDetailComponent implements OnChanges {
     });
   }
 
+  loadCatalogServices(): void {
+    this.catalogService.getAll().subscribe((services) => {
+      this.catalogServices = services;
+    });
+  }
+
   loadProductLines(): void {
     this.budgetService.listProductLines(this.budgetId).subscribe((lines) => {
       this.productLines = lines;
     });
   }
 
+  loadServiceLines(): void {
+    this.budgetService.listServiceLines(this.budgetId).subscribe((lines) => {
+      this.serviceLines = lines;
+    });
+  }
+
   addServiceLine(): void {
     this.budgetService
       .addServiceLine(this.budgetId, this.serviceId, this.serviceQuantity)
+      .subscribe(() => {
+        this.reloadBudget();
+      });
+  }
+
+  removeServiceLine(serviceLineId: number): void {
+    this.budgetService
+      .removeServiceLine(this.budgetId, serviceLineId)
       .subscribe(() => {
         this.reloadBudget();
       });
@@ -103,5 +131,6 @@ export class BudgetDetailComponent implements OnChanges {
     });
 
     this.loadProductLines();
+    this.loadServiceLines();
   }
 }
