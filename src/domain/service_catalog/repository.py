@@ -29,5 +29,12 @@ class ServiceCatalogRepository(Protocol):
     ) -> ServiceProductLine | None:
         ...
 
+    def get_product_line_by_product(
+        self,
+        service_id: int,
+        product_id: int,
+    ) -> ServiceProductLine | None:
+        ...
+
     def delete_product_line(self, line: ServiceProductLine) -> None:
         ...

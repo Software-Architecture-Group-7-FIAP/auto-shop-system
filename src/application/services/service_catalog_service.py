@@ -1,6 +1,6 @@
 from src.application.ports.product_lookup import ProductLookup
 from src.application.ports.unit_of_work import UnitOfWork
-from src.domain.exceptions import NotFoundError
+from src.domain.exceptions import ConflictError, NotFoundError
 from src.domain.service_catalog.entity import CatalogService, ServiceProductLine
 from src.domain.service_catalog.repository import ServiceCatalogRepository
 
@@ -68,6 +68,8 @@ class ServiceCatalogService:
             raise NotFoundError("Produto não encontrado")
         if service.id is None:
             raise NotFoundError("Serviço não encontrado")
+        if self.services.get_product_line_by_product(service.id, product_id):
+            raise ConflictError("Produto já vinculado ao serviço")
 
         line = ServiceProductLine.create(
             service_id=service.id,
@@ -80,6 +82,14 @@ class ServiceCatalogService:
 
     def remove_product_line(self, service_id: int, line_id: int) -> None:
         line = self.services.get_product_line(service_id, line_id)
+        if not line:
+            raise NotFoundError("Linha de produto não encontrada")
+        self.services.delete_product_line(line)
+        self.uow.commit()
+
+    def remove_product_line_by_product(self, service_id: int, product_id: int) -> None:
+        self.get_by_id(service_id)
+        line = self.services.get_product_line_by_product(service_id, product_id)
         if not line:
             raise NotFoundError("Linha de produto não encontrada")
         self.services.delete_product_line(line)

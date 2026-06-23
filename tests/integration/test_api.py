@@ -182,11 +182,44 @@ def test_service_catalog_crud_and_product_lines(client, auth_headers):
     assert line.json()["service_id"] == service_id
     assert line.json()["quantity"] == 2
 
-    delete_line = client.delete(
+    duplicate_line = client.post(
+        f"/api/v1/admin/services/{service_id}/product-lines",
+        headers=auth_headers,
+        json={"product_id": product.json()["id"], "quantity": 1},
+    )
+    assert duplicate_line.status_code == 409
+
+    found_with_lines = client.get(f"/api/v1/admin/services/{service_id}", headers=auth_headers)
+    assert found_with_lines.status_code == 200
+    assert found_with_lines.json()["product_lines"] == [
+        {
+            "id": line.json()["id"],
+            "service_id": service_id,
+            "product_id": product.json()["id"],
+            "quantity": 2,
+        }
+    ]
+
+    delete_line = client.request(
+        "DELETE",
+        f"/api/v1/admin/services/{service_id}/product-lines",
+        headers=auth_headers,
+        json={"product_id": product.json()["id"]},
+    )
+    assert delete_line.status_code == 204
+
+    line = client.post(
+        f"/api/v1/admin/services/{service_id}/product-lines",
+        headers=auth_headers,
+        json={"product_id": product.json()["id"], "quantity": 1},
+    )
+    assert line.status_code == 201
+
+    delete_line_by_id = client.delete(
         f"/api/v1/admin/services/{service_id}/product-lines/{line.json()['id']}",
         headers=auth_headers,
     )
-    assert delete_line.status_code == 204
+    assert delete_line_by_id.status_code == 204
 
     delete = client.delete(f"/api/v1/admin/services/{service_id}", headers=auth_headers)
     assert delete.status_code == 204
