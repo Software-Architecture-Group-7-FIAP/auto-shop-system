@@ -83,6 +83,9 @@ class ServiceProductLine:
             quantity=cls._positive_quantity(quantity),
         )
 
+    def increase_quantity(self, quantity: int) -> None:
+        self.quantity += self._positive_quantity(quantity)
+
     @staticmethod
     def _positive_quantity(quantity: int) -> int:
         if quantity <= 0:

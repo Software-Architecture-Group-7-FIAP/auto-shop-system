@@ -182,12 +182,14 @@ def test_service_catalog_crud_and_product_lines(client, auth_headers):
     assert line.json()["service_id"] == service_id
     assert line.json()["quantity"] == 2
 
-    duplicate_line = client.post(
+    increased_line = client.post(
         f"/api/v1/admin/services/{service_id}/product-lines",
         headers=auth_headers,
         json={"product_id": product.json()["id"], "quantity": 1},
     )
-    assert duplicate_line.status_code == 409
+    assert increased_line.status_code == 201
+    assert increased_line.json()["id"] == line.json()["id"]
+    assert increased_line.json()["quantity"] == 3
 
     found_with_lines = client.get(f"/api/v1/admin/services/{service_id}", headers=auth_headers)
     assert found_with_lines.status_code == 200
@@ -196,7 +198,7 @@ def test_service_catalog_crud_and_product_lines(client, auth_headers):
             "id": line.json()["id"],
             "service_id": service_id,
             "product_id": product.json()["id"],
-            "quantity": 2,
+            "quantity": 3,
         }
     ]
 

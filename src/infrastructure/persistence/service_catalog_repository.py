@@ -82,6 +82,26 @@ class SqlAlchemyServiceCatalogRepository:
         self.db.refresh(model)
         return self._line_to_domain(model)
 
+    def save_product_line(self, line: ServiceProductLine) -> ServiceProductLine:
+        if line.id is None:
+            raise NotFoundError("Linha de produto não encontrada")
+
+        model = (
+            self.db.query(ServiceProductLineModel)
+            .filter(
+                ServiceProductLineModel.id == line.id,
+                ServiceProductLineModel.service_id == line.service_id,
+            )
+            .first()
+        )
+        if not model:
+            raise NotFoundError("Linha de produto não encontrada")
+
+        model.quantity = line.quantity
+        self.db.flush()
+        self.db.refresh(model)
+        return self._line_to_domain(model)
+
     def get_product_line(
         self,
         service_id: int,

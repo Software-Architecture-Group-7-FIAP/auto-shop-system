@@ -3,7 +3,7 @@ from dataclasses import replace
 import pytest
 
 from src.application.services.service_catalog_service import ServiceCatalogService
-from src.domain.exceptions import ConflictError, NotFoundError
+from src.domain.exceptions import NotFoundError
 from src.domain.service_catalog.entity import CatalogService, ServiceProductLine
 
 
@@ -40,6 +40,11 @@ class InMemoryServiceCatalogRepository:
         self.product_lines[self.next_line_id] = created
         self.next_line_id += 1
         return created
+
+    def save_product_line(self, line: ServiceProductLine) -> ServiceProductLine:
+        assert line.id is not None
+        self.product_lines[line.id] = line
+        return line
 
     def get_product_line(
         self,
@@ -140,18 +145,18 @@ def test_service_catalog_adds_product_line():
     assert uow.commits == 2
 
 
-def test_service_catalog_rejects_duplicate_product_line():
+def test_service_catalog_increases_existing_product_line_quantity():
     repository = InMemoryServiceCatalogRepository()
     uow = FakeUnitOfWork()
     service = ServiceCatalogService(repository, InMemoryProductLookup({2}), uow)
     created = service.create("Troca de óleo", None, 100.0, 2.0)
     service.add_product_line(created.id, product_id=2, quantity=3)
 
-    with pytest.raises(ConflictError):
-        service.add_product_line(created.id, product_id=2, quantity=1)
+    line = service.add_product_line(created.id, product_id=2, quantity=1)
 
     assert len(repository.product_lines) == 1
-    assert uow.commits == 2
+    assert line.quantity == 4
+    assert uow.commits == 3
 
 
 def test_service_catalog_rejects_missing_product():
