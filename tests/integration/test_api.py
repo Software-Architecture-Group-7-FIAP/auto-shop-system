@@ -22,6 +22,25 @@ def _pf_customer_payload(**overrides):
     return payload
 
 
+def _supplier_payload(**overrides):
+    payload = {
+        "name": "Fornecedor A",
+        "document": "04.252.011/0001-10",
+        "email": "fornecedor@test.com",
+        "phone": "11999999999",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _create_supplier(client, auth_headers, **overrides):
+    return client.post(
+        "/api/v1/admin/suppliers",
+        headers=auth_headers,
+        json=_supplier_payload(**overrides),
+    ).json()
+
+
 def test_login(client):
     response = client.post(
         "/api/v1/auth/login",
@@ -161,6 +180,8 @@ def test_service_catalog_crud_and_product_lines(client, auth_headers):
     assert update.json()["description"] == "Serviço completo"
     assert update.json()["base_price"] == 175.0
 
+    supplier = _create_supplier(client, auth_headers)
+
     product = client.post(
         "/api/v1/admin/products",
         headers=auth_headers,
@@ -169,6 +190,7 @@ def test_service_catalog_crud_and_product_lines(client, auth_headers):
             "sku": "PAR-SERV-001",
             "unit_price": 5.0,
             "stock_quantity": 100,
+            "supplier_id": supplier["id"],
         },
     )
     assert product.status_code == 201
@@ -235,10 +257,7 @@ def test_products_and_suppliers_crud(client, auth_headers):
         "/api/v1/admin/suppliers",
         headers=auth_headers,
         json={
-            "name": "Fornecedor A",
-            "document": "04.252.011/0001-10",
-            "email": "fornecedor@test.com",
-            "phone": "11999999999",
+            **_supplier_payload(),
         },
     )
     assert supplier.status_code == 201
@@ -281,9 +300,27 @@ def test_products_and_suppliers_crud(client, auth_headers):
     duplicate = client.post(
         "/api/v1/admin/products",
         headers=auth_headers,
-        json={"name": "Óleo", "sku": "OLEO-API-001", "unit_price": 55.0},
+        json={
+            "name": "Óleo",
+            "sku": "OLEO-API-001",
+            "unit_price": 55.0,
+            "supplier_id": supplier_id,
+        },
     )
     assert duplicate.status_code == 409
+
+    missing_supplier = client.post(
+        "/api/v1/admin/products",
+        headers=auth_headers,
+        json={"name": "Filtro", "sku": "FILTRO-API-001", "unit_price": 30.0},
+    )
+    assert missing_supplier.status_code == 422
+
+    linked_supplier_delete = client.delete(
+        f"/api/v1/admin/suppliers/{supplier_id}",
+        headers=auth_headers,
+    )
+    assert linked_supplier_delete.status_code == 409
 
     listed_products = client.get("/api/v1/admin/products", headers=auth_headers)
     assert listed_products.status_code == 200
@@ -358,10 +395,18 @@ def test_full_flow(client, auth_headers):
         json={"name": "Alinhamento", "base_price": 150.0, "estimated_hours": 1.5},
     ).json()
 
+    supplier = _create_supplier(client, auth_headers)
+
     product = client.post(
         "/api/v1/admin/products",
         headers=auth_headers,
-        json={"name": "Parafuso", "sku": "PAR-001", "unit_price": 5.0, "stock_quantity": 100},
+        json={
+            "name": "Parafuso",
+            "sku": "PAR-001",
+            "unit_price": 5.0,
+            "stock_quantity": 100,
+            "supplier_id": supplier["id"],
+        },
     ).json()
 
     budget = client.post(

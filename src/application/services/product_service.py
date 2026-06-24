@@ -7,8 +7,14 @@ from src.domain.supplier.repository import SupplierRepository
 
 
 class ProductService:
-    def __init__(self, products: ProductRepository, uow: UnitOfWork):
+    def __init__(
+        self,
+        products: ProductRepository,
+        suppliers: SupplierRepository,
+        uow: UnitOfWork,
+    ):
         self.products = products
+        self.suppliers = suppliers
         self.uow = uow
 
     def create(
@@ -22,6 +28,7 @@ class ProductService:
     ) -> Product:
         if self.products.exists_by_sku(sku):
             raise ConflictError("Produto com este SKU já existe")
+        self._ensure_supplier_exists(supplier_id)
         product = Product.create(
             name=name,
             sku=sku,
@@ -51,6 +58,8 @@ class ProductService:
         description: str | None,
         supplier_id: int | None,
     ) -> Product:
+        if supplier_id is not None:
+            self._ensure_supplier_exists(supplier_id)
         product = self.get_by_id(product_id)
         product.update_details(name, unit_price, description, supplier_id)
         updated = self.products.save(product)
@@ -69,10 +78,20 @@ class ProductService:
         self.products.delete(product)
         self.uow.commit()
 
+    def _ensure_supplier_exists(self, supplier_id: int | None) -> None:
+        if supplier_id is None or not self.suppliers.get_by_id(supplier_id):
+            raise NotFoundError("Fornecedor não encontrado")
+
 
 class SupplierService:
-    def __init__(self, suppliers: SupplierRepository, uow: UnitOfWork):
+    def __init__(
+        self,
+        suppliers: SupplierRepository,
+        products: ProductRepository,
+        uow: UnitOfWork,
+    ):
         self.suppliers = suppliers
+        self.products = products
         self.uow = uow
 
     def create(
@@ -107,5 +126,7 @@ class SupplierService:
 
     def delete(self, supplier_id: int) -> None:
         supplier = self.get_by_id(supplier_id)
+        if self.products.exists_by_supplier_id(supplier_id):
+            raise ConflictError("Fornecedor possui produtos vinculados")
         self.suppliers.delete(supplier)
         self.uow.commit()

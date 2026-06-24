@@ -114,7 +114,7 @@ class ProductModel(Base):
     sku: Mapped[str] = mapped_column(String(50), unique=True)
     unit_price: Mapped[float] = mapped_column(Float)
     stock_quantity: Mapped[int] = mapped_column(Integer, default=0)
-    supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

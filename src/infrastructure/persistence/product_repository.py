@@ -41,6 +41,14 @@ class SqlAlchemyProductRepository:
             is not None
         )
 
+    def exists_by_supplier_id(self, supplier_id: int) -> bool:
+        return (
+            self.db.query(ProductModel)
+            .filter(ProductModel.supplier_id == supplier_id)
+            .first()
+            is not None
+        )
+
     def save(self, product: Product) -> Product:
         if product.id is None:
             raise NotFoundError("Produto não encontrado")

@@ -29,11 +29,16 @@ def test_product_rejects_non_positive_price():
 
 def test_product_rejects_negative_initial_stock():
     with pytest.raises(ValidationError):
-        Product.create("Óleo 5W30", "OLEO-001", 50.0, -1)
+        Product.create("Óleo 5W30", "OLEO-001", 50.0, -1, supplier_id=1)
+
+
+def test_product_rejects_missing_supplier():
+    with pytest.raises(ValidationError):
+        Product.create("Óleo 5W30", "OLEO-001", 50.0, 10)
 
 
 def test_product_updates_details_and_stock():
-    product = Product.create("Óleo 5W30", "OLEO-001", 50.0, 10)
+    product = Product.create("Óleo 5W30", "OLEO-001", 50.0, 10, supplier_id=1)
 
     product.update_details("Filtro", 25.0, "Filtro de óleo", 2)
     product.update_stock(-3)
@@ -47,7 +52,7 @@ def test_product_updates_details_and_stock():
 
 
 def test_product_rejects_negative_final_stock():
-    product = Product.create("Óleo 5W30", "OLEO-001", 50.0, 10)
+    product = Product.create("Óleo 5W30", "OLEO-001", 50.0, 10, supplier_id=1)
 
     with pytest.raises(ValidationError):
         product.update_stock(-11)

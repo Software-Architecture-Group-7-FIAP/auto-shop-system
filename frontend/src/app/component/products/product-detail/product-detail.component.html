@@ -45,16 +45,21 @@
         />
       </div>
       <div class="field-name">
-        <span>ID do fornecedor</span>
-        <input
-          class="text-input small-input"
-          type="number"
+        <span>Fornecedor</span>
+        <select
+          class="text-input medium-input"
           name="supplier_id"
           [(ngModel)]="product.supplier_id"
           (ngModelChange)="productChanged()"
-        />
+          required
+        >
+          <option *ngFor="let supplier of suppliers" [ngValue]="supplier.id">
+            {{ supplier.name }}
+          </option>
+        </select>
       </div>
     </div>
+    <p *ngIf="errorMessage" class="error-message">{{ errorMessage }}</p>
     <div class="button-list">
       <button
         class="btn btn-primary"
