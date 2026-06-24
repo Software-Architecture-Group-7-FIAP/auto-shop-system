@@ -40,11 +40,8 @@ export class CatalogServiceService {
     );
   }
 
-  removeProductLineByProduct(serviceId: number, productId: number): Observable<void> {
-    return this.http.request<void>('DELETE', `${this.url}/${serviceId}/product-lines`, {
-      ...this.httpOptions,
-      body: { product_id: productId },
-    });
+  removeProductLine(serviceId: number, lineId: number): Observable<void> {
+    return this.http.delete<void>(`${this.url}/${serviceId}/product-lines/${lineId}`);
   }
 
   delete(id: number): Observable<void> {

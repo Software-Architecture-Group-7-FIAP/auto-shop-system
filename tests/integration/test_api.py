@@ -224,11 +224,9 @@ def test_service_catalog_crud_and_product_lines(client, auth_headers):
         }
     ]
 
-    delete_line = client.request(
-        "DELETE",
-        f"/api/v1/admin/services/{service_id}/product-lines",
+    delete_line = client.delete(
+        f"/api/v1/admin/services/{service_id}/product-lines/{line.json()['id']}",
         headers=auth_headers,
-        json={"product_id": product.json()["id"]},
     )
     assert delete_line.status_code == 204
 
@@ -238,12 +236,6 @@ def test_service_catalog_crud_and_product_lines(client, auth_headers):
         json={"product_id": product.json()["id"], "quantity": 1},
     )
     assert line.status_code == 201
-
-    delete_line_by_id = client.delete(
-        f"/api/v1/admin/services/{service_id}/product-lines/{line.json()['id']}",
-        headers=auth_headers,
-    )
-    assert delete_line_by_id.status_code == 204
 
     delete = client.delete(f"/api/v1/admin/services/{service_id}", headers=auth_headers)
     assert delete.status_code == 204

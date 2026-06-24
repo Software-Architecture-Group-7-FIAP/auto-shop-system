@@ -181,22 +181,3 @@ def test_service_catalog_removes_product_line():
 
     assert repository.get_product_line(created.id, line.id) is None
 
-
-def test_service_catalog_removes_product_line_by_product():
-    repository = InMemoryServiceCatalogRepository()
-    service = ServiceCatalogService(repository, InMemoryProductLookup({2}), FakeUnitOfWork())
-    created = service.create("Troca de óleo", None, 100.0, 2.0)
-    line = service.add_product_line(created.id, product_id=2, quantity=3)
-
-    service.remove_product_line_by_product(created.id, product_id=2)
-
-    assert repository.get_product_line(created.id, line.id) is None
-
-
-def test_service_catalog_rejects_missing_product_line_by_product():
-    repository = InMemoryServiceCatalogRepository()
-    service = ServiceCatalogService(repository, InMemoryProductLookup({2}), FakeUnitOfWork())
-    created = service.create("Troca de óleo", None, 100.0, 2.0)
-
-    with pytest.raises(NotFoundError):
-        service.remove_product_line_by_product(created.id, product_id=2)

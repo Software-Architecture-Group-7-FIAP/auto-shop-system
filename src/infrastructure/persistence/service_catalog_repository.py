@@ -1,3 +1,4 @@
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -23,29 +24,26 @@ class SqlAlchemyServiceCatalogRepository:
         return self._to_domain(model)
 
     def get_by_id(self, service_id: int) -> CatalogService | None:
-        model = (
-            self.db.query(ServiceModel)
+        model = self.db.scalar(
+            select(ServiceModel)
             .options(selectinload(ServiceModel.product_lines))
-            .filter(ServiceModel.id == service_id)
-            .first()
+            .where(ServiceModel.id == service_id)
         )
-        if not model:
-            return None
-        return self._to_domain(model)
+        return self._to_domain(model) if model else None
 
     def list_all(self) -> list[CatalogService]:
-        models = (
-            self.db.query(ServiceModel)
-            .options(selectinload(ServiceModel.product_lines))
-            .all()
-        )
+        models = self.db.scalars(
+            select(ServiceModel).options(selectinload(ServiceModel.product_lines))
+        ).all()
         return [self._to_domain(model) for model in models]
 
     def save(self, service: CatalogService) -> CatalogService:
         if service.id is None:
             raise NotFoundError("Serviço não encontrado")
 
-        model = self.db.query(ServiceModel).filter(ServiceModel.id == service.id).first()
+        model = self.db.scalar(
+            select(ServiceModel).where(ServiceModel.id == service.id)
+        )
         if not model:
             raise NotFoundError("Serviço não encontrado")
 
@@ -61,7 +59,9 @@ class SqlAlchemyServiceCatalogRepository:
         if service.id is None:
             raise NotFoundError("Serviço não encontrado")
 
-        model = self.db.query(ServiceModel).filter(ServiceModel.id == service.id).first()
+        model = self.db.scalar(
+            select(ServiceModel).where(ServiceModel.id == service.id)
+        )
         if not model:
             raise NotFoundError("Serviço não encontrado")
 
@@ -86,13 +86,11 @@ class SqlAlchemyServiceCatalogRepository:
         if line.id is None:
             raise NotFoundError("Linha de produto não encontrada")
 
-        model = (
-            self.db.query(ServiceProductLineModel)
-            .filter(
+        model = self.db.scalar(
+            select(ServiceProductLineModel).where(
                 ServiceProductLineModel.id == line.id,
                 ServiceProductLineModel.service_id == line.service_id,
             )
-            .first()
         )
         if not model:
             raise NotFoundError("Linha de produto não encontrada")
@@ -107,46 +105,36 @@ class SqlAlchemyServiceCatalogRepository:
         service_id: int,
         line_id: int,
     ) -> ServiceProductLine | None:
-        model = (
-            self.db.query(ServiceProductLineModel)
-            .filter(
+        model = self.db.scalar(
+            select(ServiceProductLineModel).where(
                 ServiceProductLineModel.id == line_id,
                 ServiceProductLineModel.service_id == service_id,
             )
-            .first()
         )
-        if not model:
-            return None
-        return self._line_to_domain(model)
+        return self._line_to_domain(model) if model else None
 
     def get_product_line_by_product(
         self,
         service_id: int,
         product_id: int,
     ) -> ServiceProductLine | None:
-        model = (
-            self.db.query(ServiceProductLineModel)
-            .filter(
+        model = self.db.scalar(
+            select(ServiceProductLineModel).where(
                 ServiceProductLineModel.service_id == service_id,
                 ServiceProductLineModel.product_id == product_id,
             )
-            .first()
         )
-        if not model:
-            return None
-        return self._line_to_domain(model)
+        return self._line_to_domain(model) if model else None
 
     def delete_product_line(self, line: ServiceProductLine) -> None:
         if line.id is None:
             raise NotFoundError("Linha de produto não encontrada")
 
-        model = (
-            self.db.query(ServiceProductLineModel)
-            .filter(
+        model = self.db.scalar(
+            select(ServiceProductLineModel).where(
                 ServiceProductLineModel.id == line.id,
                 ServiceProductLineModel.service_id == line.service_id,
             )
-            .first()
         )
         if not model:
             raise NotFoundError("Linha de produto não encontrada")
