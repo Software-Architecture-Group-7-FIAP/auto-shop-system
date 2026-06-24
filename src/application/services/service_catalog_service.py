@@ -90,11 +90,3 @@ class ServiceCatalogService:
             raise NotFoundError("Linha de produto não encontrada")
         self.services.delete_product_line(line)
         self.uow.commit()
-
-    def remove_product_line_by_product(self, service_id: int, product_id: int) -> None:
-        self.get_by_id(service_id)
-        line = self.services.get_product_line_by_product(service_id, product_id)
-        if not line:
-            raise NotFoundError("Linha de produto não encontrada")
-        self.services.delete_product_line(line)
-        self.uow.commit()

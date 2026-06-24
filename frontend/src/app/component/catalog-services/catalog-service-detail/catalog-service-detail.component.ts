@@ -96,10 +96,10 @@ export class CatalogServiceDetailComponent implements OnChanges {
       });
   }
 
-  removeProductLine(productId: number): void {
+  removeProductLine(lineId: number): void {
     this.productMessage = '';
     this.productError = '';
-    this.catalogServiceService.removeProductLineByProduct(this.catalogServiceId, productId).subscribe({
+    this.catalogServiceService.removeProductLine(this.catalogServiceId, lineId).subscribe({
       next: () => {
         this.productMessage = 'Produto removido da composição.';
         this.reloadCatalogService();
