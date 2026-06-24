@@ -41,6 +41,11 @@ class InMemoryServiceCatalogRepository:
         self.next_line_id += 1
         return created
 
+    def save_product_line(self, line: ServiceProductLine) -> ServiceProductLine:
+        assert line.id is not None
+        self.product_lines[line.id] = line
+        return line
+
     def get_product_line(
         self,
         service_id: int,
@@ -50,6 +55,16 @@ class InMemoryServiceCatalogRepository:
         if not line or line.service_id != service_id:
             return None
         return line
+
+    def get_product_line_by_product(
+        self,
+        service_id: int,
+        product_id: int,
+    ) -> ServiceProductLine | None:
+        for line in self.product_lines.values():
+            if line.service_id == service_id and line.product_id == product_id:
+                return line
+        return None
 
     def delete_product_line(self, line: ServiceProductLine) -> None:
         assert line.id is not None
@@ -130,6 +145,20 @@ def test_service_catalog_adds_product_line():
     assert uow.commits == 2
 
 
+def test_service_catalog_increases_existing_product_line_quantity():
+    repository = InMemoryServiceCatalogRepository()
+    uow = FakeUnitOfWork()
+    service = ServiceCatalogService(repository, InMemoryProductLookup({2}), uow)
+    created = service.create("Troca de óleo", None, 100.0, 2.0)
+    service.add_product_line(created.id, product_id=2, quantity=3)
+
+    line = service.add_product_line(created.id, product_id=2, quantity=1)
+
+    assert len(repository.product_lines) == 1
+    assert line.quantity == 4
+    assert uow.commits == 3
+
+
 def test_service_catalog_rejects_missing_product():
     service = ServiceCatalogService(
         InMemoryServiceCatalogRepository(),
@@ -151,3 +180,4 @@ def test_service_catalog_removes_product_line():
     service.remove_product_line(created.id, line.id)
 
     assert repository.get_product_line(created.id, line.id) is None
+

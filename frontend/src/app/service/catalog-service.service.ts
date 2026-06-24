@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { CatalogService } from '../model/models';
+import { CatalogService, ServiceProductLine } from '../model/models';
 
 @Injectable({ providedIn: 'root' })
 export class CatalogServiceService {
@@ -26,6 +26,22 @@ export class CatalogServiceService {
 
   update(id: number, body: object): Observable<CatalogService> {
     return this.http.put<CatalogService>(`${this.url}/${id}`, body, this.httpOptions);
+  }
+
+  addProductLine(
+    serviceId: number,
+    productId: number,
+    quantity: number
+  ): Observable<ServiceProductLine> {
+    return this.http.post<ServiceProductLine>(
+      `${this.url}/${serviceId}/product-lines`,
+      { product_id: productId, quantity },
+      this.httpOptions
+    );
+  }
+
+  removeProductLine(serviceId: number, lineId: number): Observable<void> {
+    return this.http.delete<void>(`${this.url}/${serviceId}/product-lines/${lineId}`);
   }
 
   delete(id: number): Observable<void> {

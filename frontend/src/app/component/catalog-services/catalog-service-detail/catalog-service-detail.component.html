@@ -61,4 +61,91 @@
       </button>
     </div>
   </form>
+
+  <section class="service-composition-panel">
+    <div class="composition-heading">
+      <div>
+        <p class="composition-kicker">Composição técnica</p>
+        <h3>Produtos necessários</h3>
+      </div>
+      <span class="line-count">
+        {{ catalogService.product_lines.length || 0 }} item{{ catalogService.product_lines.length === 1 ? '' : 's' }}
+      </span>
+    </div>
+
+    <div class="composition-form">
+      <div class="field-name product-select-field">
+        <span>Produto</span>
+        <select
+          class="select-input"
+          name="selectedProductId"
+          [(ngModel)]="selectedProductId"
+          [ngModelOptions]="{ standalone: true }"
+        >
+          <option [ngValue]="0" disabled>Selecione um produto</option>
+          <option *ngFor="let product of products" [ngValue]="product.id">
+            {{ product.sku }} — {{ product.name }}
+          </option>
+        </select>
+      </div>
+
+      <div class="field-name quantity-field">
+        <span>Qtd.</span>
+        <input
+          class="text-input small-input"
+          type="number"
+          name="productQuantity"
+          [(ngModel)]="productQuantity"
+          [ngModelOptions]="{ standalone: true }"
+          min="1"
+          step="1"
+        />
+      </div>
+
+      <button
+        class="btn btn-primary composition-add-button"
+        type="button"
+        [disabled]="!products.length || !selectedProductId || productQuantity < 1"
+        (click)="addProductLine()"
+      >
+        {{ productActionLabel() }}
+      </button>
+    </div>
+
+    <p *ngIf="currentSelectedQuantity() !== null" class="current-quantity-note">
+      Quantidade atual no serviço: {{ currentSelectedQuantity() }}. O valor informado será somado.
+    </p>
+
+    <p *ngIf="productMessage" class="composition-message success">{{ productMessage }}</p>
+    <p *ngIf="productError" class="composition-message error">{{ productError }}</p>
+
+    <div *ngIf="catalogService.product_lines.length; else emptyComposition" class="composition-list">
+      <div class="composition-row composition-row-header">
+        <span>Produto</span>
+        <span>Qtd.</span>
+        <span>Preço un.</span>
+        <span></span>
+      </div>
+      <div *ngFor="let line of catalogService.product_lines" class="composition-row">
+        <span class="product-name">{{ productLabel(line.product_id) }}</span>
+        <span class="quantity-pill">{{ line.quantity }}</span>
+        <span>
+          {{ productPrice(line.product_id) !== null ? (productPrice(line.product_id) | number: '1.2-2') : '—' }}
+        </span>
+        <button
+          class="btn btn-danger compact-button"
+          type="button"
+          (click)="removeProductLine(line.id)"
+        >
+          Remover
+        </button>
+      </div>
+    </div>
+
+    <ng-template #emptyComposition>
+      <div class="empty-composition">
+        Nenhum produto vinculado. Adicione peças ou insumos usados por este serviço.
+      </div>
+    </ng-template>
+  </section>
 </div>

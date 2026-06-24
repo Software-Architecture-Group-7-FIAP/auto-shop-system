@@ -120,6 +120,15 @@ class ServiceProductLineCreate(BaseModel):
     quantity: int = Field(default=1, gt=0)
 
 
+class ServiceProductLineResponse(BaseModel):
+    id: int
+    service_id: int
+    product_id: int
+    quantity: int
+
+    model_config = {"from_attributes": True}
+
+
 class ServiceResponse(BaseModel):
     id: int
     name: str
@@ -127,6 +136,7 @@ class ServiceResponse(BaseModel):
     base_price: float
     estimated_hours: float
     created_at: datetime
+    product_lines: list[ServiceProductLineResponse] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

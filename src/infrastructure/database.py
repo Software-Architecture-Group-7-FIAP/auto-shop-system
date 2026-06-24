@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
@@ -134,6 +135,9 @@ class ServiceModel(Base):
 
 class ServiceProductLineModel(Base):
     __tablename__ = "service_product_lines"
+    __table_args__ = (
+        UniqueConstraint("service_id", "product_id", name="uq_service_product_line_product"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     service_id: Mapped[int] = mapped_column(ForeignKey("services.id"))

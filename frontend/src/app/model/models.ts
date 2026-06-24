@@ -63,6 +63,14 @@ export interface CatalogService {
   base_price: number;
   estimated_hours: number;
   created_at: string;
+  product_lines: ServiceProductLine[];
+}
+
+export interface ServiceProductLine {
+  id: number;
+  service_id: number;
+  product_id: number;
+  quantity: number;
 }
 
 export interface Product {
