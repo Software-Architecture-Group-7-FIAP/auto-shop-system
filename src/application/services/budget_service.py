@@ -15,7 +15,7 @@ from src.domain.budget.entity import (
     ProductAvailability,
 )
 from src.domain.budget.repository import BudgetRepository
-from src.domain.exceptions import NotFoundError
+from src.domain.exceptions import NotFoundError, ValidationError
 
 
 class BudgetService:
@@ -61,7 +61,12 @@ class BudgetService:
         service_id: int,
         quantity: int = 1,
     ) -> BudgetServiceLine:
+
         budget = self.get_by_id(budget_id)
+
+        if any(line.service_id == service_id for line in budget.service_lines):
+            raise ValidationError("Este serviço já foi adicionado ao orçamento")
+
         service = self.services.get_service(service_id)
         if not service:
             raise NotFoundError("Serviço não encontrado")
@@ -113,6 +118,10 @@ class BudgetService:
         self, budget_id: int, product_id: int, quantity: int = 1
     ) -> BudgetProductLine:
         budget = self.get_by_id(budget_id)
+
+        if any(line.product_id == product_id for line in budget.product_lines):
+            raise ValidationError("Este produto já foi adicionado ao orçamento")
+
         product = self.products.get_product(product_id)
         if not product:
             raise NotFoundError("Produto não encontrado")
