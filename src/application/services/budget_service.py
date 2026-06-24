@@ -199,6 +199,42 @@ class BudgetService:
         self.budgets.delete_product_line(line)
         self.uow.commit()
 
+    def update_service_line(
+            self,
+            budget_id: int,
+            line_id: int,
+            quantity: int,
+    ) -> dict:
+        budget = self.get_by_id(budget_id)
+
+        line = self.budgets.get_service_line(budget_id, line_id)
+        if not line:
+            raise NotFoundError("Linha de serviço não encontrada")
+
+        line.quantity = quantity
+        updated_line = self.budgets.update_service_line(line)
+
+        for budget_line in budget.service_lines:
+            if budget_line.id == line_id:
+                budget_line.quantity = quantity
+                break
+
+        self._recalculate(budget)
+        self.budgets.save(budget)
+        self.uow.commit()
+
+        service = self.services.get_service(updated_line.service_id)
+        if not service:
+            raise NotFoundError("Serviço não encontrado")
+
+        return {
+            "id": updated_line.id,
+            "service_id": updated_line.service_id,
+            "service_name": service.name,
+            "quantity": updated_line.quantity,
+            "unit_price": updated_line.unit_price,
+        }
+
     def remove_service_line(self, budget_id: int, service_id: int) -> None:
         line = self.budgets.get_service_line(budget_id, service_id)
         if not line:

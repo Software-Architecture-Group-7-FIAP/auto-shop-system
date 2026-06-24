@@ -12,6 +12,7 @@ from src.api.schemas import (
     BudgetProductLineResponse,
     BudgetResponse,
     BudgetServiceLineCreate,
+    BudgetServiceLineUpdate,
     BudgetServiceLineResponse,
     MessageResponse,
 )
@@ -83,6 +84,23 @@ def list_service_lines(
     _: UserModel = Depends(get_current_user)):
     try:
         return compose_budget_service(db).get_all_service_lines(budget_id)
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+@admin_router.put("/{budget_id}/service-lines/{line_id}", response_model=BudgetServiceLineResponse)
+def update_service_line(
+    budget_id: int,
+    line_id: int,
+    data: BudgetServiceLineUpdate,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        return compose_budget_service(db).update_service_line(
+            budget_id,
+            line_id,
+            data.quantity,
+        )
     except DomainError as e:
         raise domain_error_handler(e)
 

@@ -58,6 +58,8 @@ class SqlAlchemyBudgetRepository:
         models = self.db.query(BudgetModel).all()
         return [self._to_domain(model) for model in models]
 
+    # --------------- Serviços ------------------
+
     def add_service_line(self, line: BudgetServiceLine) -> BudgetServiceLine:
         model = BudgetServiceLineModel(
             budget_id=line.budget_id,
@@ -123,6 +125,8 @@ class SqlAlchemyBudgetRepository:
 
         self.db.delete(model)
         self.db.flush()
+
+    # ---------------- Produtos ------------------------------
 
     def add_product_line(self, line: BudgetProductLine) -> BudgetProductLine:
         model = BudgetProductLineModel(
