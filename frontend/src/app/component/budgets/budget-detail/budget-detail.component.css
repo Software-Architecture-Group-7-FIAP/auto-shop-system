@@ -114,3 +114,7 @@
   padding-left: 12px;
   padding-right: 12px;
 }
+
+.product-price-column {
+  width: 110px;
+}

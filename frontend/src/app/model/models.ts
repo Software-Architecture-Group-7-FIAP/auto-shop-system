@@ -101,6 +101,7 @@ export interface BudgetServiceLine {
   service_id: number;
   service_name: string;
   quantity: number;
+  unit_price: number;
 }
 
 export interface BudgetProductLine {
@@ -108,6 +109,7 @@ export interface BudgetProductLine {
   product_id: number;
   product_name: string;
   quantity: number;
+  unit_price: number;
 }
 
 export interface ServiceOrder {
