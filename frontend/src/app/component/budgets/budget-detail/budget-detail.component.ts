@@ -87,6 +87,14 @@ export class BudgetDetailComponent implements OnChanges {
       });
   }
 
+  updateServiceLine(serviceLineId: number, quantity: number): void {
+    this.budgetService
+      .updateServiceLine(this.budgetId, serviceLineId, quantity)
+      .subscribe(() => {
+        this.reloadBudget();
+      });
+  }
+
   removeServiceLine(serviceLineId: number): void {
     this.budgetService
       .removeServiceLine(this.budgetId, serviceLineId)
@@ -103,9 +111,17 @@ export class BudgetDetailComponent implements OnChanges {
       });
   }
 
-  removeProductLine(productId: number): void {
+  updateProductLine(productLineId: number, quantity: number): void {
     this.budgetService
-      .removeProductLine(this.budgetId, productId)
+      .updateProductLine(this.budgetId, productLineId, quantity)
+      .subscribe(() => {
+        this.reloadBudget();
+      });
+  }
+
+  removeProductLine(productLineId: number): void {
+    this.budgetService
+      .removeProductLine(this.budgetId, productLineId)
       .subscribe(() => {
         this.reloadBudget();
       });

@@ -92,7 +92,7 @@
                 <th>Service ID</th>
                 <th>Service Name</th>
                 <th>Qtde</th>
-                <th>Remover</th>
+                <th>Ações</th>
             </tr>
             </thead>
 
@@ -100,15 +100,33 @@
             <tr *ngFor="let line of serviceLines">
                 <td>{{ line.service_id }}</td>
                 <td>{{ line.service_name }}</td>
-                <td>{{ line.quantity }}</td>
                 <td>
-                    <button
-                            class="btn btn-secondary"
-                            type="button"
-                            (click)="removeServiceLine(line.id)"
-                    >
-                        Remover
-                    </button>
+                    <input
+                            class="text-input small-input"
+                            type="number"
+                            min="1"
+                            [(ngModel)]="line.quantity"
+                            [ngModelOptions]="{ standalone: true }"
+                    />
+                </td>
+                <td>
+                    <div class="line-actions">
+                        <button
+                                class="btn btn-secondary"
+                                type="button"
+                                (click)="updateServiceLine(line.id, line.quantity)"
+                        >
+                            Atualizar
+                        </button>
+
+                        <button
+                                class="btn btn-secondary"
+                                type="button"
+                                (click)="removeServiceLine(line.id)"
+                        >
+                            Remover
+                        </button>
+                    </div>
                 </td>
             </tr>
             </tbody>
@@ -172,7 +190,7 @@
                 <th>Product ID</th>
                 <th>Product Name</th>
                 <th>Qtde</th>
-                <th>Remover</th>
+                <th>Ações</th>
             </tr>
             </thead>
 
@@ -180,15 +198,33 @@
             <tr *ngFor="let line of productLines">
                 <td>{{ line.product_id }}</td>
                 <td>{{ line.product_name }}</td>
-                <td>{{ line.quantity }}</td>
                 <td>
-                    <button
-                            class="btn btn-secondary"
-                            type="button"
-                            (click)="removeProductLine(line.id)"
-                    >
-                        Remover
-                    </button>
+                    <input
+                            class="text-input small-input"
+                            type="number"
+                            min="1"
+                            [(ngModel)]="line.quantity"
+                            [ngModelOptions]="{ standalone: true }"
+                    />
+                </td>
+                <td>
+                    <div class="line-actions">
+                        <button
+                                class="btn btn-secondary"
+                                type="button"
+                                (click)="updateProductLine(line.id, line.quantity)"
+                        >
+                            Atualizar
+                        </button>
+
+                        <button
+                                class="btn btn-secondary"
+                                type="button"
+                                (click)="removeProductLine(line.id)"
+                        >
+                            Remover
+                        </button>
+                    </div>
                 </td>
             </tr>
             </tbody>

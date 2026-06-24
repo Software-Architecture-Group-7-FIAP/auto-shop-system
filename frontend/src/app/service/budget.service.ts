@@ -50,6 +50,18 @@ export class BudgetService {
     );
   }
 
+  updateServiceLine(
+    budgetId: number,
+    lineId: number,
+    quantity: number
+  ): Observable<BudgetServiceLine> {
+    return this.http.put<BudgetServiceLine>(
+      `${this.url}/${budgetId}/service-lines/${lineId}`,
+      { quantity },
+      this.httpOptions
+    );
+  }
+
   removeServiceLine(
     budgetId: number,
     lineId: number
@@ -77,12 +89,24 @@ export class BudgetService {
     );
   }
 
+  updateProductLine(
+    budgetId: number,
+    lineId: number,
+    quantity: number
+  ): Observable<BudgetProductLine> {
+    return this.http.put<BudgetProductLine>(
+      `${this.url}/${budgetId}/product-lines/${lineId}`,
+      { quantity },
+      this.httpOptions
+    );
+  }
+
   removeProductLine(
     budgetId: number,
-    productId: number
+    lineId: number
   ): Observable<unknown> {
     return this.http.delete(
-      `${this.url}/${budgetId}/product-lines/${productId}`
+      `${this.url}/${budgetId}/product-lines/${lineId}`
     );
   }
 
