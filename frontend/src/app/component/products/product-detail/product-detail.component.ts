@@ -1,6 +1,7 @@
-import { Component, Input, OnChanges } from '@angular/core';
-import { Product } from '../../../model/models';
+import { Component, Input, OnChanges, OnInit } from '@angular/core';
+import { Product, Supplier } from '../../../model/models';
 import { ProductService } from '../../../service/product.service';
+import { SupplierService } from '../../../service/supplier.service';
 import { ProductsComponent } from '../products.component';
 
 @Component({
@@ -8,17 +9,26 @@ import { ProductsComponent } from '../products.component';
   templateUrl: './product-detail.component.html',
   styleUrls: ['./product-detail.component.css'],
 })
-export class ProductDetailComponent implements OnChanges {
+export class ProductDetailComponent implements OnChanges, OnInit {
   @Input() productId!: number;
 
   product: Product | undefined;
+  suppliers: Supplier[] = [];
+  errorMessage = '';
   isProductChanged = false;
   stockQuantity = 0;
 
   constructor(
     private productService: ProductService,
+    private supplierService: SupplierService,
     private parent: ProductsComponent
   ) {}
+
+  ngOnInit(): void {
+    this.supplierService.getAll().subscribe((data) => {
+      this.suppliers = data.sort((a, b) => a.name.localeCompare(b.name));
+    });
+  }
 
   ngOnChanges(): void {
     if (this.productId) {
@@ -49,11 +59,17 @@ export class ProductDetailComponent implements OnChanges {
       description: this.product.description,
       supplier_id: this.product.supplier_id,
     };
-    this.productService.update(this.productId, body).subscribe((updated) => {
-      this.product = updated;
-      this.stockQuantity = updated.stock_quantity;
-      this.isProductChanged = false;
-      this.parent.updateProductInList(updated);
+    this.errorMessage = '';
+    this.productService.update(this.productId, body).subscribe({
+      next: (updated) => {
+        this.product = updated;
+        this.stockQuantity = updated.stock_quantity;
+        this.isProductChanged = false;
+        this.parent.updateProductInList(updated);
+      },
+      error: (error) => {
+        this.errorMessage = error?.error?.detail || 'Não foi possível atualizar o produto.';
+      },
     });
   }
 

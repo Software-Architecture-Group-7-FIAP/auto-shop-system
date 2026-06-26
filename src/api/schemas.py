@@ -147,14 +147,14 @@ class ProductCreate(BaseModel):
     unit_price: float = Field(gt=0)
     stock_quantity: int = Field(default=0, ge=0)
     description: str | None = None
-    supplier_id: int | None = None
+    supplier_id: int = Field(gt=0)
 
 
 class ProductUpdate(BaseModel):
     name: str | None = None
     unit_price: float | None = Field(default=None, gt=0)
     description: str | None = None
-    supplier_id: int | None = None
+    supplier_id: int | None = Field(default=None, gt=0)
 
 
 class StockUpdate(BaseModel):
@@ -168,7 +168,7 @@ class ProductResponse(BaseModel):
     unit_price: float
     stock_quantity: int
     description: str | None
-    supplier_id: int | None
+    supplier_id: int
     created_at: datetime
 
     model_config = {"from_attributes": True}

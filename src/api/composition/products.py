@@ -9,6 +9,7 @@ from src.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 def compose_product_service(db: Session) -> ProductService:
     return ProductService(
         products=SqlAlchemyProductRepository(db),
+        suppliers=SqlAlchemySupplierRepository(db),
         uow=SqlAlchemyUnitOfWork(db),
     )
 
@@ -16,5 +17,6 @@ def compose_product_service(db: Session) -> ProductService:
 def compose_supplier_service(db: Session) -> SupplierService:
     return SupplierService(
         suppliers=SqlAlchemySupplierRepository(db),
+        products=SqlAlchemyProductRepository(db),
         uow=SqlAlchemyUnitOfWork(db),
     )

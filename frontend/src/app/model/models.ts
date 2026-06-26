@@ -80,7 +80,7 @@ export interface Product {
   unit_price: number;
   stock_quantity: number;
   description: string | null;
-  supplier_id: number | null;
+  supplier_id: number;
   created_at: string;
 }
 

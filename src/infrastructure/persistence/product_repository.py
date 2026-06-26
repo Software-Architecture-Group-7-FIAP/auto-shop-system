@@ -1,3 +1,4 @@
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.domain.exceptions import NotFoundError
@@ -38,6 +39,14 @@ class SqlAlchemyProductRepository:
             self.db.query(ProductModel)
             .filter(ProductModel.sku == sku)
             .first()
+            is not None
+        )
+
+    def exists_by_supplier_id(self, supplier_id: int) -> bool:
+        return (
+            self.db.scalar(
+                select(ProductModel.id).where(ProductModel.supplier_id == supplier_id)
+            )
             is not None
         )
 

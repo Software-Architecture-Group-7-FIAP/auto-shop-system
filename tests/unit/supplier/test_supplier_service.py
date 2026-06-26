@@ -3,7 +3,8 @@ from dataclasses import replace
 import pytest
 
 from src.application.services.product_service import SupplierService
-from src.domain.exceptions import NotFoundError
+from src.domain.exceptions import ConflictError, NotFoundError
+from src.domain.product.entity import Product
 from src.domain.supplier.entity import Supplier
 
 
@@ -34,6 +35,14 @@ class InMemorySupplierRepository:
         del self.suppliers[supplier.id]
 
 
+class InMemoryProductRepository:
+    def __init__(self):
+        self.products: dict[int, Product] = {}
+
+    def exists_by_supplier_id(self, supplier_id: int) -> bool:
+        return any(product.supplier_id == supplier_id for product in self.products.values())
+
+
 class FakeUnitOfWork:
     def __init__(self):
         self.commits = 0
@@ -48,8 +57,9 @@ class FakeUnitOfWork:
 
 def test_supplier_service_creates_supplier_without_sqlalchemy():
     suppliers = InMemorySupplierRepository()
+    products = InMemoryProductRepository()
     uow = FakeUnitOfWork()
-    service = SupplierService(suppliers, uow)
+    service = SupplierService(suppliers, products, uow)
 
     supplier = service.create(
         "Fornecedor A",
@@ -63,7 +73,11 @@ def test_supplier_service_creates_supplier_without_sqlalchemy():
 
 
 def test_supplier_service_updates_supplier_contact_fields():
-    service = SupplierService(InMemorySupplierRepository(), FakeUnitOfWork())
+    service = SupplierService(
+        InMemorySupplierRepository(),
+        InMemoryProductRepository(),
+        FakeUnitOfWork(),
+    )
     supplier = service.create(
         "Fornecedor A",
         "04.252.011/0001-10",
@@ -79,7 +93,22 @@ def test_supplier_service_updates_supplier_contact_fields():
 
 
 def test_supplier_service_raises_when_supplier_is_missing():
-    service = SupplierService(InMemorySupplierRepository(), FakeUnitOfWork())
+    service = SupplierService(
+        InMemorySupplierRepository(),
+        InMemoryProductRepository(),
+        FakeUnitOfWork(),
+    )
 
     with pytest.raises(NotFoundError):
         service.get_by_id(1)
+
+
+def test_supplier_service_rejects_delete_when_supplier_has_products():
+    suppliers = InMemorySupplierRepository()
+    products = InMemoryProductRepository()
+    service = SupplierService(suppliers, products, FakeUnitOfWork())
+    supplier = service.create("Fornecedor A", "04.252.011/0001-10", "fornecedor@test.com")
+    products.products[1] = Product.create("Óleo", "OLEO-001", 50.0, 10, supplier_id=supplier.id)
+
+    with pytest.raises(ConflictError):
+        service.delete(supplier.id)

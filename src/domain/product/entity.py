@@ -11,8 +11,8 @@ class Product:
     sku: str
     unit_price: float
     stock_quantity: int
+    supplier_id: int
     description: str | None = None
-    supplier_id: int | None = None
     created_at: datetime | None = None
 
     @classmethod
@@ -31,8 +31,8 @@ class Product:
             sku=sku,
             unit_price=cls._positive_price(unit_price),
             stock_quantity=cls._valid_stock(stock_quantity),
+            supplier_id=cls._valid_supplier_id(supplier_id),
             description=description,
-            supplier_id=supplier_id,
         )
 
     def update_details(
@@ -49,7 +49,7 @@ class Product:
         if description is not None:
             self.description = description
         if supplier_id is not None:
-            self.supplier_id = supplier_id
+            self.supplier_id = self._valid_supplier_id(supplier_id)
 
     def update_stock(self, quantity_delta: int) -> None:
         new_quantity = self.stock_quantity + quantity_delta
@@ -67,4 +67,10 @@ class Product:
     def _valid_stock(value: int) -> int:
         if value < 0:
             raise ValidationError("Estoque não pode ser negativo")
+        return value
+
+    @staticmethod
+    def _valid_supplier_id(value: int | None) -> int:
+        if value is None or value <= 0:
+            raise ValidationError("Fornecedor é obrigatório")
         return value
