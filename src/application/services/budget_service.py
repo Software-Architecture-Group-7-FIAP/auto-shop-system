@@ -15,7 +15,7 @@ from src.domain.budget.entity import (
     ProductAvailability,
 )
 from src.domain.budget.repository import BudgetRepository
-from src.domain.exceptions import NotFoundError
+from src.domain.exceptions import NotFoundError, ValidationError
 
 
 class BudgetService:
@@ -61,7 +61,12 @@ class BudgetService:
         service_id: int,
         quantity: int = 1,
     ) -> BudgetServiceLine:
+
         budget = self.get_by_id(budget_id)
+
+        if any(line.service_id == service_id for line in budget.service_lines):
+            raise ValidationError("Este serviço já foi adicionado ao orçamento")
+
         service = self.services.get_service(service_id)
         if not service:
             raise NotFoundError("Serviço não encontrado")
@@ -86,10 +91,37 @@ class BudgetService:
         self.uow.commit()
         return created_line
 
+    def get_all_service_lines(self, budget_id: int) -> list[dict]:
+        self.get_by_id(budget_id)
+
+        lines = self.budgets.get_all_service_lines(budget_id)
+        result = []
+
+        for line in lines:
+            service = self.services.get_service(line.service_id)
+            if not service:
+                continue
+
+            result.append(
+                {
+                    "id": line.id,
+                    "service_id": line.service_id,
+                    "service_name": service.name,
+                    "quantity": line.quantity,
+                    "unit_price": line.unit_price,
+                }
+            )
+
+        return result
+
     def add_product_line(
         self, budget_id: int, product_id: int, quantity: int = 1
     ) -> BudgetProductLine:
         budget = self.get_by_id(budget_id)
+
+        if any(line.product_id == product_id for line in budget.product_lines):
+            raise ValidationError("Este produto já foi adicionado ao orçamento")
+
         product = self.products.get_product(product_id)
         if not product:
             raise NotFoundError("Produto não encontrado")
@@ -106,6 +138,118 @@ class BudgetService:
         self.budgets.save(budget)
         self.uow.commit()
         return created_line
+
+    def get_all_product_lines(self, budget_id: int) -> list[dict]:
+        self.get_by_id(budget_id)
+
+        lines = self.budgets.get_all_product_lines(budget_id)
+        result = []
+
+        for line in lines:
+            product = self.products.get_product(line.product_id)
+            if not product:
+                continue
+
+            result.append(
+                {
+                    "id": line.id,
+                    "product_id": line.product_id,
+                    "product_name": product.name,
+                    "quantity": line.quantity,
+                    "unit_price": line.unit_price,
+                    "from_service": line.from_service,
+                }
+            )
+
+        return result
+
+
+    def update_product_line(
+            self,
+            budget_id: int,
+            line_id: int,
+            quantity: int,
+    ) -> dict:
+        budget = self.get_by_id(budget_id)
+
+        line = self.budgets.get_product_line(budget_id, line_id)
+        if not line:
+            raise NotFoundError("Linha de produto não encontrada")
+
+        line.quantity = quantity
+        updated_line = self.budgets.update_product_line(line)
+
+        for budget_line in budget.product_lines:
+            if budget_line.id == line_id:
+                budget_line.quantity = quantity
+                break
+
+        self._recalculate(budget)
+        self.budgets.save(budget)
+        self.uow.commit()
+
+        product = self.products.get_product(updated_line.product_id)
+        if not product:
+            raise NotFoundError("Produto não encontrado")
+
+        return {
+            "id": updated_line.id,
+            "product_id": updated_line.product_id,
+            "product_name": product.name,
+            "quantity": updated_line.quantity,
+            "unit_price": updated_line.unit_price,
+            "from_service": updated_line.from_service,
+        }
+
+    def remove_product_line(self, budget_id: int, line_id: int) -> None:
+        line = self.budgets.get_product_line(budget_id, line_id)
+        if not line:
+            raise NotFoundError("Linha de produto não encontrada")
+        self.budgets.delete_product_line(line)
+        self.uow.commit()
+
+    def update_service_line(
+            self,
+            budget_id: int,
+            line_id: int,
+            quantity: int,
+    ) -> dict:
+        budget = self.get_by_id(budget_id)
+
+        line = self.budgets.get_service_line(budget_id, line_id)
+        if not line:
+            raise NotFoundError("Linha de serviço não encontrada")
+
+        line.quantity = quantity
+        updated_line = self.budgets.update_service_line(line)
+
+        for budget_line in budget.service_lines:
+            if budget_line.id == line_id:
+                budget_line.quantity = quantity
+                break
+
+        self._recalculate(budget)
+        self.budgets.save(budget)
+        self.uow.commit()
+
+        service = self.services.get_service(updated_line.service_id)
+        if not service:
+            raise NotFoundError("Serviço não encontrado")
+
+        return {
+            "id": updated_line.id,
+            "service_id": updated_line.service_id,
+            "service_name": service.name,
+            "quantity": updated_line.quantity,
+            "unit_price": updated_line.unit_price,
+        }
+
+    def remove_service_line(self, budget_id: int, service_id: int) -> None:
+        line = self.budgets.get_service_line(budget_id, service_id)
+        if not line:
+            raise NotFoundError("Linha de serviço não encontrada")
+        self.budgets.delete_service_line(line)
+        self.uow.commit()
 
     def _recalculate(self, budget: Budget) -> None:
         service_hours: dict[int, float] = {}

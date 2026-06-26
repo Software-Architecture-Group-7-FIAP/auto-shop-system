@@ -8,8 +8,12 @@ from src.api.schemas import (
     AvailabilityItem,
     BudgetCreate,
     BudgetProductLineCreate,
+    BudgetProductLineUpdate,
+    BudgetProductLineResponse,
     BudgetResponse,
     BudgetServiceLineCreate,
+    BudgetServiceLineUpdate,
+    BudgetServiceLineResponse,
     MessageResponse,
 )
 from src.domain.exceptions import DomainError
@@ -50,7 +54,7 @@ def get_budget(
     except DomainError as e:
         raise domain_error_handler(e)
 
-
+# Service Lines Management
 @admin_router.post("/{budget_id}/service-lines", status_code=201)
 def add_service_line(
     budget_id: int,
@@ -73,7 +77,46 @@ def add_service_line(
     except DomainError as e:
         raise domain_error_handler(e)
 
+@admin_router.get("/{budget_id}/service-lines", response_model=list[BudgetServiceLineResponse])
+def list_service_lines(
+    budget_id: int,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user)):
+    try:
+        return compose_budget_service(db).get_all_service_lines(budget_id)
+    except DomainError as e:
+        raise domain_error_handler(e)
 
+@admin_router.put("/{budget_id}/service-lines/{line_id}", response_model=BudgetServiceLineResponse)
+def update_service_line(
+    budget_id: int,
+    line_id: int,
+    data: BudgetServiceLineUpdate,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        return compose_budget_service(db).update_service_line(
+            budget_id,
+            line_id,
+            data.quantity,
+        )
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+@admin_router.delete("/{budget_id}/service-lines/{service_id}", status_code=204)
+def remove_service_line(
+    budget_id: int,
+    service_id: int,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        compose_budget_service(db).remove_service_line(budget_id, service_id)
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+# Product Lines
 @admin_router.post("/{budget_id}/product-lines", status_code=201)
 def add_product_line(
     budget_id: int,
@@ -96,6 +139,44 @@ def add_product_line(
     except DomainError as e:
         raise domain_error_handler(e)
 
+@admin_router.get("/{budget_id}/product-lines", response_model=list[BudgetProductLineResponse])
+def list_product_lines(
+    budget_id: int,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user)):
+    try:
+        return compose_budget_service(db).get_all_product_lines(budget_id)
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+@admin_router.put("/{budget_id}/product-lines/{line_id}", response_model=BudgetProductLineResponse)
+def update_product_line(
+    budget_id: int,
+    line_id: int,
+    data: BudgetProductLineUpdate,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        return compose_budget_service(db).update_product_line(
+            budget_id,
+            line_id,
+            data.quantity,
+        )
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+@admin_router.delete("/{budget_id}/product-lines/{line_id}", status_code=204)
+def remove_product_line(
+    budget_id: int,
+    line_id: int,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        compose_budget_service(db).remove_product_line(budget_id, line_id)
+    except DomainError as e:
+        raise domain_error_handler(e)
 
 @admin_router.get("/{budget_id}/availability", response_model=list[AvailabilityItem])
 def check_availability(
