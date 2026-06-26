@@ -1,1 +1,5 @@
-/* new entity form */
+.error-message {
+  color: #b91c1c;
+  font-size: 0.875rem;
+  margin: 0.75rem 0 0;
+}

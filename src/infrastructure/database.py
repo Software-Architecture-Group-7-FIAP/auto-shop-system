@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
@@ -113,7 +114,7 @@ class ProductModel(Base):
     sku: Mapped[str] = mapped_column(String(50), unique=True)
     unit_price: Mapped[float] = mapped_column(Float)
     stock_quantity: Mapped[int] = mapped_column(Integer, default=0)
-    supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -134,6 +135,9 @@ class ServiceModel(Base):
 
 class ServiceProductLineModel(Base):
     __tablename__ = "service_product_lines"
+    __table_args__ = (
+        UniqueConstraint("service_id", "product_id", name="uq_service_product_line_product"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     service_id: Mapped[int] = mapped_column(ForeignKey("services.id"))

@@ -6,6 +6,7 @@ from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.schemas import (
     ServiceCreate,
     ServiceProductLineCreate,
+    ServiceProductLineResponse,
     ServiceResponse,
     ServiceUpdate,
 )
@@ -76,7 +77,11 @@ def delete_service(
         raise domain_error_handler(e)
 
 
-@router.post("/{service_id}/product-lines", status_code=201)
+@router.post(
+    "/{service_id}/product-lines",
+    response_model=ServiceProductLineResponse,
+    status_code=201,
+)
 def add_product_line(
     service_id: int,
     data: ServiceProductLineCreate,
@@ -84,17 +89,11 @@ def add_product_line(
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        line = compose_service_catalog_service(db).add_product_line(
+        return compose_service_catalog_service(db).add_product_line(
             service_id,
             data.product_id,
             data.quantity,
         )
-        return {
-            "id": line.id,
-            "service_id": line.service_id,
-            "product_id": line.product_id,
-            "quantity": line.quantity,
-        }
     except DomainError as e:
         raise domain_error_handler(e)
 

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from src.domain.exceptions import ValidationError
@@ -12,6 +12,7 @@ class CatalogService:
     base_price: float
     estimated_hours: float
     created_at: datetime | None = None
+    product_lines: list["ServiceProductLine"] = field(default_factory=list)
 
     @classmethod
     def create(
@@ -81,6 +82,9 @@ class ServiceProductLine:
             product_id=product_id,
             quantity=cls._positive_quantity(quantity),
         )
+
+    def increase_quantity(self, quantity: int) -> None:
+        self.quantity += self._positive_quantity(quantity)
 
     @staticmethod
     def _positive_quantity(quantity: int) -> int:

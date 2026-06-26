@@ -16,6 +16,7 @@ def test_catalog_service_create_preserves_fields():
     assert service.description == "Troca completa"
     assert service.base_price == 100.0
     assert service.estimated_hours == 2.0
+    assert service.product_lines == []
 
 
 def test_catalog_service_rejects_non_positive_base_price():

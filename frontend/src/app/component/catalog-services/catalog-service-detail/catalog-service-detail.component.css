@@ -1,1 +1,130 @@
-/* entity detail panel */
+.service-composition-panel {
+  margin-top: 2rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border-strong);
+  background: linear-gradient(135deg, rgba(176, 228, 204, 0.08), transparent 38%);
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+.composition-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.composition-heading h3 {
+  color: var(--color-accent);
+  font-size: 1rem;
+}
+
+.composition-kicker {
+  color: var(--color-text-muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.line-count {
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text);
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.composition-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 80px auto;
+  gap: 1rem;
+  align-items: end;
+}
+
+.product-select-field .select-input,
+.quantity-field .text-input {
+  width: 100%;
+}
+
+.composition-add-button {
+  min-height: 37px;
+  white-space: nowrap;
+}
+
+.current-quantity-note {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  margin-top: 0.75rem;
+}
+
+.composition-message {
+  border-left: 2px solid currentColor;
+  font-size: 0.8rem;
+  padding-left: 0.6rem;
+}
+
+.composition-message.success {
+  color: var(--color-accent);
+}
+
+.composition-message.error {
+  color: #ff8a8a;
+}
+
+.composition-list {
+  border-top: 1px solid var(--color-border);
+  margin-top: 1rem;
+}
+
+.composition-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 56px 84px auto;
+  gap: 0.75rem;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  padding: 0.65rem 0;
+}
+
+.composition-row-header {
+  color: var(--color-text);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.product-name {
+  color: var(--color-text);
+}
+
+.quantity-pill {
+  display: inline-flex;
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-accent);
+  min-width: 32px;
+  padding: 0.1rem 0.35rem;
+}
+
+.compact-button {
+  justify-self: end;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+}
+
+.empty-composition {
+  border: 1px dashed var(--color-border-strong);
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+@media (max-width: 720px) {
+  .composition-form,
+  .composition-row {
+    grid-template-columns: 1fr;
+  }
+
+  .compact-button {
+    justify-self: start;
+  }
+}

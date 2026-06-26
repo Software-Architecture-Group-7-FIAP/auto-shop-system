@@ -16,6 +16,9 @@ class ProductRepository(Protocol):
     def exists_by_sku(self, sku: str) -> bool:
         ...
 
+    def exists_by_supplier_id(self, supplier_id: int) -> bool:
+        ...
+
     def save(self, product: Product) -> Product:
         ...
 

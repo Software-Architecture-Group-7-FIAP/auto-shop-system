@@ -22,10 +22,20 @@ class ServiceCatalogRepository(Protocol):
     def add_product_line(self, line: ServiceProductLine) -> ServiceProductLine:
         ...
 
+    def save_product_line(self, line: ServiceProductLine) -> ServiceProductLine:
+        ...
+
     def get_product_line(
         self,
         service_id: int,
         line_id: int,
+    ) -> ServiceProductLine | None:
+        ...
+
+    def get_product_line_by_product(
+        self,
+        service_id: int,
+        product_id: int,
     ) -> ServiceProductLine | None:
         ...
 
