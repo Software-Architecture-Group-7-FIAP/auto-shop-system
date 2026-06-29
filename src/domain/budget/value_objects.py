@@ -13,11 +13,6 @@ class BudgetValidator:
                 raise ValidationError("Quantidade muito grande, deve ser menor que 1.000.000")
             return quantity
 
-        @staticmethod
-        def validate_data_type(quantity: int) -> int:
-            if type(quantity) is not int:
-                raise ValidationError("Quantidade deve ser um número inteiro")
-            return quantity
 
     class ProductLineValidator:
         @staticmethod
@@ -28,12 +23,6 @@ class BudgetValidator:
                 raise ValidationError("Quantidade deve ser maior que zero")
             if quantity > 999_999:
                 raise ValidationError("Quantidade muito grande, deve ser menor que 1.000.000")
-            return quantity
-
-        @staticmethod
-        def validate_data_type(quantity: int) -> int:
-            if type(quantity) is not int:
-                raise ValidationError("Quantidade deve ser um número inteiro")
             return quantity
 
         @staticmethod
