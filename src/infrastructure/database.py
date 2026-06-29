@@ -187,6 +187,7 @@ class BudgetProductLineModel(Base):
     quantity: Mapped[int] = mapped_column(Integer, default=1)
     unit_price: Mapped[float] = mapped_column(Float)
     from_service: Mapped[bool] = mapped_column(Boolean, default=False)
+    service_id: Mapped[int | None] = mapped_column(ForeignKey("services.id"), nullable=True)
 
     budget: Mapped["BudgetModel"] = relationship(back_populates="product_lines")
 

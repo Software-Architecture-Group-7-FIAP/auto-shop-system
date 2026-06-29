@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, StrictInt
 
 from src.domain.enums import (
     BudgetStatus,
@@ -195,7 +195,7 @@ class BudgetCreate(BaseModel):
 
 class BudgetServiceLineCreate(BaseModel):
     service_id: int
-    quantity: int = Field(default=1, gt=0)
+    quantity: StrictInt = Field(default=1, gt=0)
 
 class BudgetServiceLineResponse(BaseModel):
     id: int
@@ -207,15 +207,15 @@ class BudgetServiceLineResponse(BaseModel):
 
 class BudgetProductLineCreate(BaseModel):
     product_id: int
-    quantity: int = Field(default=1, gt=0)
+    quantity: StrictInt = Field(default=1, gt=0)
 
 
 class BudgetProductLineUpdate(BaseModel):
-    quantity: int | None = None
+    quantity: StrictInt = Field(..., gt=0)
 
 
 class BudgetServiceLineUpdate(BaseModel):
-    quantity: int | None = None
+    quantity: StrictInt = Field(..., gt=0)
 
 
 class BudgetProductLineResponse(BaseModel):
@@ -225,6 +225,7 @@ class BudgetProductLineResponse(BaseModel):
     quantity: int
     unit_price: float
     from_service: bool
+    service_id: int | None = None
 
 
 class BudgetResponse(BaseModel):
