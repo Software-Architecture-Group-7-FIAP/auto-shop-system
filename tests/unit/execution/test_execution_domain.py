@@ -55,6 +55,7 @@ def test_start_service_order_sets_status_and_started_at():
         customer_id=3,
         vehicle_id=4,
         status=ServiceOrderStatus.EM_DIAGNOSTICO,
+        mechanic_name="João",
     )
 
     start_service_order(service_order, started_at)
