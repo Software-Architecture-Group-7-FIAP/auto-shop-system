@@ -1,5 +1,5 @@
 import { Component, Input, OnChanges } from '@angular/core';
-import { Invoice, Priority, ServiceOrder } from '../../../model/models';
+import { Invoice, Priority, ServiceOrder, ServiceOrderUpdate } from '../../../model/models';
 import { ServiceOrderService } from '../../../service/service-order.service';
 import { ServiceOrdersComponent } from '../service-orders.component';
 
@@ -17,6 +17,8 @@ export class ServiceOrderDetailComponent implements OnChanges {
   priorityValues = Object.values(Priority);
   lastInvoice: Invoice | null = null;
   actionMessage = '';
+  isSaving = false;
+  isSendingEmail = false;
 
   constructor(
     private serviceOrderService: ServiceOrderService,
@@ -39,27 +41,40 @@ export class ServiceOrderDetailComponent implements OnChanges {
     });
   }
 
-  assignMechanic(): void {
+  saveChanges(): void {
     const name = this.mechanicName.trim();
-    if (!name) {
-      return;
+    const payload: ServiceOrderUpdate = { priority: this.selectedPriority };
+    if (name) {
+      payload.mechanic_name = name;
     }
-    this.serviceOrderService.assignMechanic(this.serviceOrderId, name).subscribe((updated) => {
-      this.serviceOrder = updated;
-      this.parent.updateServiceOrderInList(updated);
-    });
-  }
-
-  setPriority(): void {
-    this.serviceOrderService.setPriority(this.serviceOrderId, this.selectedPriority).subscribe((updated) => {
-      this.serviceOrder = updated;
-      this.parent.updateServiceOrderInList(updated);
+    this.isSaving = true;
+    this.serviceOrderService.update(this.serviceOrderId, payload).subscribe({
+      next: (updated) => {
+        this.serviceOrder = updated;
+        this.parent.updateServiceOrderInList(updated);
+        this.actionMessage = 'Ordem de serviço atualizada.';
+      },
+      complete: () => {
+        this.isSaving = false;
+      },
+      error: () => {
+        this.isSaving = false;
+      },
     });
   }
 
   sendEmail(): void {
-    this.serviceOrderService.sendEmail(this.serviceOrderId).subscribe((response) => {
-      this.actionMessage = response.message;
+    this.isSendingEmail = true;
+    this.serviceOrderService.sendEmail(this.serviceOrderId).subscribe({
+      next: (response) => {
+        this.actionMessage = response.message;
+      },
+      complete: () => {
+        this.isSendingEmail = false;
+      },
+      error: () => {
+        this.isSendingEmail = false;
+      },
     });
   }
 

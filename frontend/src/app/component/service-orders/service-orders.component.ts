@@ -1,5 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-import { ServiceOrder } from '../../model/models';
+import { ServiceOrder, ServiceOrderStatus } from '../../model/models';
 import { ServiceOrderService } from '../../service/service-order.service';
 
 @Component({
@@ -10,13 +10,39 @@ import { ServiceOrderService } from '../../service/service-order.service';
 export class ServiceOrdersComponent implements OnInit {
   serviceOrders: ServiceOrder[] = [];
   selectedServiceOrderId: number | undefined;
+  statusValues = Object.values(ServiceOrderStatus);
+  selectedStatus = '';
+  isLoading = false;
 
   constructor(private serviceOrderService: ServiceOrderService) {}
 
   ngOnInit(): void {
-    this.serviceOrderService.getAll().subscribe((data) => {
-      this.serviceOrders = data.sort((a, b) => a.id - b.id);
+    this.loadServiceOrders();
+  }
+
+  loadServiceOrders(): void {
+    this.isLoading = true;
+    this.serviceOrderService.getAll(this.selectedStatus || undefined).subscribe({
+      next: (data) => {
+        this.serviceOrders = data.sort((a, b) => a.id - b.id);
+        if (
+          this.selectedServiceOrderId &&
+          !this.serviceOrders.some((order) => order.id === this.selectedServiceOrderId)
+        ) {
+          this.selectedServiceOrderId = undefined;
+        }
+      },
+      complete: () => {
+        this.isLoading = false;
+      },
+      error: () => {
+        this.isLoading = false;
+      },
     });
+  }
+
+  applyStatusFilter(): void {
+    this.loadServiceOrders();
   }
 
   selectServiceOrder(id: number): void {

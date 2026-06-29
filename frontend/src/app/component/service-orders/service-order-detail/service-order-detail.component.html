@@ -48,7 +48,7 @@
   </div>
 
   <div class="action-section">
-    <h3>Atribuir mecânico</h3>
+    <h3>Editar OS</h3>
     <div class="field-list">
       <div class="field-name">
         <span>Nome do mecânico</span>
@@ -60,17 +60,6 @@
           [ngModelOptions]="{ standalone: true }"
         />
       </div>
-    </div>
-    <div class="button-list">
-      <button class="btn btn-secondary" type="button" (click)="assignMechanic()">
-        Atribuir mecânico
-      </button>
-    </div>
-  </div>
-
-  <div class="action-section">
-    <h3>Definir prioridade</h3>
-    <div class="field-list">
       <div class="field-name">
         <span>Prioridade</span>
         <select
@@ -84,8 +73,8 @@
       </div>
     </div>
     <div class="button-list">
-      <button class="btn btn-secondary" type="button" (click)="setPriority()">
-        Definir prioridade
+      <button class="btn btn-secondary" type="button" (click)="saveChanges()" [disabled]="isSaving">
+        {{ isSaving ? 'Salvando...' : 'Salvar alterações' }}
       </button>
     </div>
   </div>
@@ -93,8 +82,8 @@
   <div class="action-section">
     <h3>Ações</h3>
     <div class="button-list">
-      <button class="btn btn-secondary" type="button" (click)="sendEmail()">
-        Enviar e-mail
+      <button class="btn btn-secondary" type="button" (click)="sendEmail()" [disabled]="isSendingEmail">
+        {{ isSendingEmail ? 'Enviando...' : 'Enviar PDF por e-mail' }}
       </button>
       <button class="btn btn-secondary" type="button" (click)="createInvoice()">
         Criar fatura
