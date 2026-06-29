@@ -135,6 +135,7 @@ class SqlAlchemyBudgetRepository:
             quantity=line.quantity,
             unit_price=line.unit_price,
             from_service=line.from_service,
+            service_id=line.service_id,
         )
         self.db.add(model)
         self.db.flush()
@@ -177,6 +178,9 @@ class SqlAlchemyBudgetRepository:
         )
 
         model.quantity = line.quantity
+        model.unit_price = line.unit_price
+        model.from_service = line.from_service
+        model.service_id = line.service_id
         self.db.flush()
         self.db.refresh(model)
 
@@ -209,6 +213,21 @@ class SqlAlchemyBudgetRepository:
         model.approval_token = budget.approval_token
         self.db.flush()
         self.db.refresh(model)
+
+        for line in budget.service_lines:
+            if line.id is None:
+                persisted = self.add_service_line(line)
+                line.id = persisted.id
+            else:
+                self.update_service_line(line)
+
+        for line in budget.product_lines:
+            if line.id is None:
+                persisted = self.add_product_line(line)
+                line.id = persisted.id
+            else:
+                self.update_product_line(line)
+
         return self._to_domain(model)
 
     @classmethod
@@ -249,6 +268,7 @@ class SqlAlchemyBudgetRepository:
             quantity=model.quantity,
             unit_price=model.unit_price,
             from_service=model.from_service,
+            service_id=model.service_id,
         )
 
 
