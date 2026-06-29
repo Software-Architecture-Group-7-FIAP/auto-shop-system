@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, EmailStr, Field, StrictInt
+from pydantic import BaseModel, EmailStr, Field, StrictInt, model_validator
 
 from src.domain.enums import (
     BudgetStatus,
@@ -275,8 +275,29 @@ class ServiceOrderResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ServiceOrderPublicResponse(BaseModel):
+    id: int
+    status: ServiceOrderStatus
+    started_at: datetime | None
+    finished_at: datetime | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ServiceOrderUpdate(BaseModel):
+    mechanic_name: str | None = Field(default=None, min_length=1)
+    priority: Priority | None = None
+
+    @model_validator(mode="after")
+    def require_change(self):
+        if self.mechanic_name is None and self.priority is None:
+            raise ValueError("Informe mechanic_name ou priority")
+        return self
+
+
 class AssignMechanicRequest(BaseModel):
-    mechanic_name: str
+    mechanic_name: str = Field(min_length=1)
 
 
 class SetPriorityRequest(BaseModel):

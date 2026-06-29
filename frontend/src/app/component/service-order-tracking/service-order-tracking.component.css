@@ -1,0 +1,66 @@
+.tracking-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-base);
+  padding: 2rem;
+}
+
+.tracking-card {
+  width: 100%;
+  max-width: 520px;
+  background: var(--color-surface);
+  padding: 2rem 2.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.tracking-card h1 {
+  font-size: 1.35rem;
+  color: var(--color-accent);
+  margin-bottom: 0.5rem;
+}
+
+.tracking-card p {
+  font-size: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+
+.tracking-message,
+.tracking-result {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.tracking-result h2 {
+  color: var(--color-accent);
+  font-size: 1rem;
+  margin-bottom: 1rem;
+}
+
+.tracking-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tracking-row:last-child {
+  border-bottom: none;
+}
+
+.tracking-row strong {
+  color: var(--color-text);
+  text-align: right;
+}
+
+.tracking-link {
+  display: block;
+  margin-top: 1.5rem;
+  text-align: center;
+}

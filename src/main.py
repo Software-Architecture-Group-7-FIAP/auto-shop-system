@@ -38,9 +38,8 @@ _configure_app_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from src.infrastructure.database import Base, SessionLocal, engine
+    from src.infrastructure.database import SessionLocal
 
-    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         from src.api.composition.auth import compose_auth_service

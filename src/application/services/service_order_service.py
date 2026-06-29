@@ -42,6 +42,21 @@ class ServiceOrderService:
         self.uow.commit()
         return updated
 
+    def update(
+        self,
+        service_order_id: int,
+        mechanic_name: str | None = None,
+        priority: Priority | None = None,
+    ) -> ServiceOrder:
+        service_order = self.get_by_id(service_order_id)
+        if mechanic_name is not None:
+            service_order.assign_mechanic(mechanic_name)
+        if priority is not None:
+            service_order.set_priority(priority)
+        updated = self.service_orders.save(service_order)
+        self.uow.commit()
+        return updated
+
     def set_priority(self, service_order_id: int, priority: Priority) -> ServiceOrder:
         service_order = self.get_by_id(service_order_id)
         service_order.set_priority(priority)

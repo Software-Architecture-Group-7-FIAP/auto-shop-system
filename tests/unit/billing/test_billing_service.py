@@ -187,6 +187,20 @@ def test_invoice_service_pays_invoice_and_delivers_service_order():
     assert uow.commits == 1
 
 
+def test_invoice_service_gets_invoice_by_service_order():
+    invoice = Invoice(id=1, service_order_id=1, amount=150.0)
+    service = make_service(invoices=InMemoryInvoiceRepository([invoice]))
+
+    assert service.get_by_service_order_id(1) == invoice
+
+
+def test_invoice_service_rejects_missing_service_order_invoice():
+    service = make_service()
+
+    with pytest.raises(NotFoundError, match="Fatura não encontrada"):
+        service.get_by_service_order_id(1)
+
+
 def test_invoice_service_rejects_missing_invoice():
     service = make_service()
 
@@ -195,12 +209,36 @@ def test_invoice_service_rejects_missing_invoice():
 
 
 def test_invoice_service_delivers_service_order():
+    invoice = Invoice(id=1, service_order_id=1, amount=150.0)
+    invoice.pay(datetime(2026, 1, 1, 10, 0, 0))
     service_orders = InMemoryServiceOrderRepository([make_service_order()])
     uow = FakeUnitOfWork()
-    service = make_service(service_orders=service_orders, uow=uow)
+    service = make_service(
+        invoices=InMemoryInvoiceRepository([invoice]),
+        service_orders=service_orders,
+        uow=uow,
+    )
 
     delivered = service.deliver(1)
 
     assert delivered.status == ServiceOrderStatus.ENTREGUE
     assert service_orders.get_by_id(1).status == ServiceOrderStatus.ENTREGUE
     assert uow.commits == 1
+
+
+def test_invoice_service_rejects_deliver_before_finalized():
+    service = make_service(
+        service_orders=InMemoryServiceOrderRepository(
+            [make_service_order(status=ServiceOrderStatus.EM_EXECUCAO)]
+        )
+    )
+
+    with pytest.raises(ValidationError, match="OS deve estar finalizada para ser entregue"):
+        service.deliver(1)
+
+
+def test_invoice_service_rejects_deliver_without_paid_invoice():
+    service = make_service()
+
+    with pytest.raises(ValidationError, match="Fatura deve estar paga para entregar a OS"):
+        service.deliver(1)

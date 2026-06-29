@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from src.domain.enums import Priority, ServiceOrderStatus
+from src.domain.exceptions import ValidationError
 
 
 @dataclass
@@ -39,7 +40,10 @@ class ServiceOrder:
     product_lines: list[ServiceOrderProductLine] = field(default_factory=list)
 
     def assign_mechanic(self, mechanic_name: str) -> None:
-        self.mechanic_name = mechanic_name
+        cleaned_name = mechanic_name.strip()
+        if not cleaned_name:
+            raise ValidationError("Nome do mecânico é obrigatório")
+        self.mechanic_name = cleaned_name
         self.status = ServiceOrderStatus.EM_DIAGNOSTICO
 
     def set_priority(self, priority: Priority) -> None:
