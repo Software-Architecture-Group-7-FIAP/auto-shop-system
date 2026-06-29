@@ -203,7 +203,6 @@ class Budget:
     def _derived_product_lines_for_service(
         self,
         service_line: BudgetServiceLine,
-        service_requirements: list[dict],
     ) -> list[BudgetProductLine]:
         derived_lines: list[BudgetProductLine] = []
         for product_line in self.product_lines:
