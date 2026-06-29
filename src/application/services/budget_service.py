@@ -66,7 +66,6 @@ class BudgetService:
             raise NotFoundError("Serviço não encontrado")
 
         quantity = BudgetValidator.ServiceLineValidator.validate_quantity(quantity)
-        quantity = BudgetValidator.ServiceLineValidator.validate_data_type(quantity)
 
         resolved_requirements = [
             {"product_id": p.id, "quantity": req.quantity, "unit_price": p.unit_price}
@@ -141,7 +140,6 @@ class BudgetService:
             raise NotFoundError("Produto não encontrado")
 
         quantity = BudgetValidator.ProductLineValidator.validate_quantity(quantity)
-        quantity = BudgetValidator.ProductLineValidator.validate_data_type(quantity)
 
         line = budget.add_product_line(
             product_id=product.id,
@@ -195,7 +193,6 @@ class BudgetService:
             raise NotFoundError("Linha de produto não encontrada")
 
         quantity = BudgetValidator.ProductLineValidator.validate_quantity(quantity)
-        quantity = BudgetValidator.ProductLineValidator.validate_data_type(quantity)
 
         updated_line = self.budgets.update_product_line(budget.update_product_line(line_id, quantity))
 
@@ -246,7 +243,6 @@ class BudgetService:
             raise NotFoundError("Linha de serviço não encontrada")
 
         quantity = BudgetValidator.ServiceLineValidator.validate_quantity(quantity)
-        quantity = BudgetValidator.ServiceLineValidator.validate_data_type(quantity)
 
         updated_line = self.budgets.update_service_line(budget.update_service_line(line_id, quantity))
 
@@ -261,6 +257,9 @@ class BudgetService:
 
         service = self.services.get_service(updated_line.service_id)
         
+        if service is None:
+            raise NotFoundError("Serviço não encontrado")
+
         return {
             "id": updated_line.id,
             "service_id": updated_line.service_id,
@@ -274,12 +273,6 @@ class BudgetService:
         line = self.budgets.get_service_line(budget_id, service_id)
         if not line:
             raise NotFoundError("Linha de serviço não encontrada")
-
-        product_lines_to_remove = [
-            product_line
-            for product_line in budget.product_lines
-            if product_line.from_service and product_line.service_id == line.service_id
-        ]
 
         removed_line, removed_product_lines = budget.remove_service_line(line.id)
         self.budgets.delete_service_line(removed_line)
