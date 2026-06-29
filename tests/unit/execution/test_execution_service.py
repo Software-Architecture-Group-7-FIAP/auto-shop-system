@@ -178,7 +178,9 @@ def make_service(
 
 
 def test_execution_service_starts_service_order_without_sqlalchemy():
-    repository = InMemoryServiceOrderRepository([make_service_order()])
+    repository = InMemoryServiceOrderRepository(
+        [make_service_order(mechanic_name="Carlos")]
+    )
     uow = FakeUnitOfWork()
     service = make_service(service_orders=repository, uow=uow)
 
@@ -188,6 +190,16 @@ def test_execution_service_starts_service_order_without_sqlalchemy():
     assert updated.started_at == datetime(2026, 1, 1, 8, 0, 0)
     assert repository.get_by_id(1).status == ServiceOrderStatus.EM_EXECUCAO
     assert uow.commits == 1
+
+
+def test_execution_service_rejects_start_without_mechanic():
+    service = make_service()
+
+    with pytest.raises(
+        ValidationError,
+        match="Mecânico deve ser atribuído antes de iniciar a OS",
+    ):
+        service.start_service(1)
 
 
 def test_execution_service_rejects_missing_service_order():
@@ -200,7 +212,12 @@ def test_execution_service_rejects_missing_service_order():
 def test_execution_service_rejects_invalid_start_status():
     service = make_service(
         service_orders=InMemoryServiceOrderRepository(
-            [make_service_order(status=ServiceOrderStatus.FINALIZADA)]
+            [
+                make_service_order(
+                    status=ServiceOrderStatus.FINALIZADA,
+                    mechanic_name="Carlos",
+                )
+            ]
         )
     )
 

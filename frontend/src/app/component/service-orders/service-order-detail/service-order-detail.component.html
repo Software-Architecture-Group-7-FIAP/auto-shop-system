@@ -85,19 +85,52 @@
       <button class="btn btn-secondary" type="button" (click)="sendEmail()" [disabled]="isSendingEmail">
         {{ isSendingEmail ? 'Enviando...' : 'Enviar PDF por e-mail' }}
       </button>
-      <button class="btn btn-secondary" type="button" (click)="createInvoice()">
-        Criar fatura
+      <button
+        *ngIf="shouldShowStart()"
+        class="btn btn-primary"
+        type="button"
+        (click)="startService()"
+        [disabled]="isStarting || !canStart()"
+      >
+        {{ isStarting ? 'Iniciando...' : 'Iniciar serviço' }}
       </button>
-      <button class="btn btn-primary" type="button" (click)="deliver()">
-        Entregar
+      <button
+        *ngIf="canFinish()"
+        class="btn btn-primary"
+        type="button"
+        (click)="finishService()"
+        [disabled]="isFinishing"
+      >
+        {{ isFinishing ? 'Finalizando...' : 'Finalizar serviço' }}
+      </button>
+      <button
+        *ngIf="canCreateInvoice()"
+        class="btn btn-secondary"
+        type="button"
+        (click)="createInvoice()"
+        [disabled]="isCreatingInvoice"
+      >
+        {{ isCreatingInvoice ? 'Criando...' : 'Criar fatura' }}
+      </button>
+      <button
+        *ngIf="canPayInvoice()"
+        class="btn btn-primary"
+        type="button"
+        (click)="payInvoice()"
+        [disabled]="isPayingInvoice"
+      >
+        {{ isPayingInvoice ? 'Registrando...' : 'Registrar pagamento' }}
       </button>
     </div>
+    <span *ngIf="shouldShowStart() && !canStart()" class="action-message">
+      Mecânico obrigatório para iniciar. Salve o mecânico antes de iniciar.
+    </span>
   </div>
 
   <div *ngIf="actionMessage" class="action-message">
     {{ actionMessage }}
   </div>
-  <div *ngIf="lastInvoice" class="action-message">
-    Fatura: #{{ lastInvoice.id }} — {{ lastInvoice.status }} — R$ {{ lastInvoice.amount | number: '1.2-2' }}
+  <div *ngIf="invoice" class="action-message">
+    Fatura: #{{ invoice.id }} — {{ invoice.status }} — R$ {{ invoice.amount | number: '1.2-2' }}
   </div>
 </div>

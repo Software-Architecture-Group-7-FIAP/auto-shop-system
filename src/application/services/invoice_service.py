@@ -2,7 +2,7 @@ from src.application.ports.billing import BillingClock
 from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.billing.entity import Invoice
 from src.domain.billing.repository import InvoiceRepository
-from src.domain.enums import ServiceOrderStatus
+from src.domain.enums import InvoiceStatus, ServiceOrderStatus
 from src.domain.exceptions import NotFoundError, ValidationError
 from src.domain.service_order.entity import ServiceOrder
 from src.domain.service_order.repository import ServiceOrderRepository
@@ -49,10 +49,21 @@ class InvoiceService:
         self.uow.commit()
         return updated
 
+    def get_by_service_order_id(self, service_order_id: int) -> Invoice:
+        invoice = self.invoices.get_by_service_order_id(service_order_id)
+        if not invoice:
+            raise NotFoundError("Fatura não encontrada")
+        return invoice
+
     def deliver(self, service_order_id: int) -> ServiceOrder:
         service_order = self.service_orders.get_by_id(service_order_id)
         if not service_order:
             raise NotFoundError("OS não encontrada")
+        if service_order.status != ServiceOrderStatus.FINALIZADA:
+            raise ValidationError("OS deve estar finalizada para ser entregue")
+        invoice = self.invoices.get_by_service_order_id(service_order_id)
+        if not invoice or invoice.status != InvoiceStatus.PAID:
+            raise ValidationError("Fatura deve estar paga para entregar a OS")
         service_order.mark_delivered()
         updated = self.service_orders.save(service_order)
         self.uow.commit()

@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy import inspect
 
 revision: str = "003"
 down_revision: Union[str, None] = "002"
@@ -17,15 +18,35 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "customer_documents",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("customer_id", sa.Integer(), sa.ForeignKey("customers.id", ondelete="CASCADE")),
-        sa.Column("document", sa.String(14), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-    )
-    op.create_index("ix_customer_documents_document", "customer_documents", ["document"], unique=True)
-    op.create_index("ix_customer_documents_customer_id", "customer_documents", ["customer_id"])
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    tables = set(inspector.get_table_names())
+
+    if "customer_documents" not in tables:
+        op.create_table(
+            "customer_documents",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("customer_id", sa.Integer(), sa.ForeignKey("customers.id", ondelete="CASCADE")),
+            sa.Column("document", sa.String(14), nullable=False),
+            sa.Column("created_at", sa.DateTime(), nullable=False),
+        )
+
+    indexes = {
+        index["name"] for index in inspect(bind).get_indexes("customer_documents")
+    }
+    if "ix_customer_documents_document" not in indexes:
+        op.create_index(
+            "ix_customer_documents_document",
+            "customer_documents",
+            ["document"],
+            unique=True,
+        )
+    if "ix_customer_documents_customer_id" not in indexes:
+        op.create_index(
+            "ix_customer_documents_customer_id",
+            "customer_documents",
+            ["customer_id"],
+        )
 
     op.execute(
         """
@@ -33,6 +54,7 @@ def upgrade() -> None:
         SELECT id, document, COALESCE(created_at, CURRENT_TIMESTAMP)
         FROM customers
         WHERE document IS NOT NULL AND document != ''
+        ON CONFLICT (document) DO NOTHING
         """
     )
 

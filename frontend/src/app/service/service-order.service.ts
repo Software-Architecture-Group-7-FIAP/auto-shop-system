@@ -76,6 +76,31 @@ export class ServiceOrderService {
     );
   }
 
+  getInvoice(serviceOrderId: number): Observable<Invoice> {
+    return this.http.get<Invoice>(
+      `api/v1/admin/service-orders/${serviceOrderId}/invoice`,
+      {
+        context: new HttpContext().set(SKIP_GLOBAL_ERROR_ALERT, true),
+      }
+    );
+  }
+
+  startServiceOrder(serviceOrderId: number): Observable<ServiceOrder> {
+    return this.http.patch<ServiceOrder>(
+      `${this.url}/${serviceOrderId}/start`,
+      {},
+      this.httpOptions
+    );
+  }
+
+  finishServiceOrder(serviceOrderId: number): Observable<ServiceOrder> {
+    return this.http.patch<ServiceOrder>(
+      `${this.url}/${serviceOrderId}/finish`,
+      {},
+      this.httpOptions
+    );
+  }
+
   payInvoice(invoiceId: number): Observable<Invoice> {
     return this.http.patch<Invoice>(
       `api/v1/admin/invoices/${invoiceId}/pay`,

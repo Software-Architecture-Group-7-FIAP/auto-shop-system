@@ -285,9 +285,31 @@ Formato dos itens:
   - `ServiceOrderBillingPanel`
 - Ou mover billing/delivery para tela/feature T11.
 
+### 12. Adicionar remoção de features pela UI
+
+**Problema:**
+- As principais features possuem endpoints/serviços de remoção, mas a UI não oferece ação para excluir os registros.
+- Usuários administrativos ficam dependentes de API/manual database operations para remover cadastros criados incorretamente.
+- Isso prejudica operação diária, auditoria de ações e validação do fluxo completo pelo frontend.
+
+**Ocorrências:**
+- `frontend/src/app/service/customer.service.ts:31-32` expõe `delete(id)`, mas componentes de cliente não chamam remoção.
+- `frontend/src/app/service/vehicle.service.ts:31-32` expõe `delete(id)`, mas componentes de veículo não chamam remoção.
+- `frontend/src/app/service/catalog-service.service.ts:47-48` expõe `delete(id)`, mas componentes de serviços de catálogo não chamam remoção do serviço.
+- `frontend/src/app/service/product.service.ts:35-36` expõe `delete(id)`, mas componentes de produto não chamam remoção.
+- `frontend/src/app/service/supplier.service.ts:31-32` expõe `delete(id)`, mas componentes de fornecedor não chamam remoção.
+- `frontend/src/app/component/**/*.html` só exibe ações de remover linhas internas de orçamento/serviço, não remoção das features principais.
+- `frontend/src/app/component/**/*.ts` não possui handlers chamando `delete()` dos services principais.
+
+**Correção esperada:**
+- Adicionar ação explícita de remover nas telas de listagem ou detalhe das features aplicáveis.
+- Exigir confirmação antes da exclusão e mostrar feedback de sucesso/erro.
+- Respeitar regras de domínio/backend para registros com vínculos, exibindo mensagem clara quando exclusão não for permitida.
+- Criar testes de componente/serviço para os fluxos de remoção e falha.
+
 ## Infraestrutura e higiene do repositório
 
-### 12. Mover CORS para configuração
+### 13. Mover CORS para configuração
 
 **Problema:**
 - CORS está hardcoded no código principal.
@@ -307,7 +329,7 @@ Formato dos itens:
 - Definir allowlist por ambiente.
 - Restringir métodos e headers em produção.
 
-### 13. Desabilitar `Base.metadata.create_all()` fora de dev/teste
+### 14. Desabilitar `Base.metadata.create_all()` fora de dev/teste
 
 **Problema:**
 - A aplicação cria schema no startup.
@@ -323,7 +345,7 @@ Formato dos itens:
 - Permitir `create_all` só em testes/local bootstrap explícito.
 - Adicionar config como `AUTO_CREATE_SCHEMA=false` por padrão fora de teste.
 
-### 14. Remover `get-pip.py` da raiz
+### 15. Remover `get-pip.py` da raiz
 
 **Problema:**
 - Script grande de bootstrap/vendor está versionado na raiz.
