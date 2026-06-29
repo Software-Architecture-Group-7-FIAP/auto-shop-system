@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -17,9 +18,9 @@ def test_budget_create_sets_default_status_and_totals():
 
 
 def test_budget_add_lines_and_recalculate_totals():
-    now = datetime(2026, 1, 1, 10, 0, 0)
+    now = datetime.now(ZoneInfo("America/Sao_Paulo"))
     budget = Budget(id=1, customer_id=1, vehicle_id=2)
-    service_line = budget.add_service_line(service_id=10, quantity=2, unit_price=100.0)
+    service_line = budget.add_service_line(service_id=10, quantity=2, base_price=100.0, resolved_requirements=[{"product_id": 20, "quantity": 3, "unit_price": 15.0}])
     product_line = budget.add_product_line(
         product_id=20,
         quantity=3,
@@ -29,17 +30,18 @@ def test_budget_add_lines_and_recalculate_totals():
     budget.service_lines.append(service_line)
     budget.product_lines.append(product_line)
 
-    budget.recalculate(service_hours={10: 1.5}, now=now)
-
+    budget.recalculate_estimated_delivery(service_hours={10: 1.5}, now=now)
+    budget.recalculate_total_price()
+    
     assert budget.total_price == 245.0
     assert budget.estimated_delivery == now + timedelta(hours=3)
 
 
 def test_budget_recalculate_uses_minimum_one_hour_delivery():
-    now = datetime(2026, 1, 1, 10, 0, 0)
+    now = datetime.now(ZoneInfo("America/Sao_Paulo"))
     budget = Budget(id=1, customer_id=1, vehicle_id=2)
 
-    budget.recalculate(service_hours={}, now=now)
+    budget.recalculate_estimated_delivery(service_hours={}, now=now)
 
     assert budget.estimated_delivery == now + timedelta(hours=1)
 
@@ -48,7 +50,7 @@ def test_budget_rejects_non_positive_line_quantity():
     budget = Budget(id=1, customer_id=1, vehicle_id=2)
 
     with pytest.raises(ValidationError):
-        budget.add_service_line(service_id=10, quantity=0, unit_price=100.0)
+        budget.add_service_line(service_id=10, quantity=0, base_price=100.0, resolved_requirements=[{"product_id": 20, "quantity": 3, "unit_price": 15.0}])
 
 
 def test_product_availability_serializes_to_api_shape():

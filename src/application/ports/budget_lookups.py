@@ -11,6 +11,7 @@ class BudgetServiceProductRequirement:
 @dataclass(frozen=True)
 class BudgetServiceDetails:
     id: int
+    name: str
     base_price: float
     estimated_hours: float
     product_requirements: tuple[BudgetServiceProductRequirement, ...] = ()

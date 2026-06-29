@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.exceptions import RequestValidationError
 
 from src.api.routers import (
     auth,
@@ -80,6 +81,33 @@ async def domain_exception_handler(request: Request, exc: DomainError):
         content={"detail": exc.message, "code": exc.code},
     )
 
+ERROR_TRANSLATIONS = {
+    "missing": "Este campo é obrigatório.",
+    "greater_than": "O valor deve ser maior que {gt}.",
+    "greater_than_equal": "O valor deve ser maior ou igual a {ge}.",
+    "less_than": "O valor deve ser menor que {lt}.",
+    "less_than_equal": "O valor deve ser menor ou igual a {le}.",
+    "int_type": "O valor deve ser um número inteiro válido.",
+    "string_type": "O valor deve ser um texto válido.",
+    "value_error": "Valor inválido fornecido."
+}
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    first_error = exc.errors()[0]
+    
+    error_type = first_error.get("type")
+    ctx = first_error.get("ctx", {})
+    
+    if error_type in ERROR_TRANSLATIONS:
+        translated_message = ERROR_TRANSLATIONS[error_type].format(**ctx)
+    else:
+        translated_message = "Os dados enviados são inválidos. Verifique os campos."
+
+    return JSONResponse(
+        status_code=422,
+        content={"detail": f"Dados inválidos: {translated_message}"}
+    )
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def home(request: Request):
