@@ -5,9 +5,9 @@ from src.api.composition.inventory import compose_inventory_service
 from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.schemas import (
     GoodsReceiptCreate,
-    MessageResponse,
     PurchaseRequestCreate,
     PurchaseRequestResponse,
+    ReservationCreate,
     ReservationResponse,
 )
 from src.domain.exceptions import DomainError
@@ -24,7 +24,23 @@ def list_reservations(
     return compose_inventory_service(db).list_reservations()
 
 
-@router.post("/admin/reservations/os/{service_order_id}", response_model=list[ReservationResponse])
+@router.post("/admin/reservations", response_model=list[ReservationResponse], status_code=201)
+def create_reservations(
+    data: ReservationCreate,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        return compose_inventory_service(db).create_reservations_for_os(data.service_order_id)
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+
+@router.post(
+    "/admin/reservations/os/{service_order_id}",
+    response_model=list[ReservationResponse],
+    status_code=201,
+)
 def create_reservations_for_os(
     service_order_id: int,
     db: Session = Depends(get_db),
