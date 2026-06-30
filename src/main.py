@@ -84,6 +84,7 @@ async def domain_exception_handler(request: Request, exc: DomainError):
         "conflict_error": 409,
         "unauthorized": 401,
         "forbidden": 403,
+        "service_unavailable": 503,
     }
     return JSONResponse(
         status_code=status_map.get(exc.code, 400),
