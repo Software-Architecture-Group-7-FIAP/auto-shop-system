@@ -13,11 +13,16 @@ from src.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 
 
 def compose_customer_service(db: Session) -> CustomerService:
+    cpf_validator = (
+        HttpInvertextoCpfValidator(token=settings.invertexto_api_token)
+        if settings.invertexto_api_token
+        else None
+    )
     return CustomerService(
         customers=SqlAlchemyCustomerRepository(db),
         uow=SqlAlchemyUnitOfWork(db),
         cnpj_validator=HttpBrasilApiCnpjValidator(),
-        cpf_validator=HttpInvertextoCpfValidator(token=settings.invertexto_api_token),
+        cpf_validator=cpf_validator,
     )
 
 

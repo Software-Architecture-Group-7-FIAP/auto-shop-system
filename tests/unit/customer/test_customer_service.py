@@ -261,6 +261,17 @@ def test_customer_service_creates_pf_with_external_cpf_validation():
     assert cpf_validator.calls == ["52998224725"]
 
 
+def test_customer_service_creates_pf_without_external_cpf_validator():
+    service = CustomerService(
+        InMemoryCustomerRepository(),
+        FakeUnitOfWork(),
+    )
+
+    customer = service.create(**_pf_payload())
+
+    assert customer.documents == ["52998224725"]
+
+
 def test_customer_service_checks_duplicate_before_external_cpf_validation():
     cpf_validator = FakeCpfValidator()
     service = CustomerService(
@@ -289,6 +300,18 @@ def test_customer_service_validate_cpf_delegates_to_external_validator():
     assert result.valid is True
     assert result.formatted == "529.982.247-25"
     assert cpf_validator.calls == ["52998224725"]
+
+
+def test_customer_service_validate_cpf_accepts_structural_validation_without_external_validator():
+    service = CustomerService(
+        InMemoryCustomerRepository(),
+        FakeUnitOfWork(),
+    )
+
+    result = service.validate_cpf("529.982.247-25")
+
+    assert result.valid is True
+    assert result.formatted == "52998224725"
 
 
 def test_customer_service_validate_cpf_rejects_cnpj():

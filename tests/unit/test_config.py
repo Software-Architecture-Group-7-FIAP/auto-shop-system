@@ -78,10 +78,22 @@ def test_settings_accepts_starttls_smtp_in_production():
         secret_key="strong-test-secret-with-at-least-32-chars",
         app_env="production",
         smtp_starttls=True,
+        invertexto_api_token="test-token",
         _env_file=None,
     )
 
     assert settings.smtp_starttls is True
+
+
+def test_settings_requires_invertexto_token_in_production():
+    with pytest.raises(ValidationError, match="INVERTEXTO_API_TOKEN is required"):
+        Settings(
+            secret_key="strong-test-secret-with-at-least-32-chars",
+            app_env="production",
+            smtp_starttls=True,
+            invertexto_api_token="",
+            _env_file=None,
+        )
 
 
 def test_settings_parses_cors_origins():
