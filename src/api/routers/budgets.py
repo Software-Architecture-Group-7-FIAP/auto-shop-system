@@ -1,4 +1,8 @@
+from html import escape
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from src.api.composition.budget_approval import compose_budget_approval_service
@@ -21,6 +25,31 @@ from src.infrastructure.database import UserModel, get_db
 
 admin_router = APIRouter(prefix="/admin/budgets", tags=["Budgets"])
 public_router = APIRouter(prefix="/public/budgets", tags=["Public Budgets"])
+
+
+def _budget_confirmation_page(title: str, action_path: str, button_label: str) -> str:
+    escaped_title = escape(title)
+    escaped_action_path = escape(action_path, quote=True)
+    escaped_button_label = escape(button_label)
+    return f"""
+    <!doctype html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>{escaped_title}</title>
+      </head>
+      <body>
+        <main>
+          <h1>{escaped_title}</h1>
+          <p>Confirme a ação abaixo para alterar o orçamento.</p>
+          <form method="post" action="{escaped_action_path}">
+            <button type="submit">{escaped_button_label}</button>
+          </form>
+        </main>
+      </body>
+    </html>
+    """
 
 
 @admin_router.post("", response_model=BudgetResponse, status_code=201)
@@ -215,7 +244,17 @@ async def send_budget_email(
         raise domain_error_handler(e)
 
 
-@public_router.get("/{token}/approve", response_model=MessageResponse)
+@public_router.get("/{token}/approve", response_class=HTMLResponse)
+def approve_budget_confirmation(token: str):
+    action_path = f"/api/v1/public/budgets/{quote(token, safe='')}/approve"
+    return _budget_confirmation_page(
+        "Aprovar orçamento",
+        action_path,
+        "Confirmar aprovação",
+    )
+
+
+@public_router.post("/{token}/approve", response_model=MessageResponse)
 def approve_budget(token: str, db: Session = Depends(get_db)):
     try:
         service_order = compose_budget_approval_service(db).approve_budget(token)
@@ -224,7 +263,17 @@ def approve_budget(token: str, db: Session = Depends(get_db)):
         raise domain_error_handler(e)
 
 
-@public_router.get("/{token}/reject", response_model=MessageResponse)
+@public_router.get("/{token}/reject", response_class=HTMLResponse)
+def reject_budget_confirmation(token: str):
+    action_path = f"/api/v1/public/budgets/{quote(token, safe='')}/reject"
+    return _budget_confirmation_page(
+        "Recusar orçamento",
+        action_path,
+        "Confirmar recusa",
+    )
+
+
+@public_router.post("/{token}/reject", response_model=MessageResponse)
 def reject_budget(token: str, db: Session = Depends(get_db)):
     try:
         compose_budget_approval_service(db).reject_budget(token)

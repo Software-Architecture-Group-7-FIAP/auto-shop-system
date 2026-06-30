@@ -9,7 +9,10 @@ from src.config import settings
 from src.domain.budget.entity import Budget
 from src.domain.enums import ServiceOrderStatus
 from src.domain.exceptions import ValidationError
-from src.infrastructure.auth.tokens import create_signed_approval_token
+from src.infrastructure.auth.tokens import (
+    create_signed_approval_token,
+    validate_approval_token,
+)
 from src.infrastructure.database import (
     CustomerModel,
     ServiceOrderModel,
@@ -21,9 +24,12 @@ from src.infrastructure.email.service import send_email
 from src.infrastructure.pdf.generator import generate_budget_pdf
 
 
-class SignedBudgetApprovalTokenGenerator:
+class SignedBudgetApprovalTokenService:
     def create_for_budget(self, budget_id: int) -> str:
         return create_signed_approval_token(budget_id)
+
+    def validate(self, token: str) -> None:
+        validate_approval_token(token)
 
 
 class SettingsBudgetApprovalUrlBuilder:

@@ -446,7 +446,28 @@ def test_full_flow(client, auth_headers):
     token = send.json().get("approval_token")
     assert token
 
-    approve = client.get(f"/api/v1/public/budgets/{token}/approve")
+    get_approve = client.get(f"/api/v1/public/budgets/{token}/approve")
+    assert get_approve.status_code == 200
+    assert "text/html" in get_approve.headers["content-type"]
+    assert "Confirmar aprovação" in get_approve.text
+    assert f'action="/api/v1/public/budgets/{token}/approve"' in get_approve.text
+
+    get_reject = client.get(f"/api/v1/public/budgets/{token}/reject")
+    assert get_reject.status_code == 200
+    assert "text/html" in get_reject.headers["content-type"]
+    assert "Confirmar recusa" in get_reject.text
+    assert f'action="/api/v1/public/budgets/{token}/reject"' in get_reject.text
+
+    budget_after_get = client.get(
+        f"/api/v1/admin/budgets/{budget['id']}",
+        headers=auth_headers,
+    ).json()
+    assert budget_after_get["status"] == "Enviado"
+
+    orders_after_get = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()
+    assert orders_after_get == []
+
+    approve = client.post(f"/api/v1/public/budgets/{token}/approve")
     assert approve.status_code == 200
 
     orders = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()

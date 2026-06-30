@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     secret_key: SecretStr = Field(..., min_length=32)
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    budget_approval_token_expire_hours: int = 72
     smtp_host: str = "localhost"
     smtp_port: int = 1025
     smtp_user: str = ""
