@@ -12,6 +12,7 @@ from src.domain.execution.entity import (
     StockWithdrawal,
     enqueue_service_order,
     finish_service_order,
+    order_execution_queue,
     start_service_order,
 )
 from src.domain.execution.repository import StockWithdrawalRepository
@@ -54,9 +55,14 @@ class ExecutionService:
         self.uow.commit()
         return updated
 
+    def list_execution_queue(self) -> list[ServiceOrder]:
+        waiting = self.service_orders.list_all(ServiceOrderStatus.AGUARDANDO_APROVACAO)
+        return order_execution_queue(waiting)
+
     def finish_service(self, service_order_id: int) -> ServiceOrder:
         service_order = self._get_os(service_order_id)
-        finish_service_order(service_order, self.clock.now())
+        withdrawn = self.withdrawals.fulfilled_quantity_by_product(service_order_id)
+        finish_service_order(service_order, self.clock.now(), withdrawn)
 
         for line in service_order.product_lines:
             self.products.decrement_stock(line.product_id, line.quantity)
@@ -84,6 +90,15 @@ class ExecutionService:
         )
         self.uow.commit()
         return withdrawal
+
+    def fulfill_withdrawal(self, withdrawal_id: int) -> StockWithdrawal:
+        withdrawal = self.withdrawals.get_by_id(withdrawal_id)
+        if not withdrawal:
+            raise NotFoundError("Solicitação de retirada não encontrada")
+        withdrawal.fulfill(self.clock.now())
+        updated = self.withdrawals.save(withdrawal)
+        self.uow.commit()
+        return updated
 
     def list_pending_withdrawals(self) -> list[StockWithdrawal]:
         return self.withdrawals.list_pending()
