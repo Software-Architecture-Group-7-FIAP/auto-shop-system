@@ -30,6 +30,8 @@ export class BudgetDetailComponent implements OnChanges {
   productId = 0;
   productQuantity = 1;
   availabilityItems: AvailabilityItem[] = [];
+  actionMessage = '';
+  isSendingEmail = false;
 
   constructor(
     private budgetService: BudgetService,
@@ -41,6 +43,7 @@ export class BudgetDetailComponent implements OnChanges {
   ngOnChanges(): void {
     if (this.budgetId) {
       this.availabilityItems = [];
+      this.actionMessage = '';
       this.loadBudget();
       this.loadProducts();
       this.loadCatalogServices();
@@ -134,9 +137,20 @@ export class BudgetDetailComponent implements OnChanges {
   }
 
   sendEmail(): void {
-    this.budgetService.sendEmail(this.budgetId).subscribe((updated) => {
-      this.budget = updated;
-      this.parent.updateBudgetInList(updated);
+    this.isSendingEmail = true;
+    this.actionMessage = '';
+    this.budgetService.sendEmail(this.budgetId).subscribe({
+      next: (updated) => {
+        this.budget = updated;
+        this.parent.updateBudgetInList(updated);
+        this.actionMessage = 'E-mail do orçamento enviado com sucesso.';
+      },
+      complete: () => {
+        this.isSendingEmail = false;
+      },
+      error: () => {
+        this.isSendingEmail = false;
+      },
     });
   }
 

@@ -245,9 +245,13 @@
                 Verificar disponibilidade
             </button>
 
-            <button class="btn btn-primary" type="button" (click)="sendEmail()">
-                Enviar e-mail
+            <button class="btn btn-primary" type="button" (click)="sendEmail()" [disabled]="isSendingEmail">
+                {{ isSendingEmail ? 'Enviando...' : 'Enviar e-mail' }}
             </button>
+        </div>
+
+        <div *ngIf="actionMessage" class="action-message">
+            {{ actionMessage }}
         </div>
     </div>
 
