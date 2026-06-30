@@ -4,7 +4,7 @@ from datetime import datetime
 import pytest
 
 from src.application.services.execution_service import ExecutionService
-from src.domain.enums import ServiceOrderStatus, StockWithdrawalStatus
+from src.domain.enums import Priority, ServiceOrderStatus, StockWithdrawalStatus
 from src.domain.exceptions import NotFoundError, ValidationError
 from src.domain.execution.entity import StockWithdrawal
 from src.domain.service_order.entity import ServiceOrder, ServiceOrderProductLine
@@ -62,6 +62,14 @@ class InMemoryStockWithdrawalRepository:
         self.next_id += 1
         return created
 
+    def get_by_id(self, withdrawal_id: int) -> StockWithdrawal | None:
+        return self.withdrawals.get(withdrawal_id)
+
+    def save(self, withdrawal: StockWithdrawal) -> StockWithdrawal:
+        assert withdrawal.id is not None
+        self.withdrawals[withdrawal.id] = withdrawal
+        return withdrawal
+
     def list_pending(self) -> list[StockWithdrawal]:
         return [
             withdrawal
@@ -77,6 +85,18 @@ class InMemoryStockWithdrawalRepository:
                 if withdrawal.status == StockWithdrawalStatus.FULFILLED
             }
         )
+
+    def fulfilled_quantity_by_product(self, service_order_id: int) -> dict[int, int]:
+        totals: dict[int, int] = {}
+        for withdrawal in self.withdrawals.values():
+            if (
+                withdrawal.service_order_id == service_order_id
+                and withdrawal.status == StockWithdrawalStatus.FULFILLED
+            ):
+                totals[withdrawal.product_id] = (
+                    totals.get(withdrawal.product_id, 0) + withdrawal.quantity
+                )
+        return totals
 
 
 class FakeProductGateway:
@@ -215,6 +235,17 @@ def test_execution_service_finishes_order_and_consumes_inventory():
         service_orders=InMemoryServiceOrderRepository(
             [make_service_order(status=ServiceOrderStatus.EM_EXECUCAO)]
         ),
+        withdrawals=InMemoryStockWithdrawalRepository(
+            [
+                StockWithdrawal(
+                    id=1,
+                    service_order_id=1,
+                    product_id=10,
+                    quantity=2,
+                    status=StockWithdrawalStatus.FULFILLED,
+                )
+            ]
+        ),
         products=products,
         reservations=reservations,
     )
@@ -225,6 +256,73 @@ def test_execution_service_finishes_order_and_consumes_inventory():
     assert updated.finished_at == datetime(2026, 1, 1, 8, 0, 0)
     assert products.decrements == [(10, 2)]
     assert reservations.consumed == [(1, 10)]
+
+
+def test_execution_service_blocks_finish_when_withdrawal_not_fulfilled():
+    service = make_service(
+        service_orders=InMemoryServiceOrderRepository(
+            [make_service_order(status=ServiceOrderStatus.EM_EXECUCAO)]
+        ),
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="itens reservados sem retirada de estoque confirmada",
+    ):
+        service.finish_service(1)
+
+
+def test_execution_service_fulfills_withdrawal():
+    withdrawals = InMemoryStockWithdrawalRepository(
+        [
+            StockWithdrawal(
+                id=1,
+                service_order_id=1,
+                product_id=10,
+                quantity=2,
+                status=StockWithdrawalStatus.PENDING,
+            )
+        ]
+    )
+    uow = FakeUnitOfWork()
+    service = make_service(withdrawals=withdrawals, uow=uow)
+
+    updated = service.fulfill_withdrawal(1)
+
+    assert updated.status == StockWithdrawalStatus.FULFILLED
+    assert updated.fulfilled_at == datetime(2026, 1, 1, 8, 0, 0)
+    assert uow.commits == 1
+
+
+def test_execution_service_rejects_fulfilling_missing_withdrawal():
+    service = make_service(withdrawals=InMemoryStockWithdrawalRepository())
+
+    with pytest.raises(NotFoundError, match="Solicitação de retirada não encontrada"):
+        service.fulfill_withdrawal(1)
+
+
+def test_execution_service_lists_execution_queue_ordered_by_priority():
+    service = make_service(
+        service_orders=InMemoryServiceOrderRepository(
+            [
+                make_service_order(
+                    id=1,
+                    status=ServiceOrderStatus.AGUARDANDO_APROVACAO,
+                    priority=Priority.LOW,
+                ),
+                make_service_order(
+                    id=2,
+                    status=ServiceOrderStatus.AGUARDANDO_APROVACAO,
+                    priority=Priority.URGENT,
+                ),
+                make_service_order(id=3, status=ServiceOrderStatus.EM_EXECUCAO),
+            ]
+        ),
+    )
+
+    queue = service.list_execution_queue()
+
+    assert [order.id for order in queue] == [2, 1]
 
 
 @pytest.mark.asyncio
