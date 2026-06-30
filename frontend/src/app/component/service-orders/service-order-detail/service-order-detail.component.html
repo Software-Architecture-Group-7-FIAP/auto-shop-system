@@ -103,6 +103,36 @@
       >
         {{ isFinishing ? 'Finalizando...' : 'Finalizar serviço' }}
       </button>
+    </div>
+    <span *ngIf="shouldShowStart() && !canStart()" class="action-message">
+      Mecânico obrigatório para iniciar. Salve o mecânico antes de iniciar.
+    </span>
+  </div>
+
+  <div *ngIf="shouldShowBillingSection()" class="action-section">
+    <h3>Faturamento</h3>
+    <p *ngIf="!invoice" class="action-message">
+      Nenhuma fatura emitida para esta OS.
+    </p>
+    <div *ngIf="invoice" class="field-list">
+      <div class="field-name">
+        <span>Fatura</span>
+        <label class="readonly">#{{ invoice.id }}</label>
+      </div>
+      <div class="field-name">
+        <span>Status</span>
+        <label class="readonly">{{ invoice.status }}</label>
+      </div>
+      <div class="field-name">
+        <span>Valor</span>
+        <label class="readonly">R$ {{ invoice.amount | number: '1.2-2' }}</label>
+      </div>
+      <div class="field-name" *ngIf="invoice.paid_at">
+        <span>Pago em</span>
+        <label class="readonly">{{ invoice.paid_at | date: 'dd/MM/yyyy HH:mm' }}</label>
+      </div>
+    </div>
+    <div class="button-list">
       <button
         *ngIf="canCreateInvoice()"
         class="btn btn-secondary"
@@ -122,15 +152,10 @@
         {{ isPayingInvoice ? 'Registrando...' : 'Registrar pagamento' }}
       </button>
     </div>
-    <span *ngIf="shouldShowStart() && !canStart()" class="action-message">
-      Mecânico obrigatório para iniciar. Salve o mecânico antes de iniciar.
-    </span>
+    <p *ngIf="errorMessage" class="error-message">{{ errorMessage }}</p>
   </div>
 
   <div *ngIf="actionMessage" class="action-message">
     {{ actionMessage }}
-  </div>
-  <div *ngIf="invoice" class="action-message">
-    Fatura: #{{ invoice.id }} — {{ invoice.status }} — R$ {{ invoice.amount | number: '1.2-2' }}
   </div>
 </div>

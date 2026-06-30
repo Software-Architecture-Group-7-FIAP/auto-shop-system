@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from src.domain.enums import InvoiceStatus
+from src.domain.exceptions import ValidationError
 
 
 @dataclass
@@ -22,5 +23,7 @@ class Invoice:
         )
 
     def pay(self, paid_at: datetime) -> None:
+        if self.status == InvoiceStatus.PAID:
+            raise ValidationError("Fatura já está paga")
         self.status = InvoiceStatus.PAID
         self.paid_at = paid_at

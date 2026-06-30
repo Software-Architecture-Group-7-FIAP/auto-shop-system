@@ -1,4 +1,5 @@
 import { Component, Input, OnChanges } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   Invoice,
   InvoiceStatus,
@@ -24,6 +25,7 @@ export class ServiceOrderDetailComponent implements OnChanges {
   priorityValues = Object.values(Priority);
   invoice: Invoice | null = null;
   actionMessage = '';
+  errorMessage = '';
   isSaving = false;
   isSendingEmail = false;
   isStarting = false;
@@ -41,6 +43,7 @@ export class ServiceOrderDetailComponent implements OnChanges {
   ngOnChanges(): void {
     if (this.serviceOrderId) {
       this.actionMessage = '';
+      this.errorMessage = '';
       this.invoice = null;
       this.loadServiceOrder();
     }
@@ -56,6 +59,10 @@ export class ServiceOrderDetailComponent implements OnChanges {
   }
 
   loadInvoice(): void {
+    if (!this.shouldShowBillingSection()) {
+      this.invoice = null;
+      return;
+    }
     this.serviceOrderService.getInvoice(this.serviceOrderId).subscribe({
       next: (invoice) => {
         this.invoice = invoice;
@@ -172,6 +179,23 @@ export class ServiceOrderDetailComponent implements OnChanges {
     });
   }
 
+  shouldShowBillingSection(): boolean {
+    return Boolean(
+      this.serviceOrder &&
+      [
+        ServiceOrderStatus.FINALIZADA,
+        ServiceOrderStatus.ENTREGUE,
+      ].includes(this.serviceOrder.status)
+    );
+  }
+
+  private setErrorMessage(error: unknown, fallback: string): void {
+    const httpError = error as HttpErrorResponse;
+    this.errorMessage =
+      (typeof httpError?.error?.detail === 'string' && httpError.error.detail) ||
+      fallback;
+  }
+
   canCreateInvoice(): boolean {
     return this.serviceOrder?.status === ServiceOrderStatus.FINALIZADA && !this.invoice;
   }
@@ -188,6 +212,7 @@ export class ServiceOrderDetailComponent implements OnChanges {
       return;
     }
     this.isCreatingInvoice = true;
+    this.errorMessage = '';
     this.serviceOrderService.createInvoice(this.serviceOrderId).subscribe({
       next: (invoice) => {
         this.invoice = invoice;
@@ -196,8 +221,9 @@ export class ServiceOrderDetailComponent implements OnChanges {
       complete: () => {
         this.isCreatingInvoice = false;
       },
-      error: () => {
+      error: (error) => {
         this.isCreatingInvoice = false;
+        this.setErrorMessage(error, 'Não foi possível gerar a fatura.');
       },
     });
   }
@@ -207,6 +233,7 @@ export class ServiceOrderDetailComponent implements OnChanges {
       return;
     }
     this.isPayingInvoice = true;
+    this.errorMessage = '';
     this.serviceOrderService.payInvoice(this.invoice.id).subscribe({
       next: (invoice) => {
         this.invoice = invoice;
@@ -216,8 +243,9 @@ export class ServiceOrderDetailComponent implements OnChanges {
       complete: () => {
         this.isPayingInvoice = false;
       },
-      error: () => {
+      error: (error) => {
         this.isPayingInvoice = false;
+        this.setErrorMessage(error, 'Não foi possível registrar o pagamento.');
       },
     });
   }

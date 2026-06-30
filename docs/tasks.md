@@ -551,7 +551,7 @@ Obrigatórios para avaliação, mas separados do backlog de implementação dos 
 - [ ] **RF33** — Finalização de atendimento
 - [ ] **RF36** — Monitoramento de OS com produto retirado
 - [ ] **RF37** — Atualização ao final do atendimento
-- [ ] **RF40** — Encerramento após pagamento
+- [x] **RF40** — Encerramento após pagamento
 
 ### Estoque, reserva e compras
 
@@ -567,8 +567,8 @@ Obrigatórios para avaliação, mas separados do backlog de implementação dos 
 
 ### Faturamento
 
-- [ ] **RF38** — Geração de fatura
-- [ ] **RF39** — Registro de pagamento
+- [x] **RF38** — Geração de fatura
+- [x] **RF39** — Registro de pagamento
 
 ### Requisitos técnicos e entregáveis da Fase 1
 

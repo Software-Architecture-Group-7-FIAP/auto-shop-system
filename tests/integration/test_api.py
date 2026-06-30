@@ -505,6 +505,7 @@ def test_full_flow(client, auth_headers):
         headers=auth_headers,
     )
     assert invoice.status_code == 201
+    assert invoice.json()["amount"] == 160.0
 
     invoice_lookup = client.get(
         f"/api/v1/admin/service-orders/{os_id}/invoice",
@@ -519,6 +520,12 @@ def test_full_flow(client, auth_headers):
     )
     assert paid.status_code == 200
     assert paid.json()["status"] == "Paga"
+
+    deliver = client.patch(
+        f"/api/v1/admin/service-orders/{os_id}/deliver",
+        headers=auth_headers,
+    )
+    assert deliver.status_code == 422
 
     track = client.get(
         f"/api/v1/public/service-orders/{os_id}?document=52998224725"

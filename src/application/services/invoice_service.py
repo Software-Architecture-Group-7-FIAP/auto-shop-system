@@ -1,6 +1,7 @@
 from src.application.ports.billing import BillingClock
 from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.billing.entity import Invoice
+from src.domain.billing.rules import calculate_invoice_amount, validate_priced_lines
 from src.domain.billing.repository import InvoiceRepository
 from src.domain.enums import InvoiceStatus, ServiceOrderStatus
 from src.domain.exceptions import NotFoundError, ValidationError
@@ -30,9 +31,9 @@ class InvoiceService:
         if self.invoices.get_by_service_order_id(service_order_id):
             raise ValidationError("Fatura já existe para esta OS")
 
-        invoice = self.invoices.add(
-            Invoice.create(service_order_id, service_order.total_price)
-        )
+        validate_priced_lines(service_order)
+        amount = calculate_invoice_amount(service_order)
+        invoice = self.invoices.add(Invoice.create(service_order_id, amount))
         self.uow.commit()
         return invoice
 

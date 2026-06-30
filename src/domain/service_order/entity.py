@@ -50,4 +50,6 @@ class ServiceOrder:
         self.priority = priority
 
     def mark_delivered(self) -> None:
+        if self.status != ServiceOrderStatus.FINALIZADA:
+            raise ValidationError("OS deve estar finalizada para ser entregue")
         self.status = ServiceOrderStatus.ENTREGUE
