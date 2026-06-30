@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     app_base_url: str = "http://localhost:8000"
     frontend_public_url: str = "http://localhost:4200"
     invertexto_api_token: str = ""
+    skip_cpf_external_validation: bool = False
 
 
 settings = Settings()

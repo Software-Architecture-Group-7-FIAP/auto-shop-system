@@ -10,7 +10,8 @@ from src.application.ports.budget_approval import (
 from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.budget.entity import Budget
 from src.domain.budget.repository import BudgetRepository
-from src.domain.exceptions import NotFoundError
+from src.domain.enums import BudgetStatus
+from src.domain.exceptions import NotFoundError, ValidationError
 
 
 class BudgetApprovalService:
@@ -97,7 +98,19 @@ class BudgetApprovalService:
         budget = self.budgets.get_by_approval_token(token)
         if not budget:
             raise NotFoundError("Orçamento não encontrado")
+        return self._approve_and_create_service_order(budget)
 
+    def approve_budget_by_id(self, budget_id: int) -> CreatedServiceOrder:
+        budget = self._get_by_id(budget_id)
+        if budget.status == BudgetStatus.REJECTED:
+            raise ValidationError("Orçamento recusado não pode ser aprovado")
+        if not budget.service_lines and not budget.product_lines:
+            raise ValidationError(
+                "Orçamento deve ter linhas de serviço ou produto para ser aprovado"
+            )
+        return self._approve_and_create_service_order(budget)
+
+    def _approve_and_create_service_order(self, budget: Budget) -> CreatedServiceOrder:
         budget.approve()
         updated_budget = self.budgets.save(budget)
         service_order = self.service_orders.create_from_budget(updated_budget)

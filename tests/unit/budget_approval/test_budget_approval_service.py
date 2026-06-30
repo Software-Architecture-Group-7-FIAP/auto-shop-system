@@ -247,6 +247,43 @@ def test_approve_budget_rejects_already_approved_budget_without_commit():
     assert uow.commits == 0
 
 
+def test_approve_budget_by_id_creates_service_order():
+    budget = make_budget()
+    repository = InMemoryBudgetRepository([budget])
+    service_orders = FakeServiceOrderCreator()
+    uow = FakeUnitOfWork()
+    service = make_service(
+        repository=repository,
+        service_orders=service_orders,
+        uow=uow,
+    )
+
+    service_order = service.approve_budget_by_id(1)
+
+    assert service_order.id == 99
+    assert repository.get_by_id(1).status == BudgetStatus.APPROVED
+    assert uow.commits == 1
+
+
+def test_approve_budget_by_id_rejects_budget_without_lines():
+    budget = replace(make_budget(), service_lines=[], product_lines=[])
+    service = make_service(repository=InMemoryBudgetRepository([budget]))
+
+    with pytest.raises(
+        ValidationError,
+        match="Orçamento deve ter linhas de serviço ou produto para ser aprovado",
+    ):
+        service.approve_budget_by_id(1)
+
+
+def test_approve_budget_by_id_rejects_rejected_budget():
+    budget = replace(make_budget(), status=BudgetStatus.REJECTED)
+    service = make_service(repository=InMemoryBudgetRepository([budget]))
+
+    with pytest.raises(ValidationError, match="Orçamento recusado não pode ser aprovado"):
+        service.approve_budget_by_id(1)
+
+
 def test_reject_budget_marks_budget_rejected():
     budget = replace(make_budget(), status=BudgetStatus.SENT, approval_token="token-1")
     repository = InMemoryBudgetRepository([budget])
