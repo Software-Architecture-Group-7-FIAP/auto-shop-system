@@ -317,6 +317,10 @@ class SetPriorityRequest(BaseModel):
     priority: Priority
 
 
+class ReservationCreate(BaseModel):
+    service_order_id: int
+
+
 class ReservationResponse(BaseModel):
     id: int
     service_order_id: int
