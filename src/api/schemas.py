@@ -288,11 +288,16 @@ class ServiceOrderPublicResponse(BaseModel):
 class ServiceOrderUpdate(BaseModel):
     mechanic_name: str | None = Field(default=None, min_length=1)
     priority: Priority | None = None
+    status: ServiceOrderStatus | None = None
 
     @model_validator(mode="after")
     def require_change(self):
-        if self.mechanic_name is None and self.priority is None:
-            raise ValueError("Informe mechanic_name ou priority")
+        if (
+            self.mechanic_name is None
+            and self.priority is None
+            and self.status is None
+        ):
+            raise ValueError("Informe mechanic_name, priority ou status")
         return self
 
 

@@ -49,6 +49,9 @@ class ServiceOrder:
     def set_priority(self, priority: Priority) -> None:
         self.priority = priority
 
+    def set_status(self, status: ServiceOrderStatus) -> None:
+        self.status = status
+
     def mark_delivered(self) -> None:
         if self.status != ServiceOrderStatus.FINALIZADA:
             raise ValidationError("OS deve estar finalizada para ser entregue")

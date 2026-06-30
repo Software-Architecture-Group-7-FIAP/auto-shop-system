@@ -22,7 +22,9 @@ export class ServiceOrderDetailComponent implements OnChanges {
   serviceOrder: ServiceOrder | undefined;
   mechanicName = '';
   selectedPriority: Priority = Priority.NORMAL;
+  selectedStatus: ServiceOrderStatus = ServiceOrderStatus.AGUARDANDO_APROVACAO;
   priorityValues = Object.values(Priority);
+  statusValues = Object.values(ServiceOrderStatus);
   invoice: Invoice | null = null;
   actionMessage = '';
   errorMessage = '';
@@ -54,6 +56,7 @@ export class ServiceOrderDetailComponent implements OnChanges {
       this.serviceOrder = data;
       this.mechanicName = data.mechanic_name || '';
       this.selectedPriority = data.priority;
+      this.selectedStatus = data.status;
       this.loadInvoice();
     });
   }
@@ -75,16 +78,22 @@ export class ServiceOrderDetailComponent implements OnChanges {
 
   saveChanges(): void {
     const name = this.mechanicName.trim();
-    const payload: ServiceOrderUpdate = { priority: this.selectedPriority };
+    const payload: ServiceOrderUpdate = {
+      priority: this.selectedPriority,
+      status: this.selectedStatus,
+    };
     if (name) {
       payload.mechanic_name = name;
     }
     this.isSaving = true;
+    this.errorMessage = '';
     this.serviceOrderService.update(this.serviceOrderId, payload).subscribe({
       next: (updated) => {
         this.serviceOrder = updated;
+        this.selectedStatus = updated.status;
         this.parent.updateServiceOrderInList(updated);
         this.actionMessage = 'Ordem de serviço atualizada.';
+        this.loadInvoice();
       },
       complete: () => {
         this.isSaving = false;

@@ -145,6 +145,7 @@ export interface ServiceOrderPublic {
 export interface ServiceOrderUpdate {
   mechanic_name?: string;
   priority?: Priority;
+  status?: ServiceOrderStatus;
 }
 
 export interface CnpjValidation {

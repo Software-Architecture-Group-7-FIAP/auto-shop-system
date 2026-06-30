@@ -73,6 +73,7 @@ def update_service_order(
             service_order_id=service_order_id,
             mechanic_name=data.mechanic_name,
             priority=data.priority,
+            status=data.status,
         )
     except DomainError as e:
         raise domain_error_handler(e)
