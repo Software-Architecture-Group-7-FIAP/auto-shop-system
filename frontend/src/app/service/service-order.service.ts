@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import {
   AverageExecutionTime,
@@ -7,7 +7,10 @@ import {
   MessageResponse,
   Priority,
   ServiceOrder,
+  ServiceOrderPublic,
+  ServiceOrderUpdate,
 } from '../model/models';
+import { SKIP_GLOBAL_ERROR_ALERT } from './http-error.interceptor';
 
 @Injectable({ providedIn: 'root' })
 export class ServiceOrderService {
@@ -35,6 +38,10 @@ export class ServiceOrderService {
     );
   }
 
+  update(id: number, payload: ServiceOrderUpdate): Observable<ServiceOrder> {
+    return this.http.put<ServiceOrder>(`${this.url}/${id}`, payload, this.httpOptions);
+  }
+
   setPriority(id: number, priority: Priority): Observable<ServiceOrder> {
     return this.http.patch<ServiceOrder>(
       `${this.url}/${id}/priority`,
@@ -47,6 +54,16 @@ export class ServiceOrderService {
     return this.http.post<MessageResponse>(`${this.url}/${id}/send-email`, {}, this.httpOptions);
   }
 
+  trackPublic(id: number, document: string): Observable<ServiceOrderPublic> {
+    const encodedDocument = encodeURIComponent(document);
+    return this.http.get<ServiceOrderPublic>(
+      `api/v1/public/service-orders/${id}?document=${encodedDocument}`,
+      {
+        context: new HttpContext().set(SKIP_GLOBAL_ERROR_ALERT, true),
+      }
+    );
+  }
+
   getAverageExecutionTime(): Observable<AverageExecutionTime> {
     return this.http.get<AverageExecutionTime>(`${this.url}/metrics/average-execution-time`);
   }
@@ -54,6 +71,31 @@ export class ServiceOrderService {
   createInvoice(serviceOrderId: number): Observable<Invoice> {
     return this.http.post<Invoice>(
       `api/v1/admin/service-orders/${serviceOrderId}/invoice`,
+      {},
+      this.httpOptions
+    );
+  }
+
+  getInvoice(serviceOrderId: number): Observable<Invoice> {
+    return this.http.get<Invoice>(
+      `api/v1/admin/service-orders/${serviceOrderId}/invoice`,
+      {
+        context: new HttpContext().set(SKIP_GLOBAL_ERROR_ALERT, true),
+      }
+    );
+  }
+
+  startServiceOrder(serviceOrderId: number): Observable<ServiceOrder> {
+    return this.http.patch<ServiceOrder>(
+      `${this.url}/${serviceOrderId}/start`,
+      {},
+      this.httpOptions
+    );
+  }
+
+  finishServiceOrder(serviceOrderId: number): Observable<ServiceOrder> {
+    return this.http.patch<ServiceOrder>(
+      `${this.url}/${serviceOrderId}/finish`,
       {},
       this.httpOptions
     );

@@ -7,6 +7,21 @@
     ></app-head-navigation>
   </div>
   <div class="model-list-block scrollbar">
+    <div class="filter-bar">
+      <label>
+        Status
+        <select class="select-input" [(ngModel)]="selectedStatus" [ngModelOptions]="{ standalone: true }">
+          <option value="">Todos</option>
+          <option *ngFor="let status of statusValues" [ngValue]="status">{{ status }}</option>
+        </select>
+      </label>
+      <button class="btn btn-secondary" type="button" (click)="applyStatusFilter()" [disabled]="isLoading">
+        Filtrar
+      </button>
+      <button class="btn btn-secondary" type="button" (click)="loadServiceOrders()" [disabled]="isLoading">
+        Atualizar
+      </button>
+    </div>
     <ul class="model-list">
       <li class="list-header">
         <span class="col-1">ID</span>
@@ -21,11 +36,14 @@
         [class.selected]="order.id === selectedServiceOrderId"
       >
         <span class="col-1">{{ order.id }}</span>
-        <span class="col-2">{{ order.status }}</span>
-        <span class="col-3">{{ order.priority }}</span>
+        <span class="col-2"><span class="badge badge-status">{{ order.status }}</span></span>
+        <span class="col-3"><span class="badge badge-priority">{{ order.priority }}</span></span>
         <span class="col-4">{{ order.mechanic_name || '—' }}</span>
       </li>
     </ul>
+    <span *ngIf="!isLoading && serviceOrders.length === 0" class="empty-list-message">
+      Nenhuma ordem de serviço encontrada.
+    </span>
   </div>
   <div class="model-detail-block scrollbar">
     <span *ngIf="!selectedServiceOrderId" class="model-detail-message">

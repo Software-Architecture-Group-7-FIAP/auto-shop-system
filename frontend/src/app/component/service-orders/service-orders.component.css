@@ -13,3 +13,43 @@
 .col-4 {
   flex-basis: 35%;
 }
+
+.filter-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-base);
+  flex-wrap: wrap;
+}
+
+.filter-bar label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  border: 1px solid var(--color-border-strong);
+}
+
+.badge-status {
+  color: var(--color-accent);
+}
+
+.badge-priority {
+  color: var(--color-text);
+}
+
+.empty-list-message {
+  display: block;
+  padding: 1rem;
+  color: var(--color-text-muted);
+}

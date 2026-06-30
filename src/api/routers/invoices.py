@@ -22,6 +22,18 @@ def create_invoice(
         raise domain_error_handler(e)
 
 
+@router.get("/admin/service-orders/{service_order_id}/invoice", response_model=InvoiceResponse)
+def get_invoice_by_service_order(
+    service_order_id: int,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        return compose_invoice_service(db).get_by_service_order_id(service_order_id)
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+
 @router.patch("/admin/invoices/{invoice_id}/pay", response_model=InvoiceResponse)
 def pay_invoice(
     invoice_id: int,

@@ -104,15 +104,15 @@ def update_service_line(
     except DomainError as e:
         raise domain_error_handler(e)
 
-@admin_router.delete("/{budget_id}/service-lines/{service_id}", status_code=204)
+@admin_router.delete("/{budget_id}/service-lines/{line_id}", status_code=204)
 def remove_service_line(
     budget_id: int,
-    service_id: int,
+    line_id: int,
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        compose_budget_service(db).remove_service_line(budget_id, service_id)
+        compose_budget_service(db).remove_service_line(budget_id, line_id)
     except DomainError as e:
         raise domain_error_handler(e)
 

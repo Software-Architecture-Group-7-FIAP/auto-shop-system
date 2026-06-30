@@ -9,7 +9,7 @@ from src.application.ports.budget_lookups import (
 )
 from src.application.services.budget_service import BudgetService
 from src.domain.budget.entity import Budget, BudgetProductLine, BudgetServiceLine
-from src.domain.exceptions import NotFoundError
+from src.domain.exceptions import NotFoundError, ValidationError
 
 
 class InMemoryBudgetRepository:
@@ -41,8 +41,49 @@ class InMemoryBudgetRepository:
         self.next_product_line_id += 1
         return created
 
+    def get_product_line(self, budget_id: int, line_id: int) -> BudgetProductLine | None:
+        budget = self.budgets.get(budget_id)
+        if not budget:
+            return None
+        return next((line for line in budget.product_lines if line.id == line_id), None)
+
+    def update_product_line(self, line: BudgetProductLine) -> BudgetProductLine:
+        return line
+
+    def get_service_line(self, budget_id: int, service_id: int) -> BudgetServiceLine | None:
+        budget = self.budgets.get(budget_id)
+        if not budget:
+            return None
+        return next((line for line in budget.service_lines if line.id == service_id), None)
+
+    def update_service_line(self, line: BudgetServiceLine) -> BudgetServiceLine:
+        return line
+
+    def delete_service_line(self, line: BudgetServiceLine) -> None:
+        for current in self.budgets.values():
+            current.service_lines = [existing for existing in current.service_lines if existing.id != line.id]
+
+    def delete_product_line(self, line: BudgetProductLine) -> None:
+        for current in self.budgets.values():
+            current.product_lines = [existing for existing in current.product_lines if existing.id != line.id]
+
     def save(self, budget: Budget) -> Budget:
         assert budget.id is not None
+
+        for line in budget.service_lines:
+            if line.id is None:
+                persisted = self.add_service_line(line)
+                line.id = persisted.id
+            else:
+                self.update_service_line(line)
+
+        for line in budget.product_lines:
+            if line.id is None:
+                persisted = self.add_product_line(line)
+                line.id = persisted.id
+            else:
+                self.update_product_line(line)
+
         self.budgets[budget.id] = budget
         return budget
 
@@ -153,6 +194,7 @@ def test_budget_service_adds_service_line_and_derived_products():
             {
                 10: BudgetServiceDetails(
                     id=10,
+                    name="Óleo",
                     base_price=100.0,
                     estimated_hours=2.0,
                     product_requirements=(
@@ -219,3 +261,100 @@ def test_budget_service_checks_availability():
             "sufficient": True,
         }
     ]
+
+
+def test_budget_service_rejects_negative_quantity_for_product_line_update():
+    repository = InMemoryBudgetRepository()
+    service = make_budget_service(
+        repository=repository,
+        products=InMemoryProductLookup(
+            {20: BudgetProductDetails(id=20, name="Óleo", unit_price=25.0, stock_quantity=10)}
+        ),
+    )
+    budget = service.create(customer_id=1, vehicle_id=2)
+    line = service.add_product_line(budget.id, product_id=20, quantity=3)
+
+    with pytest.raises(ValidationError, match="Quantidade deve ser maior que zero"):
+        service.update_product_line(budget.id, line.id, quantity=-1)
+
+
+def test_budget_service_rejects_negative_quantity_for_service_line_update():
+    repository = InMemoryBudgetRepository()
+    service = make_budget_service(
+        repository=repository,
+        services=InMemoryServiceCatalogLookup(
+            {
+                10: BudgetServiceDetails(
+                    id=10,
+                    name="Troca de óleo",
+                    base_price=100.0,
+                    estimated_hours=1.5,
+                    product_requirements=(),
+                )
+            }
+        ),
+    )
+    budget = service.create(customer_id=1, vehicle_id=2)
+    line = service.add_service_line(budget.id, service_id=10, quantity=1)
+
+    with pytest.raises(ValidationError, match="Quantidade deve ser maior que zero"):
+        service.update_service_line(budget.id, line.id, quantity=0)
+
+
+def test_budget_service_rejects_excessive_quantity_for_service_line_update():
+    repository = InMemoryBudgetRepository()
+    service = make_budget_service(
+        repository=repository,
+        services=InMemoryServiceCatalogLookup(
+            {
+                10: BudgetServiceDetails(
+                    id=10,
+                    name="Troca de óleo",
+                    base_price=100.0,
+                    estimated_hours=1.5,
+                    product_requirements=(),
+                )
+            }
+        ),
+    )
+    budget = service.create(customer_id=1, vehicle_id=2)
+    line = service.add_service_line(budget.id, service_id=10, quantity=1)
+
+    with pytest.raises(ValidationError, match="Quantidade muito grande"):
+        service.update_service_line(budget.id, line.id, quantity=1_000_000)
+
+
+def test_budget_service_removes_service_line_and_derived_products():
+    repository = InMemoryBudgetRepository()
+    service = make_budget_service(
+        repository=repository,
+        services=InMemoryServiceCatalogLookup(
+            {
+                10: BudgetServiceDetails(
+                    id=10,
+                    name="Troca de óleo",
+                    base_price=100.0,
+                    estimated_hours=1.5,
+                    product_requirements=(
+                        BudgetServiceProductRequirement(product_id=20, quantity=2),
+                    ),
+                )
+            }
+        ),
+        products=InMemoryProductLookup(
+            {20: BudgetProductDetails(id=20, name="Óleo", unit_price=25.0, stock_quantity=10)}
+        ),
+    )
+    budget = service.create(customer_id=1, vehicle_id=2)
+    line = service.add_service_line(budget.id, service_id=10, quantity=2)
+    service.add_product_line(budget.id, product_id=20, quantity=3)
+
+    service.remove_service_line(budget.id, line.id)
+    updated_budget = repository.get_by_id(budget.id)
+
+    assert len(updated_budget.service_lines) == 0
+    assert updated_budget.total_price == 75.0
+    assert len(updated_budget.product_lines) == 1
+    assert updated_budget.product_lines[0].product_id == 20
+    assert updated_budget.product_lines[0].quantity == 3
+    assert updated_budget.product_lines[0].from_service is False

@@ -3,6 +3,7 @@ import {
   HttpErrorResponse,
   HttpEvent,
   HttpHandler,
+  HttpContextToken,
   HttpInterceptor,
   HttpRequest,
 } from '@angular/common/http';
@@ -20,9 +21,13 @@ export class HttpErrorInterceptor implements HttpInterceptor {
             ? error.error.detail
             : JSON.stringify(error.error.detail);
         }
-        alert(message);
+        if (!req.context.get(SKIP_GLOBAL_ERROR_ALERT)) {
+          alert(message);
+        }
         return throwError(() => error);
       })
     );
   }
 }
+
+export const SKIP_GLOBAL_ERROR_ALERT = new HttpContextToken<boolean>(() => false);

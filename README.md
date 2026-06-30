@@ -45,7 +45,7 @@ poetry install
 cp .env.example .env
 # Subir o banco: docker compose up db -d  (ou PostgreSQL local)
 # DATABASE_URL usa localhost fora do Docker; dentro do Compose use host db
-poetry run alembic upgrade head   # inclui migration 003 (documentos normalizados)
+poetry run alembic upgrade head   # aplica todas as migrations pendentes
 poetry run uvicorn src.main:app --reload --host 127.0.0.1 --port 8000
 ```
 

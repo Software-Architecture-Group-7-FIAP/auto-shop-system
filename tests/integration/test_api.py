@@ -453,11 +453,44 @@ def test_full_flow(client, auth_headers):
     assert len(orders) == 1
     os_id = orders[0]["id"]
 
-    client.patch(
+    assign = client.patch(
         f"/api/v1/admin/service-orders/{os_id}/assign-mechanic",
         headers=auth_headers,
         json={"mechanic_name": "Carlos"},
     )
+    assert assign.status_code == 200
+    assert assign.json()["status"] == "Em diagnóstico"
+
+    priority = client.patch(
+        f"/api/v1/admin/service-orders/{os_id}/priority",
+        headers=auth_headers,
+        json={"priority": "Alta"},
+    )
+    assert priority.status_code == 200
+    assert priority.json()["priority"] == "Alta"
+
+    updated_os = client.put(
+        f"/api/v1/admin/service-orders/{os_id}",
+        headers=auth_headers,
+        json={"mechanic_name": "Carlos Silva", "priority": "Urgente"},
+    )
+    assert updated_os.status_code == 200
+    assert updated_os.json()["mechanic_name"] == "Carlos Silva"
+    assert updated_os.json()["priority"] == "Urgente"
+
+    no_op_update = client.put(
+        f"/api/v1/admin/service-orders/{os_id}",
+        headers=auth_headers,
+        json={},
+    )
+    assert no_op_update.status_code == 422
+
+    send_os = client.post(
+        f"/api/v1/admin/service-orders/{os_id}/send-email",
+        headers=auth_headers,
+    )
+    assert send_os.status_code == 200
+
     client.patch(
         f"/api/v1/admin/service-orders/{os_id}/start",
         headers=auth_headers,
@@ -473,6 +506,13 @@ def test_full_flow(client, auth_headers):
     )
     assert invoice.status_code == 201
 
+    invoice_lookup = client.get(
+        f"/api/v1/admin/service-orders/{os_id}/invoice",
+        headers=auth_headers,
+    )
+    assert invoice_lookup.status_code == 200
+    assert invoice_lookup.json()["id"] == invoice.json()["id"]
+
     paid = client.patch(
         f"/api/v1/admin/invoices/{invoice.json()['id']}/pay",
         headers=auth_headers,
@@ -485,6 +525,8 @@ def test_full_flow(client, auth_headers):
     )
     assert track.status_code == 200
     assert track.json()["status"] == "Entregue"
+    assert "mechanic_name" not in track.json()
+    assert "priority" not in track.json()
 
 
 @patch("src.infrastructure.external.brasil_api_cnpj.HttpBrasilApiCnpjValidator.validate")

@@ -134,6 +134,19 @@ export interface ServiceOrder {
   created_at: string;
 }
 
+export interface ServiceOrderPublic {
+  id: number;
+  status: ServiceOrderStatus;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+}
+
+export interface ServiceOrderUpdate {
+  mechanic_name?: string;
+  priority?: Priority;
+}
+
 export interface CnpjValidation {
   valid: boolean;
   legal_name: string | null;
