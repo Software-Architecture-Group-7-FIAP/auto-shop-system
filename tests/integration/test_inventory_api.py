@@ -61,12 +61,16 @@ def _create_os_with_product(client, auth_headers, stock_quantity: int, product_q
         headers=auth_headers,
     )
     token = send.json()["approval_token"]
-    client.get(f"/api/v1/public/budgets/{token}/approve")
+    approve = client.post(f"/api/v1/public/budgets/{token}/approve")
+    assert approve.status_code == 200
 
-    service_order_id = client.get(
+    service_orders = client.get(
         "/api/v1/admin/service-orders",
         headers=auth_headers,
-    ).json()[0]["id"]
+    )
+    assert service_orders.status_code == 200
+    assert len(service_orders.json()) == 1
+    service_order_id = service_orders.json()[0]["id"]
 
     return {
         "product_id": product["id"],

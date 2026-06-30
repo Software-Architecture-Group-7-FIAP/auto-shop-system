@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from src.application.ports.cnpj_validator import CnpjValidationResult
 from src.application.ports.cpf_validator import CpfValidationResult
+from src.config import settings
 
 
 def test_health(client):
@@ -598,7 +599,8 @@ def test_validate_and_create_pj_customer(mock_validate, client, auth_headers):
 
 
 @patch("src.infrastructure.external.invertexto_cpf.HttpInvertextoCpfValidator.validate")
-def test_validate_and_create_pf_customer(mock_validate, client, auth_headers):
+def test_validate_and_create_pf_customer(mock_validate, client, auth_headers, monkeypatch):
+    monkeypatch.setattr(settings, "invertexto_api_token", "test-token")
     mock_validate.return_value = CpfValidationResult(
         valid=True,
         formatted="529.982.247-25",
