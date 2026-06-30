@@ -28,6 +28,11 @@ src/
 ## Executar com Docker
 
 ```bash
+cp .env.example .env
+# Edite .env e defina SECRET_KEY com pelo menos 32 caracteres aleatórios
+docker compose up db mailhog -d
+docker compose run --rm app poetry run alembic upgrade head
+docker compose run --rm -e DEV_ADMIN_PASSWORD=admin123 app poetry run python -m src.scripts.seed_dev_admin
 docker compose up --build
 ```
 
@@ -36,6 +41,8 @@ docker compose up --build
 - Swagger: http://localhost:8000/docs (local) or http://localhost:8001/docs (Docker)
 - MailHog UI: http://localhost:8025
 
+Ao rodar a API localmente fora do Docker, use `SMTP_HOST=localhost`. O host `mailhog` funciona apenas dentro da rede do Docker Compose.
+
 ## Executar localmente
 
 Instale o [Poetry](https://python-poetry.org/docs/#installation) e depois:
@@ -43,18 +50,40 @@ Instale o [Poetry](https://python-poetry.org/docs/#installation) e depois:
 ```bash
 poetry install
 cp .env.example .env
+# Edite .env e defina SECRET_KEY com pelo menos 32 caracteres aleatórios
 # Subir o banco: docker compose up db -d  (ou PostgreSQL local)
 # DATABASE_URL usa localhost fora do Docker; dentro do Compose use host db
 poetry run alembic upgrade head   # aplica todas as migrations pendentes
+DEV_ADMIN_PASSWORD=admin123 poetry run python -m src.scripts.seed_dev_admin
 poetry run uvicorn src.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+No PowerShell, use:
+
+```powershell
+$env:DEV_ADMIN_PASSWORD="admin123"
+poetry run python -m src.scripts.seed_dev_admin
 ```
 
 ## Autenticação
 
-Login admin padrão (criado automaticamente):
+O usuário admin não é criado automaticamente. Em um banco novo, rode o seed após as migrations:
+
+```bash
+DEV_ADMIN_PASSWORD=admin123 poetry run python -m src.scripts.seed_dev_admin
+```
+
+No PowerShell:
+
+```powershell
+$env:DEV_ADMIN_PASSWORD="admin123"
+poetry run python -m src.scripts.seed_dev_admin
+```
+
+Credenciais após o seed:
 
 - **Usuário:** `admin`
-- **Senha:** `admin123`
+- **Senha:** valor definido em `DEV_ADMIN_PASSWORD`
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/auth/login \
@@ -64,6 +93,13 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 
 Use o token JWT retornado no header `Authorization: Bearer <token>` para rotas `/api/v1/admin/*`.
 
+Se receber `Credenciais inválidas` em banco novo, verifique:
+
+1. `poetry run alembic upgrade head` foi executado.
+2. `DEV_ADMIN_PASSWORD` foi definido antes de rodar o seed.
+3. `python -m src.scripts.seed_dev_admin` criou o usuário admin.
+4. A API está usando o mesmo `DATABASE_URL` onde o seed foi executado.
+
 ## Gestão de clientes (T02 — RF01 + RF05)
 
 Cada cliente possui **um ou mais documentos** (CPF e/ou CNPJ). O tipo é inferido pelo tamanho do documento (11 = CPF, 14 = CNPJ); não há campo `person_type`. Regras de domínio:
@@ -71,7 +107,7 @@ Cada cliente possui **um ou mais documentos** (CPF e/ou CNPJ). O tipo é inferid
 - No máximo **um CPF** por cliente; **vários CNPJs** permitidos
 - Documento duplicado no sistema → HTTP 409
 - Endereço **obrigatório** no cadastro
-- CPF validado externamente via [Invertexto API](docs/cpf-validation-invertexto.md) antes de persistir
+- CPF validado estruturalmente em desenvolvimento; em produção, também é validado externamente via [Invertexto API](docs/cpf-validation-invertexto.md)
 - CNPJ validado externamente via [Brasil API](https://brasilapi.com.br/docs) antes de persistir
 
 ### APIs administrativas (JWT)
@@ -124,7 +160,7 @@ npm start
 ```
 
 - **URL:** http://localhost:4200
-- Login: `admin` / `admin123`
+- Login: `admin` / senha definida em `DEV_ADMIN_PASSWORD`
 - Proxy dev encaminha `/api/*` → `http://localhost:8000`
 
 Rotas: clientes, veículos, serviços, produtos, fornecedores, orçamentos e ordens de serviço. Detalhes em `frontend/README.md`.
@@ -135,7 +171,7 @@ Interface vanilla servida pelo FastAPI em `/app/`:
 
 - **URL (local):** http://localhost:8000/app/
 - **URL (Docker):** http://localhost:8001/app/
-- Login com `admin` / `admin123`
+- Login com `admin` / senha definida em `DEV_ADMIN_PASSWORD`
 - Cadastro de clientes (CPF ou CNPJ), validação externa de CPF/CNPJ, busca por documento e listagem
 
 > **Nota:** Se o container Docker `app` estiver rodando na porta 8000, `http://localhost:8000` pode responder pelo Docker (sem o painel `/app/`). Pare o container com `docker compose stop app` ou use a API Docker em http://localhost:8001.
