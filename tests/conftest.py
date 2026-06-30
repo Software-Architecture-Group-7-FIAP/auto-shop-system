@@ -2,6 +2,7 @@ import os
 
 os.environ["DATABASE_URL"] = "sqlite://"
 os.environ["TESTING"] = "1"
+os.environ["SECRET_KEY"] = "test-secret-key-with-at-least-32-chars"
 
 import pytest
 from fastapi.testclient import TestClient

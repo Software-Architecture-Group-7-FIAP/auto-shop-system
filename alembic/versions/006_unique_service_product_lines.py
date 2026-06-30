@@ -19,6 +19,19 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.execute(
         """
+        UPDATE service_product_lines AS survivor
+        SET quantity = duplicates.total_quantity
+        FROM (
+            SELECT MIN(id) AS survivor_id, SUM(quantity) AS total_quantity
+            FROM service_product_lines
+            GROUP BY service_id, product_id
+            HAVING COUNT(*) > 1
+        ) AS duplicates
+        WHERE survivor.id = duplicates.survivor_id
+        """
+    )
+    op.execute(
+        """
         DELETE FROM service_product_lines
         WHERE id NOT IN (
             SELECT MIN(id)

@@ -39,13 +39,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
-    inspector = inspect(bind)
-
-    indexes = {index["name"] for index in inspector.get_indexes("budget_product_lines")}
-    if "ix_budget_product_lines_service_id" in indexes:
-        op.drop_index("ix_budget_product_lines_service_id", table_name="budget_product_lines")
-
-    columns = {column["name"] for column in inspect(bind).get_columns("budget_product_lines")}
-    if "service_id" in columns:
-        op.drop_column("budget_product_lines", "service_id")
+    pass

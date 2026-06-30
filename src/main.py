@@ -38,15 +38,6 @@ _configure_app_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from src.infrastructure.database import SessionLocal
-
-    db = SessionLocal()
-    try:
-        from src.api.composition.auth import compose_auth_service
-
-        compose_auth_service(db).ensure_default_admin()
-    finally:
-        db.close()
     yield
 
 

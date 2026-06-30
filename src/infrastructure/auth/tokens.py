@@ -12,11 +12,11 @@ def generate_approval_token(budget_id: int) -> str:
 
 def create_signed_approval_token(budget_id: int) -> str:
     payload = {"budget_id": budget_id, "type": "budget_approval"}
-    return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+    return jwt.encode(payload, settings.jwt_secret(), algorithm=settings.algorithm)
 
 
 def decode_approval_token(token: str) -> int:
-    payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+    payload = jwt.decode(token, settings.jwt_secret(), algorithms=[settings.algorithm])
     if payload.get("type") != "budget_approval":
         raise ValueError("Invalid token type")
     return int(payload["budget_id"])
