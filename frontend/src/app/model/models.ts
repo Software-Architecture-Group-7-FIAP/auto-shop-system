@@ -50,6 +50,9 @@ export interface Vehicle {
   id: number;
   customer_id: number;
   plate: string;
+  state: string;
+  city: string;
+  color: string;
   brand: string;
   model: string;
   year: number;

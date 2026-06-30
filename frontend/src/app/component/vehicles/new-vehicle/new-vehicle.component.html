@@ -1,7 +1,7 @@
 <p class="detail-title-text">Novo veículo</p>
 <form #formRef="ngForm" (ngSubmit)="saveVehicle(formRef.value)">
   <div class="field-list">
-    <div class="field-name">
+    <div class="field-name" *ngIf="!customerId">
       <span>ID do cliente</span>
       <input
         class="text-input small-input"
@@ -18,6 +18,28 @@
         class="text-input medium-input"
         type="text"
         name="plate"
+        ngModel
+        required
+      />
+    </div>
+    <div class="field-name">
+      <span>UF</span>
+      <input
+        class="text-input small-input"
+        type="text"
+        name="state"
+        ngModel
+        required
+        minlength="2"
+        maxlength="2"
+      />
+    </div>
+    <div class="field-name">
+      <span>Cidade</span>
+      <input
+        class="text-input medium-input"
+        type="text"
+        name="city"
         ngModel
         required
       />
@@ -43,6 +65,16 @@
       />
     </div>
     <div class="field-name">
+      <span>Cor</span>
+      <input
+        class="text-input medium-input"
+        type="text"
+        name="color"
+        ngModel
+        required
+      />
+    </div>
+    <div class="field-name">
       <span>Ano</span>
       <input
         class="text-input small-input"
@@ -55,9 +87,18 @@
       />
     </div>
   </div>
+  <p *ngIf="errorMessage" class="validation-result">{{ errorMessage }}</p>
   <div class="button-list">
     <button class="btn btn-primary" type="submit" [disabled]="formRef.invalid">
       Salvar
+    </button>
+    <button
+      *ngIf="customerId"
+      class="btn btn-secondary"
+      type="button"
+      (click)="cancel()"
+    >
+      Cancelar
     </button>
   </div>
 </form>

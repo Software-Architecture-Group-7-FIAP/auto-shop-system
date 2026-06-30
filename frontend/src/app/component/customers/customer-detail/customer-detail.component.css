@@ -3,3 +3,22 @@
   font-size: 0.85rem;
   color: var(--color-text);
 }
+
+.vehicle-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0;
+}
+
+.vehicle-list .list-header,
+.vehicle-list .list-item {
+  display: grid;
+  grid-template-columns: 1fr 2fr 1fr 0.75fr;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+}
+
+.vehicle-list .list-header {
+  font-weight: 600;
+  border-bottom: 1px solid var(--color-border, #ddd);
+}

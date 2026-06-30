@@ -20,6 +20,12 @@ export class VehicleService {
     return this.http.get<Vehicle>(`${this.url}/${id}`);
   }
 
+  getByCustomer(customerId: number): Observable<Vehicle[]> {
+    return this.http.get<Vehicle[]>(
+      `api/v1/admin/customers/${customerId}/vehicles`
+    );
+  }
+
   create(body: object): Observable<Vehicle> {
     return this.http.post<Vehicle>(this.url, body, this.httpOptions);
   }

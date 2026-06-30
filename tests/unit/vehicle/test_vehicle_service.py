@@ -32,8 +32,11 @@ class InMemoryVehicleRepository:
             if vehicle.customer_id == customer_id
         ]
 
-    def exists_by_plate(self, plate: Plate) -> bool:
-        return any(vehicle.plate == plate for vehicle in self.vehicles.values())
+    def exists_by_customer_and_plate(self, customer_id: int, plate: Plate) -> bool:
+        return any(
+            vehicle.customer_id == customer_id and vehicle.plate == plate
+            for vehicle in self.vehicles.values()
+        )
 
     def save(self, vehicle: Vehicle) -> Vehicle:
         assert vehicle.id is not None
@@ -65,15 +68,32 @@ class FakeUnitOfWork:
         self.rollbacks += 1
 
 
+def _vehicle_kwargs(**overrides):
+    base = {
+        "plate": "abc-1234",
+        "state": "sp",
+        "city": "São Paulo",
+        "color": "Preto",
+        "brand": "Fiat",
+        "model": "Uno",
+        "year": 2020,
+    }
+    base.update(overrides)
+    return base
+
+
 def test_vehicle_service_creates_vehicle_without_sqlalchemy():
     vehicles = InMemoryVehicleRepository()
     uow = FakeUnitOfWork()
     service = VehicleService(vehicles, InMemoryCustomerLookup({1}), uow)
 
-    vehicle = service.create(1, "abc-1234", "Fiat", "Uno", 2020)
+    vehicle = service.create(1, **_vehicle_kwargs())
 
     assert vehicle.id == 1
     assert vehicle.plate == "ABC1234"
+    assert vehicle.state == "SP"
+    assert vehicle.city == "São Paulo"
+    assert vehicle.color == "Preto"
     assert uow.commits == 1
 
 
@@ -85,13 +105,35 @@ def test_vehicle_service_rejects_unknown_customer():
     )
 
     with pytest.raises(NotFoundError):
-        service.create(1, "ABC1234", "Fiat", "Uno", 2020)
+        service.create(1, **_vehicle_kwargs())
 
 
-def test_vehicle_service_rejects_duplicate_plate():
+def test_vehicle_service_rejects_duplicate_plate_for_same_customer():
     vehicles = InMemoryVehicleRepository()
     service = VehicleService(vehicles, InMemoryCustomerLookup({1}), FakeUnitOfWork())
-    service.create(1, "ABC1234", "Fiat", "Uno", 2020)
+    service.create(1, **_vehicle_kwargs())
 
-    with pytest.raises(ConflictError):
-        service.create(1, "abc-1234", "VW", "Gol", 2021)
+    with pytest.raises(ConflictError, match="já existe para o cliente"):
+        service.create(1, **_vehicle_kwargs(brand="VW", model="Gol", year=2021))
+
+
+def test_vehicle_service_allows_same_plate_for_different_customers():
+    vehicles = InMemoryVehicleRepository()
+    service = VehicleService(vehicles, InMemoryCustomerLookup({1, 2}), FakeUnitOfWork())
+    service.create(1, **_vehicle_kwargs())
+
+    vehicle = service.create(2, **_vehicle_kwargs())
+
+    assert vehicle.customer_id == 2
+    assert vehicle.plate == "ABC1234"
+
+
+def test_vehicle_service_list_by_customer_requires_existing_customer():
+    service = VehicleService(
+        InMemoryVehicleRepository(),
+        InMemoryCustomerLookup(set()),
+        FakeUnitOfWork(),
+    )
+
+    with pytest.raises(NotFoundError, match="Cliente não encontrado"):
+        service.list_by_customer(1)

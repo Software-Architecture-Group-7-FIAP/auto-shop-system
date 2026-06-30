@@ -11,6 +11,41 @@
         <label class="readonly">{{ vehicle.customer_id }}</label>
       </div>
       <div class="field-name">
+        <span>UF</span>
+        <input
+          class="text-input small-input"
+          type="text"
+          name="state"
+          [(ngModel)]="vehicle.state"
+          (ngModelChange)="vehicleChanged()"
+          required
+          minlength="2"
+          maxlength="2"
+        />
+      </div>
+      <div class="field-name">
+        <span>Cidade</span>
+        <input
+          class="text-input medium-input"
+          type="text"
+          name="city"
+          [(ngModel)]="vehicle.city"
+          (ngModelChange)="vehicleChanged()"
+          required
+        />
+      </div>
+      <div class="field-name">
+        <span>Cor</span>
+        <input
+          class="text-input medium-input"
+          type="text"
+          name="color"
+          [(ngModel)]="vehicle.color"
+          (ngModelChange)="vehicleChanged()"
+          required
+        />
+      </div>
+      <div class="field-name">
         <span>Marca</span>
         <input
           class="text-input medium-input"

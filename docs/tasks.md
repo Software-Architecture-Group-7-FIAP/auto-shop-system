@@ -518,7 +518,7 @@ Obrigatórios para avaliação, mas separados do backlog de implementação dos 
 ### Cadastros e validações
 
 - [ ] **RF01** — Gestão do Cliente
-- [ ] **RF02** — Gestão do Veículo
+- [x] **RF02** — Gestão do Veículo
 - [ ] **RF03** — Gestão de Produtos (Peças e Insumos)
 - [ ] **RF04** — Gestão de Serviços
 - [ ] **RF05** — Validação de CNPJ

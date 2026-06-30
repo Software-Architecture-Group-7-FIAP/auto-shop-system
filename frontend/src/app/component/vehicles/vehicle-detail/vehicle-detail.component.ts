@@ -42,6 +42,9 @@ export class VehicleDetailComponent implements OnChanges {
       return;
     }
     const body = {
+      state: this.vehicle.state,
+      city: this.vehicle.city,
+      color: this.vehicle.color,
       brand: this.vehicle.brand,
       model: this.vehicle.model,
       year: this.vehicle.year,
