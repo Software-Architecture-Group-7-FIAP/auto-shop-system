@@ -34,6 +34,7 @@ export class ServiceOrderDetailComponent implements OnChanges {
   isFinishing = false;
   isCreatingInvoice = false;
   isPayingInvoice = false;
+  private invoiceKnownAbsent = false;
   readonly serviceOrderStatus = ServiceOrderStatus;
   readonly invoiceStatus = InvoiceStatus;
 
@@ -47,6 +48,7 @@ export class ServiceOrderDetailComponent implements OnChanges {
       this.actionMessage = '';
       this.errorMessage = '';
       this.invoice = null;
+      this.invoiceKnownAbsent = false;
       this.loadServiceOrder();
     }
   }
@@ -66,12 +68,19 @@ export class ServiceOrderDetailComponent implements OnChanges {
       this.invoice = null;
       return;
     }
+    if (this.invoiceKnownAbsent && !this.invoice) {
+      return;
+    }
     this.serviceOrderService.getInvoice(this.serviceOrderId).subscribe({
       next: (invoice) => {
         this.invoice = invoice;
+        this.invoiceKnownAbsent = false;
       },
-      error: () => {
+      error: (error: HttpErrorResponse) => {
         this.invoice = null;
+        if (error.status === 404) {
+          this.invoiceKnownAbsent = true;
+        }
       },
     });
   }
@@ -93,7 +102,10 @@ export class ServiceOrderDetailComponent implements OnChanges {
         this.selectedStatus = updated.status;
         this.parent.updateServiceOrderInList(updated);
         this.actionMessage = 'Ordem de serviço atualizada.';
-        this.loadInvoice();
+        if (!this.shouldShowBillingSection()) {
+          this.invoice = null;
+          this.invoiceKnownAbsent = false;
+        }
       },
       complete: () => {
         this.isSaving = false;
@@ -225,6 +237,7 @@ export class ServiceOrderDetailComponent implements OnChanges {
     this.serviceOrderService.createInvoice(this.serviceOrderId).subscribe({
       next: (invoice) => {
         this.invoice = invoice;
+        this.invoiceKnownAbsent = false;
         this.actionMessage = `Fatura #${invoice.id} criada — R$ ${invoice.amount.toFixed(2)}`;
       },
       complete: () => {
