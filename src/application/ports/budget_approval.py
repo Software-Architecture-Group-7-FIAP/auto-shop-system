@@ -32,7 +32,7 @@ class BudgetApprovalTokenService(Protocol):
     def create_for_budget(self, budget_id: int) -> str:
         ...
 
-    def validate(self, token: str) -> None:
+    def validate(self, token: str) -> int:
         ...
 
 

@@ -58,14 +58,14 @@ class FakeTokenGenerator:
     def create_for_budget(self, budget_id: int) -> str:
         return f"token-{budget_id}"
 
-    def validate(self, token: str) -> None:
+    def validate(self, token: str) -> int:
         try:
             prefix, budget_id = token.split("-", maxsplit=1)
         except ValueError as exc:
             raise ValueError("Invalid token") from exc
         if prefix != "token":
             raise ValueError("Invalid token")
-        int(budget_id)
+        return int(budget_id)
 
 
 class FakeUrlBuilder:

@@ -28,8 +28,8 @@ class SignedBudgetApprovalTokenService:
     def create_for_budget(self, budget_id: int) -> str:
         return create_signed_approval_token(budget_id)
 
-    def validate(self, token: str) -> None:
-        validate_approval_token(token)
+    def validate(self, token: str) -> int:
+        return validate_approval_token(token)
 
 
 class SettingsBudgetApprovalUrlBuilder:

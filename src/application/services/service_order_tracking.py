@@ -1,3 +1,3 @@
-def build_service_order_tracking_url(frontend_public_url: str, service_order_id: int) -> str:
+def build_service_order_tracking_url(frontend_public_url: str, token: str) -> str:
     base_url = frontend_public_url.rstrip("/")
-    return f"{base_url}/track-service-order?serviceOrderId={service_order_id}"
+    return f"{base_url}/track-service-order?token={token}"

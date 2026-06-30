@@ -19,7 +19,7 @@ def create_signed_approval_token(budget_id: int) -> str:
     return jwt.encode(payload, settings.jwt_secret(), algorithm=settings.algorithm)
 
 
-def validate_approval_token(token: str) -> None:
+def validate_approval_token(token: str) -> int:
     try:
         payload = jwt.decode(token, settings.jwt_secret(), algorithms=[settings.algorithm])
         if payload.get("type") != "budget_approval":
@@ -29,5 +29,6 @@ def validate_approval_token(token: str) -> None:
         budget_id = payload.get("budget_id")
         if not isinstance(budget_id, int):
             raise ValueError("Invalid budget id")
+        return budget_id
     except JWTError as exc:
         raise ValueError("Invalid approval token") from exc

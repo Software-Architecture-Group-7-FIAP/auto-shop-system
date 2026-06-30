@@ -2,12 +2,16 @@ from unittest.mock import patch
 
 from src.application.ports.cnpj_validator import CnpjValidationResult
 from src.application.ports.cpf_validator import CpfValidationResult
+from src.api.rate_limit import clear_rate_limits
+from src.config import settings
 
 
 def test_health(client):
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
 
 
 def _pf_customer_payload(**overrides):
@@ -50,6 +54,27 @@ def test_login(client):
     assert "access_token" in response.json()
 
 
+def test_login_rate_limit(client):
+    original_limit = settings.rate_limit_login_requests
+    try:
+        clear_rate_limits()
+        settings.rate_limit_login_requests = 1
+        first = client.post(
+            "/api/v1/auth/login",
+            json={"username": "bad", "password": "bad"},
+        )
+        second = client.post(
+            "/api/v1/auth/login",
+            json={"username": "bad", "password": "bad"},
+        )
+    finally:
+        settings.rate_limit_login_requests = original_limit
+        clear_rate_limits()
+
+    assert first.status_code == 401
+    assert second.status_code == 429
+
+
 def test_customer_crud(client, auth_headers):
     create = client.post(
         "/api/v1/admin/customers",
@@ -61,9 +86,21 @@ def test_customer_crud(client, auth_headers):
     assert create.json()["documents"] == ["52998224725"]
     assert create.json()["address"] == "Rua A, 100"
 
-    get_doc = client.get("/api/v1/customers/by-document/52998224725")
+    get_doc = client.post(
+        "/api/v1/customers/lookup",
+        json={"document": "52998224725", "email": "maria@test.com"},
+    )
     assert get_doc.status_code == 200
     assert get_doc.json() == {"id": customer_id, "name": "Maria Silva"}
+
+    wrong_factor = client.post(
+        "/api/v1/customers/lookup",
+        json={"document": "52998224725", "email": "wrong@test.com"},
+    )
+    assert wrong_factor.status_code == 404
+
+    old_public_lookup = client.get("/api/v1/customers/by-document/52998224725")
+    assert old_public_lookup.status_code == 404
 
     get_admin_doc = client.get(
         "/api/v1/admin/customers/by-document/52998224725",
@@ -121,7 +158,10 @@ def test_customer_rejects_duplicate_document(client, auth_headers):
 
 
 def test_customer_public_lookup_not_found(client):
-    response = client.get("/api/v1/customers/by-document/52998224725")
+    response = client.post(
+        "/api/v1/customers/lookup",
+        json={"document": "52998224725", "email": "maria@test.com"},
+    )
     assert response.status_code == 404
 
 
@@ -447,16 +487,10 @@ def test_full_flow(client, auth_headers):
     assert token
 
     get_approve = client.get(f"/api/v1/public/budgets/{token}/approve")
-    assert get_approve.status_code == 200
-    assert "text/html" in get_approve.headers["content-type"]
-    assert "Confirmar aprovação" in get_approve.text
-    assert f'action="/api/v1/public/budgets/{token}/approve"' in get_approve.text
+    assert get_approve.status_code == 405
 
     get_reject = client.get(f"/api/v1/public/budgets/{token}/reject")
-    assert get_reject.status_code == 200
-    assert "text/html" in get_reject.headers["content-type"]
-    assert "Confirmar recusa" in get_reject.text
-    assert f'action="/api/v1/public/budgets/{token}/reject"' in get_reject.text
+    assert get_reject.status_code == 405
 
     budget_after_get = client.get(
         f"/api/v1/admin/budgets/{budget['id']}",
@@ -506,10 +540,14 @@ def test_full_flow(client, auth_headers):
     )
     assert no_op_update.status_code == 422
 
-    send_os = client.post(
-        f"/api/v1/admin/service-orders/{os_id}/send-email",
-        headers=auth_headers,
-    )
+    with patch(
+        "src.infrastructure.auth.service_order_tracking.HmacServiceOrderTrackingTokenService.create_token",
+        return_value="service-order-tracking-token",
+    ):
+        send_os = client.post(
+            f"/api/v1/admin/service-orders/{os_id}/send-email",
+            headers=auth_headers,
+        )
     assert send_os.status_code == 200
 
     client.patch(
@@ -541,9 +579,10 @@ def test_full_flow(client, auth_headers):
     assert paid.status_code == 200
     assert paid.json()["status"] == "Paga"
 
-    track = client.get(
-        f"/api/v1/public/service-orders/{os_id}?document=52998224725"
-    )
+    old_track = client.get(f"/api/v1/public/service-orders/{os_id}?document=52998224725")
+    assert old_track.status_code in {404, 405}
+
+    track = client.get("/api/v1/public/service-orders/track/service-order-tracking-token")
     assert track.status_code == 200
     assert track.json()["status"] == "Entregue"
     assert "mechanic_name" not in track.json()

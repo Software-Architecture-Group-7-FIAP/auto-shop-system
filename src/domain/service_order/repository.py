@@ -8,6 +8,16 @@ class ServiceOrderRepository(Protocol):
     def get_by_id(self, service_order_id: int) -> ServiceOrder | None:
         ...
 
+    def get_by_tracking_token_fingerprint(self, token_fingerprint: str) -> ServiceOrder | None:
+        ...
+
+    def set_tracking_token_fingerprint(
+        self,
+        service_order_id: int,
+        token_fingerprint: str,
+    ) -> None:
+        ...
+
     def list_all(self, status: ServiceOrderStatus | None = None) -> list[ServiceOrder]:
         ...
 

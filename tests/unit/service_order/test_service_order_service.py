@@ -19,9 +19,26 @@ class InMemoryServiceOrderRepository:
             for service_order in service_orders or []
             if service_order.id is not None
         }
+        self.tracking_token_fingerprints: dict[int, str] = {}
 
     def get_by_id(self, service_order_id: int) -> ServiceOrder | None:
         return self.service_orders.get(service_order_id)
+
+    def get_by_tracking_token_fingerprint(
+        self,
+        token_fingerprint: str,
+    ) -> ServiceOrder | None:
+        for service_order_id, current_fingerprint in self.tracking_token_fingerprints.items():
+            if current_fingerprint == token_fingerprint:
+                return self.service_orders.get(service_order_id)
+        return None
+
+    def set_tracking_token_fingerprint(
+        self,
+        service_order_id: int,
+        token_fingerprint: str,
+    ) -> None:
+        self.tracking_token_fingerprints[service_order_id] = token_fingerprint
 
     def list_all(
         self,
@@ -123,6 +140,29 @@ class FakeEmailSender:
         )
 
 
+class FailingEmailSender(FakeEmailSender):
+    async def send_email(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        html: str | None = None,
+        attachments: tuple = (),
+    ) -> None:
+        raise RuntimeError("SMTP unavailable")
+
+
+class FakeTrackingTokenService:
+    def __init__(self, token: str = "tracking-token"):
+        self.token = token
+
+    def create_token(self) -> str:
+        return self.token
+
+    def fingerprint(self, token: str) -> str:
+        return f"fingerprint:{token}"
+
+
 def make_service_order(**overrides) -> ServiceOrder:
     base = ServiceOrder(
         id=1,
@@ -142,6 +182,7 @@ def make_service(
     return ServiceOrderService(
         service_orders=repository or InMemoryServiceOrderRepository([make_service_order()]),
         contacts=contacts or FakeContactLookup(),
+        tracking_tokens=FakeTrackingTokenService(),
         uow=uow or FakeUnitOfWork(),
     )
 
@@ -225,6 +266,24 @@ def test_service_order_service_rejects_wrong_customer_document():
         service.get_by_customer_document(1, "529.982.247-25")
 
 
+def test_service_order_service_tracks_by_opaque_token():
+    repository = InMemoryServiceOrderRepository([make_service_order()])
+    token = "tracking-token"
+    repository.set_tracking_token_fingerprint(1, FakeTrackingTokenService().fingerprint(token))
+    service = make_service(repository=repository)
+
+    service_order = service.get_by_tracking_token(token)
+
+    assert service_order.id == 1
+
+
+def test_service_order_service_rejects_invalid_tracking_token():
+    service = make_service()
+
+    with pytest.raises(NotFoundError, match="Link de acompanhamento inválido"):
+        service.get_by_tracking_token("invalid")
+
+
 def test_service_order_service_calculates_average_execution_time():
     started_at = datetime(2026, 1, 1, 8, 0, 0)
     service = make_service(
@@ -252,32 +311,37 @@ async def test_service_order_email_service_uses_ports():
     pdfs = FakePdfGenerator()
     emails = FakeEmailSender()
     service = ServiceOrderEmailService(
-        service_orders=InMemoryServiceOrderRepository(
+        service_orders=(repository := InMemoryServiceOrderRepository(
             [
                 make_service_order(
                     status=ServiceOrderStatus.EM_DIAGNOSTICO,
                     mechanic_name="Mecânico A",
                 )
             ]
-        ),
+        )),
         contacts=FakeContactLookup(),
         pdfs=pdfs,
         emails=emails,
+        tracking_tokens=FakeTrackingTokenService(),
         frontend_public_url="http://localhost:4200/",
+        uow=FakeUnitOfWork(),
     )
 
     await service.send_os_email(1)
 
     assert pdfs.calls[0]["status"] == "Em diagnóstico"
     assert pdfs.calls[0]["mechanic_name"] == "Mecânico A"
-    assert pdfs.calls[0]["tracking_url"] == "http://localhost:4200/track-service-order?serviceOrderId=1"
+    assert pdfs.calls[0]["tracking_url"].startswith(
+        "http://localhost:4200/track-service-order?token="
+    )
+    assert repository.tracking_token_fingerprints[1] == "fingerprint:tracking-token"
     message = emails.messages[0]
     assert message["to"] == "ana@test.com"
     assert message["subject"] == "Ordem de Serviço #1"
     assert message["body"] == (
         "Sua OS #1 está com status: Em diagnóstico.\n\n"
-        "Acompanhe sua OS:\nhttp://localhost:4200/track-service-order?serviceOrderId=1\n\n"
-        "Informe seu CPF/CNPJ para consultar o progresso."
+        f"Acompanhe sua OS:\n{pdfs.calls[0]['tracking_url']}\n\n"
+        "Use o link acima para consultar o progresso."
     )
     assert message["html"] is None
     assert message["attachments"][0].filename == "ordem-servico-1.pdf"
@@ -297,7 +361,9 @@ async def test_service_order_email_service_requires_customer_and_vehicle():
         contacts=EmptyContactLookup(),
         pdfs=FakePdfGenerator(),
         emails=emails,
+        tracking_tokens=FakeTrackingTokenService(),
         frontend_public_url="http://localhost:4200",
+        uow=FakeUnitOfWork(),
     )
 
     with pytest.raises(NotFoundError, match="Dados da OS não encontrados"):
@@ -306,7 +372,28 @@ async def test_service_order_email_service_requires_customer_and_vehicle():
     assert emails.messages == []
 
 
+@pytest.mark.asyncio
+async def test_service_order_email_service_does_not_persist_token_when_email_fails():
+    repository = InMemoryServiceOrderRepository([make_service_order()])
+    uow = FakeUnitOfWork()
+    service = ServiceOrderEmailService(
+        service_orders=repository,
+        contacts=FakeContactLookup(),
+        pdfs=FakePdfGenerator(),
+        emails=FailingEmailSender(),
+        tracking_tokens=FakeTrackingTokenService(),
+        frontend_public_url="http://localhost:4200",
+        uow=uow,
+    )
+
+    with pytest.raises(RuntimeError, match="SMTP unavailable"):
+        await service.send_os_email(1)
+
+    assert repository.tracking_token_fingerprints == {}
+    assert uow.commits == 0
+
+
 def test_build_service_order_tracking_url_trims_trailing_slash():
-    assert build_service_order_tracking_url("http://localhost:4200/", 10) == (
-        "http://localhost:4200/track-service-order?serviceOrderId=10"
+    assert build_service_order_tracking_url("http://localhost:4200/", "token-10") == (
+        "http://localhost:4200/track-service-order?token=token-10"
     )

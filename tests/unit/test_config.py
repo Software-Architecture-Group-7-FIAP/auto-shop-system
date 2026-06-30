@@ -18,6 +18,7 @@ def test_settings_requires_secret_key(monkeypatch):
         "dev-secret-key",
         "change-me",
         "replace-with-at-least-32-random-characters",
+        "replace-with-at-least-32-random-characters-not-this-value",
         "change-me-in-production-use-a-long-random-string",
         "dev-secret-key-change-in-production",
     ],
@@ -59,3 +60,38 @@ def test_settings_exposes_dev_admin_password():
     )
 
     assert settings.dev_admin_password == "safe-dev-password"
+
+
+def test_settings_rejects_plaintext_smtp_in_production():
+    with pytest.raises(ValidationError, match="SMTP TLS is required"):
+        Settings(
+            secret_key="strong-test-secret-with-at-least-32-chars",
+            app_env="production",
+            smtp_use_tls=False,
+            smtp_starttls=False,
+            _env_file=None,
+        )
+
+
+def test_settings_accepts_starttls_smtp_in_production():
+    settings = Settings(
+        secret_key="strong-test-secret-with-at-least-32-chars",
+        app_env="production",
+        smtp_starttls=True,
+        _env_file=None,
+    )
+
+    assert settings.smtp_starttls is True
+
+
+def test_settings_parses_cors_origins():
+    settings = Settings(
+        secret_key="strong-test-secret-with-at-least-32-chars",
+        cors_allowed_origins="https://app.example.com, https://admin.example.com",
+        _env_file=None,
+    )
+
+    assert settings.cors_origins() == [
+        "https://app.example.com",
+        "https://admin.example.com",
+    ]

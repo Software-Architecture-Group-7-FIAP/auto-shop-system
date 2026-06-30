@@ -31,6 +31,31 @@ class SqlAlchemyServiceOrderRepository:
             return None
         return self._to_domain(model)
 
+    def get_by_tracking_token_fingerprint(self, token_fingerprint: str) -> ServiceOrder | None:
+        model = (
+            self.db.query(ServiceOrderModel)
+            .filter(ServiceOrderModel.tracking_token_hash == token_fingerprint)
+            .first()
+        )
+        if not model:
+            return None
+        return self._to_domain(model)
+
+    def set_tracking_token_fingerprint(
+        self,
+        service_order_id: int,
+        token_fingerprint: str,
+    ) -> None:
+        model = (
+            self.db.query(ServiceOrderModel)
+            .filter(ServiceOrderModel.id == service_order_id)
+            .first()
+        )
+        if not model:
+            raise NotFoundError("OS não encontrada")
+        model.tracking_token_hash = token_fingerprint
+        self.db.flush()
+
     def list_all(self, status: ServiceOrderStatus | None = None) -> list[ServiceOrder]:
         query = self.db.query(ServiceOrderModel)
         if status:

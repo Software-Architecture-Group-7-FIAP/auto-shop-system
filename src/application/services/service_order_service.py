@@ -1,4 +1,5 @@
 from src.application.ports.service_order import ServiceOrderContactLookup
+from src.application.ports.service_order_tracking import ServiceOrderTrackingTokenService
 from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.enums import Priority, ServiceOrderStatus
 from src.domain.exceptions import NotFoundError
@@ -12,10 +13,12 @@ class ServiceOrderService:
         self,
         service_orders: ServiceOrderRepository,
         contacts: ServiceOrderContactLookup,
+        tracking_tokens: ServiceOrderTrackingTokenService,
         uow: UnitOfWork,
     ):
         self.service_orders = service_orders
         self.contacts = contacts
+        self.tracking_tokens = tracking_tokens
         self.uow = uow
 
     def get_by_id(self, service_order_id: int) -> ServiceOrder:
@@ -33,6 +36,15 @@ class ServiceOrderService:
         customer = self.contacts.get_customer(service_order.customer_id)
         if not customer or cleaned not in customer.documents:
             raise NotFoundError("OS não encontrada para este documento")
+        return service_order
+
+    def get_by_tracking_token(self, token: str) -> ServiceOrder:
+        token_fingerprint = self.tracking_tokens.fingerprint(token)
+        service_order = self.service_orders.get_by_tracking_token_fingerprint(
+            token_fingerprint
+        )
+        if not service_order:
+            raise NotFoundError("Link de acompanhamento inválido")
         return service_order
 
     def assign_mechanic(self, service_order_id: int, mechanic_name: str) -> ServiceOrder:

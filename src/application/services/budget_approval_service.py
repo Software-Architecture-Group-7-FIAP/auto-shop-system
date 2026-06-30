@@ -114,12 +114,12 @@ class BudgetApprovalService:
 
     def _get_budget_by_valid_token(self, token: str) -> Budget:
         try:
-            self.tokens.validate(token)
+            budget_id = self.tokens.validate(token)
         except ValueError as exc:
             raise NotFoundError(INVALID_APPROVAL_TOKEN_MESSAGE) from exc
 
-        budget = self.budgets.get_by_approval_token(token)
-        if not budget:
+        budget = self.budgets.get_by_id(budget_id)
+        if not budget or budget.approval_token != token:
             raise NotFoundError(INVALID_APPROVAL_TOKEN_MESSAGE)
         return budget
 

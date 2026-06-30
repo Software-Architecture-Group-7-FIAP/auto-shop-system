@@ -1,0 +1,27 @@
+name: Security checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test-and-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction
+      - name: Run tests
+        run: poetry run pytest
+      - name: Run Bandit
+        run: poetry run bandit -r src -ll
+      - name: Run pip-audit
+        run: poetry run pip-audit
+      - name: Check unsafe defaults
+        run: poetry run python scripts/check_unsafe_defaults.py

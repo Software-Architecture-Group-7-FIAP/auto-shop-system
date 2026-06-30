@@ -23,7 +23,7 @@ def test_signed_approval_token_includes_expiration():
 def test_validate_approval_token_accepts_valid_token():
     token = create_signed_approval_token(123)
 
-    validate_approval_token(token)
+    assert validate_approval_token(token) == 123
 
 
 def test_validate_approval_token_rejects_expired_token():

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from src.api.composition.service_orders import (
@@ -7,6 +7,7 @@ from src.api.composition.service_orders import (
 )
 from src.api.composition.execution import compose_execution_service
 from src.api.dependencies import domain_error_handler, get_current_user
+from src.api.rate_limit import rate_limit
 from src.api.schemas import (
     AssignMechanicRequest,
     AverageExecutionTimeResponse,
@@ -120,16 +121,16 @@ async def send_os_email(
         raise domain_error_handler(e)
 
 
-@public_router.get("/{service_order_id}", response_model=ServiceOrderPublicResponse)
+@public_router.get(
+    "/track/{token}",
+    response_model=ServiceOrderPublicResponse,
+    dependencies=[Depends(rate_limit("public-service-orders", "rate_limit_public_requests"))],
+)
 def track_service_order(
-    service_order_id: int,
-    document: str = Query(...),
+    token: str,
     db: Session = Depends(get_db),
 ):
     try:
-        return compose_service_order_service(db).get_by_customer_document(
-            service_order_id,
-            document,
-        )
+        return compose_service_order_service(db).get_by_tracking_token(token)
     except DomainError as e:
         raise domain_error_handler(e)
