@@ -47,6 +47,14 @@ def list_os_with_withdrawals(
     return compose_execution_service(db).list_os_with_withdrawals()
 
 
+@admin_router.get("/queue", response_model=list[ServiceOrderResponse])
+def list_execution_queue(
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    return compose_execution_service(db).list_execution_queue()
+
+
 @admin_router.get("/{service_order_id}", response_model=ServiceOrderResponse)
 def get_service_order(
     service_order_id: int,
