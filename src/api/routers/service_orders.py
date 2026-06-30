@@ -11,7 +11,9 @@ from src.api.schemas import (
     AssignMechanicRequest,
     AverageExecutionTimeResponse,
     MessageResponse,
+    ServiceOrderPublicResponse,
     ServiceOrderResponse,
+    ServiceOrderUpdate,
     SetPriorityRequest,
 )
 from src.domain.enums import ServiceOrderStatus
@@ -67,6 +69,23 @@ def get_service_order(
         raise domain_error_handler(e)
 
 
+@admin_router.put("/{service_order_id}", response_model=ServiceOrderResponse)
+def update_service_order(
+    service_order_id: int,
+    data: ServiceOrderUpdate,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        return compose_service_order_service(db).update(
+            service_order_id=service_order_id,
+            mechanic_name=data.mechanic_name,
+            priority=data.priority,
+        )
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+
 @admin_router.patch("/{service_order_id}/assign-mechanic", response_model=ServiceOrderResponse)
 def assign_mechanic(
     service_order_id: int,
@@ -109,7 +128,7 @@ async def send_os_email(
         raise domain_error_handler(e)
 
 
-@public_router.get("/{service_order_id}", response_model=ServiceOrderResponse)
+@public_router.get("/{service_order_id}", response_model=ServiceOrderPublicResponse)
 def track_service_order(
     service_order_id: int,
     document: str = Query(...),

@@ -1,13 +1,21 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { AvailabilityItem, Budget } from '../model/models';
+import {
+  AvailabilityItem,
+  Budget,
+  BudgetProductLine,
+  BudgetServiceLine,
+} from '../model/models';
 
 @Injectable({ providedIn: 'root' })
 export class BudgetService {
   private url = 'api/v1/admin/budgets';
+
   private httpOptions = {
-    headers: new HttpHeaders({ 'Content-Type': 'application/json' }),
+    headers: new HttpHeaders({
+      'Content-Type': 'application/json',
+    }),
   };
 
   constructor(private http: HttpClient) {}
@@ -24,7 +32,11 @@ export class BudgetService {
     return this.http.post<Budget>(this.url, body, this.httpOptions);
   }
 
-  addServiceLine(budgetId: number, serviceId: number, quantity: number): Observable<unknown> {
+  addServiceLine(
+    budgetId: number,
+    serviceId: number,
+    quantity: number
+  ): Observable<unknown> {
     return this.http.post(
       `${this.url}/${budgetId}/service-lines`,
       { service_id: serviceId, quantity },
@@ -32,7 +44,38 @@ export class BudgetService {
     );
   }
 
-  addProductLine(budgetId: number, productId: number, quantity: number): Observable<unknown> {
+  listServiceLines(budgetId: number): Observable<BudgetServiceLine[]> {
+    return this.http.get<BudgetServiceLine[]>(
+      `${this.url}/${budgetId}/service-lines`
+    );
+  }
+
+  updateServiceLine(
+    budgetId: number,
+    lineId: number,
+    quantity: number
+  ): Observable<BudgetServiceLine> {
+    return this.http.put<BudgetServiceLine>(
+      `${this.url}/${budgetId}/service-lines/${lineId}`,
+      { quantity },
+      this.httpOptions
+    );
+  }
+
+  removeServiceLine(
+    budgetId: number,
+    lineId: number
+  ): Observable<unknown> {
+    return this.http.delete(
+      `${this.url}/${budgetId}/service-lines/${lineId}`
+    );
+  }
+
+  addProductLine(
+    budgetId: number,
+    productId: number,
+    quantity: number
+  ): Observable<unknown> {
     return this.http.post(
       `${this.url}/${budgetId}/product-lines`,
       { product_id: productId, quantity },
@@ -40,11 +83,44 @@ export class BudgetService {
     );
   }
 
+  listProductLines(budgetId: number): Observable<BudgetProductLine[]> {
+    return this.http.get<BudgetProductLine[]>(
+      `${this.url}/${budgetId}/product-lines`
+    );
+  }
+
+  updateProductLine(
+    budgetId: number,
+    lineId: number,
+    quantity: number
+  ): Observable<BudgetProductLine> {
+    return this.http.put<BudgetProductLine>(
+      `${this.url}/${budgetId}/product-lines/${lineId}`,
+      { quantity },
+      this.httpOptions
+    );
+  }
+
+  removeProductLine(
+    budgetId: number,
+    lineId: number
+  ): Observable<unknown> {
+    return this.http.delete(
+      `${this.url}/${budgetId}/product-lines/${lineId}`
+    );
+  }
+
   checkAvailability(budgetId: number): Observable<AvailabilityItem[]> {
-    return this.http.get<AvailabilityItem[]>(`${this.url}/${budgetId}/availability`);
+    return this.http.get<AvailabilityItem[]>(
+      `${this.url}/${budgetId}/availability`
+    );
   }
 
   sendEmail(budgetId: number): Observable<Budget> {
-    return this.http.post<Budget>(`${this.url}/${budgetId}/send-email`, {}, this.httpOptions);
+    return this.http.post<Budget>(
+      `${this.url}/${budgetId}/send-email`,
+      {},
+      this.httpOptions
+    );
   }
 }

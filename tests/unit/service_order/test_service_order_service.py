@@ -6,8 +6,9 @@ import pytest
 from src.application.ports.service_order import ServiceOrderCustomer, ServiceOrderVehicle
 from src.application.services.service_order_email_service import ServiceOrderEmailService
 from src.application.services.service_order_service import ServiceOrderService
+from src.application.services.service_order_tracking import build_service_order_tracking_url
 from src.domain.enums import Priority, ServiceOrderStatus
-from src.domain.exceptions import NotFoundError
+from src.domain.exceptions import NotFoundError, ValidationError
 from src.domain.service_order.entity import ServiceOrder
 
 
@@ -83,6 +84,7 @@ class FakePdfGenerator:
         status: str,
         mechanic_name: str | None,
         total_price: float,
+        tracking_url: str,
     ) -> bytes:
         self.calls.append(
             {
@@ -92,6 +94,7 @@ class FakePdfGenerator:
                 "status": status,
                 "mechanic_name": mechanic_name,
                 "total_price": total_price,
+                "tracking_url": tracking_url,
             }
         )
         return b"pdf"
@@ -107,9 +110,16 @@ class FakeEmailSender:
         subject: str,
         body: str,
         html: str | None = None,
+        attachments: tuple = (),
     ) -> None:
         self.messages.append(
-            {"to": to, "subject": subject, "body": body, "html": html}
+            {
+                "to": to,
+                "subject": subject,
+                "body": body,
+                "html": html,
+                "attachments": attachments,
+            }
         )
 
 
@@ -161,6 +171,30 @@ def test_service_order_service_assigns_mechanic_and_commits():
     assert updated.mechanic_name == "Mecânico A"
     assert updated.status == ServiceOrderStatus.EM_DIAGNOSTICO
     assert repository.get_by_id(1).status == ServiceOrderStatus.EM_DIAGNOSTICO
+    assert uow.commits == 1
+
+
+def test_service_order_service_rejects_blank_mechanic_name():
+    service = make_service()
+
+    with pytest.raises(ValidationError, match="Nome do mecânico é obrigatório"):
+        service.assign_mechanic(1, "   ")
+
+
+def test_service_order_service_updates_order_and_commits():
+    repository = InMemoryServiceOrderRepository([make_service_order()])
+    uow = FakeUnitOfWork()
+    service = make_service(repository=repository, uow=uow)
+
+    updated = service.update(
+        1,
+        mechanic_name="Mecânico B",
+        priority=Priority.HIGH,
+    )
+
+    assert updated.mechanic_name == "Mecânico B"
+    assert updated.priority == Priority.HIGH
+    assert updated.status == ServiceOrderStatus.EM_DIAGNOSTICO
     assert uow.commits == 1
 
 
@@ -229,15 +263,50 @@ async def test_service_order_email_service_uses_ports():
         contacts=FakeContactLookup(),
         pdfs=pdfs,
         emails=emails,
+        frontend_public_url="http://localhost:4200/",
     )
 
     await service.send_os_email(1)
 
     assert pdfs.calls[0]["status"] == "Em diagnóstico"
     assert pdfs.calls[0]["mechanic_name"] == "Mecânico A"
-    assert emails.messages[0] == {
-        "to": "ana@test.com",
-        "subject": "Ordem de Serviço #1",
-        "body": "Sua OS #1 está com status: Em diagnóstico",
-        "html": None,
-    }
+    assert pdfs.calls[0]["tracking_url"] == "http://localhost:4200/track-service-order?serviceOrderId=1"
+    message = emails.messages[0]
+    assert message["to"] == "ana@test.com"
+    assert message["subject"] == "Ordem de Serviço #1"
+    assert message["body"] == (
+        "Sua OS #1 está com status: Em diagnóstico.\n\n"
+        "Acompanhe sua OS:\nhttp://localhost:4200/track-service-order?serviceOrderId=1\n\n"
+        "Informe seu CPF/CNPJ para consultar o progresso."
+    )
+    assert message["html"] is None
+    assert message["attachments"][0].filename == "ordem-servico-1.pdf"
+    assert message["attachments"][0].content == b"pdf"
+    assert message["attachments"][0].mime_type == "application/pdf"
+
+
+@pytest.mark.asyncio
+async def test_service_order_email_service_requires_customer_and_vehicle():
+    class EmptyContactLookup(FakeContactLookup):
+        def get_customer(self, customer_id: int) -> ServiceOrderCustomer | None:
+            return None
+
+    emails = FakeEmailSender()
+    service = ServiceOrderEmailService(
+        service_orders=InMemoryServiceOrderRepository([make_service_order()]),
+        contacts=EmptyContactLookup(),
+        pdfs=FakePdfGenerator(),
+        emails=emails,
+        frontend_public_url="http://localhost:4200",
+    )
+
+    with pytest.raises(NotFoundError, match="Dados da OS não encontrados"):
+        await service.send_os_email(1)
+
+    assert emails.messages == []
+
+
+def test_build_service_order_tracking_url_trims_trailing_slash():
+    assert build_service_order_tracking_url("http://localhost:4200/", 10) == (
+        "http://localhost:4200/track-service-order?serviceOrderId=10"
+    )

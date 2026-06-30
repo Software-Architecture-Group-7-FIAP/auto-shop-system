@@ -61,6 +61,8 @@ def enqueue_service_order(service_order: ServiceOrder) -> None:
 
 
 def start_service_order(service_order: ServiceOrder, started_at: datetime) -> None:
+    if not service_order.mechanic_name or not service_order.mechanic_name.strip():
+        raise ValidationError("Mecânico deve ser atribuído antes de iniciar a OS")
     if service_order.status not in (
         ServiceOrderStatus.AGUARDANDO_APROVACAO,
         ServiceOrderStatus.EM_DIAGNOSTICO,

@@ -104,6 +104,22 @@ export interface Budget {
   created_at: string;
 }
 
+export interface BudgetServiceLine {
+  id: number;
+  service_id: number;
+  service_name: string;
+  quantity: number;
+  unit_price: number;
+}
+
+export interface BudgetProductLine {
+  id: number;
+  product_id: number;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+}
+
 export interface ServiceOrder {
   id: number;
   budget_id: number | null;
@@ -116,6 +132,19 @@ export interface ServiceOrder {
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
+}
+
+export interface ServiceOrderPublic {
+  id: number;
+  status: ServiceOrderStatus;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+}
+
+export interface ServiceOrderUpdate {
+  mechanic_name?: string;
+  priority?: Priority;
 }
 
 export interface CnpjValidation {

@@ -17,3 +17,104 @@
 .availability-list li.insufficient {
   color: #c44;
 }
+
+.product-lines-table {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.product-id-column {
+  width: 110px;
+}
+
+.product-name-column {
+  width: 32%;
+}
+
+.product-quantity-column {
+  width: 80px;
+}
+
+.product-action-column {
+  width: 210px;
+}
+
+.product-lines-table th,
+.product-lines-table td {
+  padding: 8px;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.product-lines-table th:nth-child(1),
+.product-lines-table th:nth-child(3),
+.product-lines-table td:nth-child(1),
+.product-lines-table td:nth-child(3) {
+  text-align: center;
+}
+
+.product-lines-table th:nth-child(2),
+.product-lines-table td:nth-child(2) {
+  font-size: 0.8rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.product-lines-table td:nth-child(3) {
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.product-lines-table td:nth-child(3) .small-input {
+  width: 56px;
+  min-width: 0;
+  padding-left: 4px;
+  padding-right: 4px;
+  box-sizing: border-box;
+}
+
+.product-lines-table .btn {
+  max-width: 100%;
+}
+
+.product-line-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.product-add-action {
+  display: flex;
+  align-items: flex-end;
+}
+
+.product-add-action .btn {
+  height: 38px;
+}
+
+.product-line-fields select.text-input {
+  background: #1e2e28;
+  color: #408a71;
+}
+
+.line-actions {
+  display: flex;
+  gap: 8px;
+  padding-left: 8px;
+  padding-right: 8px;
+  white-space: nowrap;
+}
+
+.line-actions .btn {
+  width: auto;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.product-price-column {
+  width: 110px;
+}

@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Protocol
 
+from src.application.ports.email import EmailAttachment
+
 
 @dataclass(frozen=True)
 class ServiceOrderCustomer:
@@ -31,6 +33,7 @@ class ServiceOrderPdfGenerator(Protocol):
         status: str,
         mechanic_name: str | None,
         total_price: float,
+        tracking_url: str,
     ) -> bytes:
         ...
 
@@ -42,5 +45,6 @@ class ServiceOrderEmailSender(Protocol):
         subject: str,
         body: str,
         html: str | None = None,
+        attachments: tuple[EmailAttachment, ...] = (),
     ) -> None:
         ...

@@ -58,6 +58,8 @@ class SqlAlchemyBudgetRepository:
         models = self.db.query(BudgetModel).all()
         return [self._to_domain(model) for model in models]
 
+    # --------------- Serviços ------------------
+
     def add_service_line(self, line: BudgetServiceLine) -> BudgetServiceLine:
         model = BudgetServiceLineModel(
             budget_id=line.budget_id,
@@ -70,6 +72,62 @@ class SqlAlchemyBudgetRepository:
         self.db.refresh(model)
         return self._service_line_to_domain(model)
 
+    def get_all_service_lines(self, budget_id: int) -> list[BudgetServiceLine]:
+        models = (
+            self.db.query(BudgetServiceLineModel)
+            .filter(BudgetServiceLineModel.budget_id == budget_id)
+            .order_by(BudgetServiceLineModel.id)
+            .all()
+        )
+        return [self._service_line_to_domain(model) for model in models]
+
+    def get_service_line(
+            self,
+            budget_id: int,
+            service_id: int,
+    ) -> BudgetServiceLine | None:
+        model = (
+            self.db.query(BudgetServiceLineModel)
+            .filter(
+                BudgetServiceLineModel.id == service_id,
+                BudgetServiceLineModel.budget_id == budget_id,
+            )
+            .first()
+        )
+
+        if not model:
+            return None
+
+        return self._service_line_to_domain(model)
+
+    def update_service_line(self, line: BudgetServiceLine) -> BudgetServiceLine:
+        model = (
+            self.db.query(BudgetServiceLineModel)
+            .filter(BudgetServiceLineModel.id == line.id)
+            .first()
+        )
+
+        model.quantity = line.quantity
+        self.db.flush()
+        self.db.refresh(model)
+
+        return self._service_line_to_domain(model)
+
+    def delete_service_line(self, line: BudgetServiceLine) -> None:
+        model = (
+            self.db.query(BudgetServiceLineModel)
+            .filter(BudgetServiceLineModel.id == line.id)
+            .first()
+        )
+
+        if not model:
+            raise NotFoundError("Linha de serviço não encontrada")
+
+        self.db.delete(model)
+        self.db.flush()
+
+    # ---------------- Produtos ------------------------------
+
     def add_product_line(self, line: BudgetProductLine) -> BudgetProductLine:
         model = BudgetProductLineModel(
             budget_id=line.budget_id,
@@ -77,11 +135,69 @@ class SqlAlchemyBudgetRepository:
             quantity=line.quantity,
             unit_price=line.unit_price,
             from_service=line.from_service,
+            service_id=line.service_id,
         )
         self.db.add(model)
         self.db.flush()
         self.db.refresh(model)
         return self._product_line_to_domain(model)
+
+    def get_all_product_lines(self, budget_id: int) -> list[BudgetProductLine]:
+        models = (
+            self.db.query(BudgetProductLineModel)
+            .filter(BudgetProductLineModel.budget_id == budget_id)
+            .order_by(BudgetProductLineModel.id)
+            .all()
+        )
+        return [self._product_line_to_domain(model) for model in models]
+
+    def get_product_line(
+            self,
+            budget_id: int,
+            line_id: int,
+    ) -> BudgetProductLine | None:
+        model = (
+            self.db.query(BudgetProductLineModel)
+            .filter(
+                BudgetProductLineModel.id == line_id,
+                BudgetProductLineModel.budget_id == budget_id,
+            )
+            .first()
+        )
+
+        if not model:
+            return None
+
+        return self._product_line_to_domain(model)
+
+    def update_product_line(self, line: BudgetProductLine) -> BudgetProductLine:
+        model = (
+            self.db.query(BudgetProductLineModel)
+            .filter(BudgetProductLineModel.id == line.id)
+            .first()
+        )
+
+        model.quantity = line.quantity
+        model.unit_price = line.unit_price
+        model.from_service = line.from_service
+        model.service_id = line.service_id
+        self.db.flush()
+        self.db.refresh(model)
+
+        return self._product_line_to_domain(model)
+
+    def delete_product_line(self, line: BudgetProductLine) -> None:
+        model = (
+            self.db.query(BudgetProductLineModel)
+            .filter(BudgetProductLineModel.id == line.id)
+            .first()
+        )
+
+        if not model:
+            raise NotFoundError("Linha de produto não encontrada")
+
+        self.db.delete(model)
+        self.db.flush()
 
     def save(self, budget: Budget) -> Budget:
         if budget.id is None:
@@ -97,6 +213,21 @@ class SqlAlchemyBudgetRepository:
         model.approval_token = budget.approval_token
         self.db.flush()
         self.db.refresh(model)
+
+        for line in budget.service_lines:
+            if line.id is None:
+                persisted = self.add_service_line(line)
+                line.id = persisted.id
+            else:
+                self.update_service_line(line)
+
+        for line in budget.product_lines:
+            if line.id is None:
+                persisted = self.add_product_line(line)
+                line.id = persisted.id
+            else:
+                self.update_product_line(line)
+
         return self._to_domain(model)
 
     @classmethod
@@ -137,6 +268,7 @@ class SqlAlchemyBudgetRepository:
             quantity=model.quantity,
             unit_price=model.unit_price,
             from_service=model.from_service,
+            service_id=model.service_id,
         )
 
 
@@ -172,6 +304,7 @@ class SqlAlchemyBudgetServiceCatalogLookup:
         )
         return BudgetServiceDetails(
             id=model.id,
+            name=model.name,
             base_price=model.base_price,
             estimated_hours=model.estimated_hours,
             product_requirements=tuple(

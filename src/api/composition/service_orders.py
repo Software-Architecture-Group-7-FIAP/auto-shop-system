@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from src.config import settings
 from src.application.services.service_order_email_service import ServiceOrderEmailService
 from src.application.services.service_order_service import ServiceOrderService
 from src.infrastructure.persistence.service_order_repository import (
@@ -27,4 +28,5 @@ def compose_service_order_email_service(db: Session) -> ServiceOrderEmailService
         contacts=SqlAlchemyServiceOrderContactLookup(db),
         pdfs=ReportLabServiceOrderPdfGenerator(),
         emails=SmtpServiceOrderEmailSender(),
+        frontend_public_url=settings.frontend_public_url,
     )

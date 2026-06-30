@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, StrictInt, model_validator
 
 from src.domain.enums import (
     BudgetStatus,
@@ -205,12 +205,37 @@ class BudgetCreate(BaseModel):
 
 class BudgetServiceLineCreate(BaseModel):
     service_id: int
-    quantity: int = Field(default=1, gt=0)
+    quantity: StrictInt = Field(default=1, gt=0)
+
+class BudgetServiceLineResponse(BaseModel):
+    id: int
+    service_id: int
+    service_name: str
+    quantity: int
+    unit_price: float
 
 
 class BudgetProductLineCreate(BaseModel):
     product_id: int
-    quantity: int = Field(default=1, gt=0)
+    quantity: StrictInt = Field(default=1, gt=0)
+
+
+class BudgetProductLineUpdate(BaseModel):
+    quantity: StrictInt = Field(..., gt=0)
+
+
+class BudgetServiceLineUpdate(BaseModel):
+    quantity: StrictInt = Field(..., gt=0)
+
+
+class BudgetProductLineResponse(BaseModel):
+    id: int
+    product_id: int
+    product_name: str
+    quantity: int
+    unit_price: float
+    from_service: bool
+    service_id: int | None = None
 
 
 class BudgetResponse(BaseModel):
@@ -250,12 +275,37 @@ class ServiceOrderResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ServiceOrderPublicResponse(BaseModel):
+    id: int
+    status: ServiceOrderStatus
+    started_at: datetime | None
+    finished_at: datetime | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ServiceOrderUpdate(BaseModel):
+    mechanic_name: str | None = Field(default=None, min_length=1)
+    priority: Priority | None = None
+
+    @model_validator(mode="after")
+    def require_change(self):
+        if self.mechanic_name is None and self.priority is None:
+            raise ValueError("Informe mechanic_name ou priority")
+        return self
+
+
 class AssignMechanicRequest(BaseModel):
-    mechanic_name: str
+    mechanic_name: str = Field(min_length=1)
 
 
 class SetPriorityRequest(BaseModel):
     priority: Priority
+
+
+class ReservationCreate(BaseModel):
+    service_order_id: int
 
 
 class ReservationResponse(BaseModel):

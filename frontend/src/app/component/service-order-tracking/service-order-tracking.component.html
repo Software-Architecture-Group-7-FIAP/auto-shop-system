@@ -1,0 +1,63 @@
+<div class="tracking-page">
+  <div class="tracking-card">
+    <h1>Acompanhar Ordem de Serviço</h1>
+    <p>Informe o ID da OS e seu CPF/CNPJ para consultar o progresso.</p>
+
+    <form #trackingForm="ngForm" (ngSubmit)="track()">
+      <div class="field-list">
+        <div class="field-name">
+          <span>ID da OS</span>
+          <input
+            class="text-input big-input"
+            type="number"
+            name="serviceOrderId"
+            [(ngModel)]="serviceOrderId"
+            required
+          />
+        </div>
+        <div class="field-name">
+          <span>CPF/CNPJ</span>
+          <input
+            class="text-input big-input"
+            type="text"
+            name="document"
+            [(ngModel)]="document"
+            required
+          />
+        </div>
+      </div>
+
+      <div class="button-list">
+        <button class="btn btn-primary" type="submit" [disabled]="trackingForm.invalid || isLoading">
+          {{ isLoading ? 'Consultando...' : 'Consultar progresso' }}
+        </button>
+      </div>
+    </form>
+
+    <div *ngIf="message" class="tracking-message">
+      {{ message }}
+    </div>
+
+    <div *ngIf="serviceOrder" class="tracking-result">
+      <h2>OS #{{ serviceOrder.id }}</h2>
+      <div class="tracking-row">
+        <span>Status</span>
+        <strong>{{ serviceOrder.status }}</strong>
+      </div>
+      <div class="tracking-row">
+        <span>Criada em</span>
+        <strong>{{ serviceOrder.created_at | date: 'dd/MM/yyyy HH:mm' }}</strong>
+      </div>
+      <div class="tracking-row">
+        <span>Início</span>
+        <strong>{{ serviceOrder.started_at ? (serviceOrder.started_at | date: 'dd/MM/yyyy HH:mm') : '—' }}</strong>
+      </div>
+      <div class="tracking-row">
+        <span>Finalização</span>
+        <strong>{{ serviceOrder.finished_at ? (serviceOrder.finished_at | date: 'dd/MM/yyyy HH:mm') : '—' }}</strong>
+      </div>
+    </div>
+
+    <a routerLink="/login" class="tracking-link">Acessar painel administrativo</a>
+  </div>
+</div>
