@@ -54,6 +54,31 @@ def order_execution_queue(service_orders: list[ServiceOrder]) -> list[ServiceOrd
     )
 
 
+def validate_withdrawal_quantity(
+    service_order: ServiceOrder,
+    product_id: int,
+    quantity: int,
+    already_requested: int,
+) -> None:
+    if service_order.status != ServiceOrderStatus.EM_EXECUCAO:
+        raise ValidationError("Retirada de estoque só é permitida para OS em execução")
+
+    required = sum(
+        line.quantity
+        for line in service_order.product_lines
+        if line.product_id == product_id
+    )
+    if required == 0:
+        raise ValidationError(
+            f"Produto #{product_id} não está no escopo da OS #{service_order.id}"
+        )
+    if already_requested + quantity > required:
+        raise ValidationError(
+            f"Quantidade solicitada ({already_requested + quantity}) excede o total "
+            f"necessário ({required}) para o produto #{product_id}"
+        )
+
+
 def enqueue_service_order(service_order: ServiceOrder) -> None:
     if service_order.status != ServiceOrderStatus.AGUARDANDO_APROVACAO:
         raise ValidationError("OS deve estar aguardando aprovação para entrar na fila")
@@ -80,10 +105,16 @@ def finish_service_order(
     if service_order.status != ServiceOrderStatus.EM_EXECUCAO:
         raise ValidationError("OS deve estar em execução para ser finalizada")
 
+    required_by_product: dict[int, int] = {}
+    for line in service_order.product_lines:
+        required_by_product[line.product_id] = (
+            required_by_product.get(line.product_id, 0) + line.quantity
+        )
+
     pending_products = [
-        line.product_id
-        for line in service_order.product_lines
-        if withdrawn_quantities.get(line.product_id, 0) < line.quantity
+        product_id
+        for product_id, required in required_by_product.items()
+        if withdrawn_quantities.get(product_id, 0) < required
     ]
     if pending_products:
         raise ValidationError(

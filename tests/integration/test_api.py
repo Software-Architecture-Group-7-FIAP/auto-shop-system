@@ -491,6 +491,12 @@ def test_full_flow(client, auth_headers):
     )
     assert send_os.status_code == 200
 
+    reservations = client.post(
+        f"/api/v1/admin/reservations/os/{os_id}",
+        headers=auth_headers,
+    )
+    assert reservations.status_code == 201
+
     client.patch(
         f"/api/v1/admin/service-orders/{os_id}/start",
         headers=auth_headers,

@@ -61,6 +61,14 @@ class SqlAlchemyStockWithdrawalRepository:
         )
         return [row[0] for row in rows]
 
+    def list_by_service_order_id(self, service_order_id: int) -> list[StockWithdrawal]:
+        models = (
+            self.db.query(StockWithdrawalModel)
+            .filter(StockWithdrawalModel.service_order_id == service_order_id)
+            .all()
+        )
+        return [self._to_domain(model) for model in models]
+
     def fulfilled_quantity_by_product(self, service_order_id: int) -> dict[int, int]:
         rows = (
             self.db.query(
@@ -117,3 +125,4 @@ class SqlAlchemyExecutionReservationGateway:
         for model in models:
             model.status = ReservationStatus.CONSUMED
         self.db.flush()
+

@@ -98,6 +98,12 @@ class InMemoryStockWithdrawalRepository:
                 )
         return totals
 
+    def list_by_service_order_id(self, service_order_id: int) -> list[StockWithdrawal]:
+        return [
+            w for w in self.withdrawals.values()
+            if w.service_order_id == service_order_id
+        ]
+
 
 class FakeProductGateway:
     def __init__(self):
@@ -347,7 +353,14 @@ async def test_execution_service_requests_stock_withdrawal_and_sends_email():
     withdrawals = InMemoryStockWithdrawalRepository()
     emails = FakeEmailSender()
     uow = FakeUnitOfWork()
-    service = make_service(withdrawals=withdrawals, emails=emails, uow=uow)
+    service = make_service(
+        service_orders=InMemoryServiceOrderRepository(
+            [make_service_order(status=ServiceOrderStatus.EM_EXECUCAO)]
+        ),
+        withdrawals=withdrawals,
+        emails=emails,
+        uow=uow,
+    )
 
     withdrawal = await service.request_stock_withdrawal(1, 10, 2)
 
@@ -362,6 +375,95 @@ async def test_execution_service_requests_stock_withdrawal_and_sends_email():
         }
     ]
     assert uow.commits == 1
+
+
+@pytest.mark.asyncio
+async def test_execution_service_rejects_withdrawal_for_product_not_in_os_scope():
+    service = make_service(
+        service_orders=InMemoryServiceOrderRepository(
+            [make_service_order(status=ServiceOrderStatus.EM_EXECUCAO)]
+        ),
+    )
+
+    with pytest.raises(ValidationError, match="não está no escopo da OS"):
+        await service.request_stock_withdrawal(1, 99, 1)
+
+
+@pytest.mark.asyncio
+async def test_execution_service_rejects_withdrawal_exceeding_required_quantity():
+    service = make_service(
+        service_orders=InMemoryServiceOrderRepository(
+            [make_service_order(status=ServiceOrderStatus.EM_EXECUCAO)]
+        ),
+    )
+
+    with pytest.raises(ValidationError, match="excede o total necessário"):
+        await service.request_stock_withdrawal(1, 10, 5)
+
+
+@pytest.mark.asyncio
+async def test_execution_service_allows_partial_withdrawals_for_same_product():
+    withdrawals = InMemoryStockWithdrawalRepository(
+        [
+            StockWithdrawal(
+                id=1,
+                service_order_id=1,
+                product_id=10,
+                quantity=1,
+                status=StockWithdrawalStatus.FULFILLED,
+            )
+        ]
+    )
+    service = make_service(
+        service_orders=InMemoryServiceOrderRepository(
+            [make_service_order(status=ServiceOrderStatus.EM_EXECUCAO)]
+        ),
+        withdrawals=withdrawals,
+    )
+
+    second_withdrawal = await service.request_stock_withdrawal(1, 10, 1)
+
+    assert second_withdrawal.status == StockWithdrawalStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_execution_service_rejects_withdrawal_for_missing_os():
+    service = make_service(service_orders=InMemoryServiceOrderRepository())
+
+    with pytest.raises(NotFoundError, match="OS não encontrada"):
+        await service.request_stock_withdrawal(99, 10, 2)
+
+
+def test_execution_service_lists_os_with_withdrawal_details():
+    fulfilled_withdrawal = StockWithdrawal(
+        id=1,
+        service_order_id=1,
+        product_id=10,
+        quantity=2,
+        status=StockWithdrawalStatus.FULFILLED,
+    )
+    pending_withdrawal = StockWithdrawal(
+        id=2,
+        service_order_id=1,
+        product_id=11,
+        quantity=1,
+        status=StockWithdrawalStatus.PENDING,
+    )
+    service = make_service(
+        service_orders=InMemoryServiceOrderRepository(
+            [make_service_order(id=1, status=ServiceOrderStatus.EM_EXECUCAO)]
+        ),
+        withdrawals=InMemoryStockWithdrawalRepository(
+            [fulfilled_withdrawal, pending_withdrawal]
+        ),
+    )
+
+    details = service.list_os_with_withdrawal_details()
+
+    assert len(details) == 1
+    assert details[0].service_order.id == 1
+    withdrawal_ids = {w.id for w in details[0].withdrawals}
+    assert withdrawal_ids == {1, 2}
 
 
 def test_execution_service_lists_orders_with_fulfilled_withdrawals():

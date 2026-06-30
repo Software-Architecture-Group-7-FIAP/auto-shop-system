@@ -21,3 +21,6 @@ class StockWithdrawalRepository(Protocol):
 
     def fulfilled_quantity_by_product(self, service_order_id: int) -> dict[int, int]:
         ...
+
+    def list_by_service_order_id(self, service_order_id: int) -> list[StockWithdrawal]:
+        ...

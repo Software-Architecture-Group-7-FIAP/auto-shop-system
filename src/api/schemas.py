@@ -259,6 +259,15 @@ class AvailabilityItem(BaseModel):
     sufficient: bool
 
 
+class ServiceOrderProductLineResponse(BaseModel):
+    id: int
+    product_id: int
+    quantity: int
+    unit_price: float
+
+    model_config = {"from_attributes": True}
+
+
 class ServiceOrderResponse(BaseModel):
     id: int
     budget_id: int | None
@@ -273,6 +282,8 @@ class ServiceOrderResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
 
 
 class ServiceOrderPublicResponse(BaseModel):
@@ -355,6 +366,20 @@ class StockWithdrawalResponse(BaseModel):
     status: StockWithdrawalStatus
     requested_at: datetime
     fulfilled_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class ServiceOrderWithWithdrawalsResponse(BaseModel):
+    id: int
+    status: ServiceOrderStatus
+    priority: Priority
+    mechanic_name: str | None
+    total_price: float
+    started_at: datetime | None
+    created_at: datetime
+    product_lines: list[ServiceOrderProductLineResponse]
+    withdrawals: list[StockWithdrawalResponse]
 
     model_config = {"from_attributes": True}
 
