@@ -11,7 +11,6 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from src.infrastructure import database as db_module
-from src.api.rate_limit import clear_rate_limits
 from src.infrastructure.auth.jwt import BcryptPasswordHasher
 from src.infrastructure.database import Base, UserModel, get_db
 from src.main import app
@@ -28,7 +27,6 @@ db_module.SessionLocal = TestingSessionLocal
 
 @pytest.fixture(autouse=True)
 def setup_db():
-    clear_rate_limits()
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     admin = UserModel(

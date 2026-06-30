@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 
 from src.api.composition.customers import compose_customer_public_lookup_service
 from src.api.mappers.customers import customer_to_public_response
-from src.api.rate_limit import rate_limit
 from src.api.schemas import CustomerPublicLookupRequest, CustomerPublicResponse
 from src.application.services.customer_public_lookup_service import (
     CustomerPublicLookupCriteria,
@@ -18,7 +17,6 @@ router = APIRouter(prefix="/customers", tags=["Public Customers"])
 @router.post(
     "/lookup",
     response_model=CustomerPublicResponse,
-    dependencies=[Depends(rate_limit("public-customers", "rate_limit_public_requests"))],
 )
 def lookup_customer(data: CustomerPublicLookupRequest, db: Session = Depends(get_db)):
     try:
