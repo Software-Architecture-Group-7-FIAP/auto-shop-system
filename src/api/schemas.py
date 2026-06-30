@@ -304,6 +304,7 @@ class StockWithdrawalResponse(BaseModel):
     quantity: int
     status: StockWithdrawalStatus
     requested_at: datetime
+    fulfilled_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
