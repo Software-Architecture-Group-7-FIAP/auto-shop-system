@@ -9,8 +9,7 @@ import { ServiceOrderService } from '../../service/service-order.service';
   styleUrls: ['./service-order-tracking.component.css'],
 })
 export class ServiceOrderTrackingComponent implements OnInit {
-  serviceOrderId = '';
-  document = '';
+  token = '';
   serviceOrder: ServiceOrderPublic | null = null;
   isLoading = false;
   message = '';
@@ -21,24 +20,24 @@ export class ServiceOrderTrackingComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    const id = this.route.snapshot.queryParamMap.get('serviceOrderId');
-    if (id) {
-      this.serviceOrderId = id;
+    const token = this.route.snapshot.queryParamMap.get('token');
+    if (token) {
+      this.token = token;
+      this.track();
     }
   }
 
   track(): void {
-    const id = Number(this.serviceOrderId);
-    const document = this.document.trim();
-    if (!Number.isInteger(id) || id <= 0 || !document) {
-      this.message = 'Informe ID da OS e CPF/CNPJ.';
+    const token = this.token.trim();
+    if (!token) {
+      this.message = 'Informe o token de acompanhamento.';
       this.serviceOrder = null;
       return;
     }
 
     this.isLoading = true;
     this.message = '';
-    this.serviceOrderService.trackPublic(id, document).subscribe({
+    this.serviceOrderService.trackPublic(token).subscribe({
       next: (serviceOrder) => {
         this.serviceOrder = serviceOrder;
       },
@@ -47,7 +46,7 @@ export class ServiceOrderTrackingComponent implements OnInit {
       },
       error: () => {
         this.serviceOrder = null;
-        this.message = 'OS não encontrada para este documento.';
+        this.message = 'Link de acompanhamento inválido.';
         this.isLoading = false;
       },
     });

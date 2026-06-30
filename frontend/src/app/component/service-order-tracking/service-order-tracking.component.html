@@ -1,27 +1,17 @@
 <div class="tracking-page">
   <div class="tracking-card">
     <h1>Acompanhar Ordem de Serviço</h1>
-    <p>Informe o ID da OS e seu CPF/CNPJ para consultar o progresso.</p>
+    <p>Use o link recebido por e-mail ou informe o token de acompanhamento para consultar o progresso.</p>
 
     <form #trackingForm="ngForm" (ngSubmit)="track()">
       <div class="field-list">
         <div class="field-name">
-          <span>ID da OS</span>
-          <input
-            class="text-input big-input"
-            type="number"
-            name="serviceOrderId"
-            [(ngModel)]="serviceOrderId"
-            required
-          />
-        </div>
-        <div class="field-name">
-          <span>CPF/CNPJ</span>
+          <span>Token de acompanhamento</span>
           <input
             class="text-input big-input"
             type="text"
-            name="document"
-            [(ngModel)]="document"
+            name="token"
+            [(ngModel)]="token"
             required
           />
         </div>
