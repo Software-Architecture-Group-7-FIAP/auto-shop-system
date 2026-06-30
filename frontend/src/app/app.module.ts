@@ -37,6 +37,7 @@ import { NewBudgetComponent } from './component/budgets/new-budget/new-budget.co
 import { ServiceOrdersComponent } from './component/service-orders/service-orders.component';
 import { ServiceOrderDetailComponent } from './component/service-orders/service-order-detail/service-order-detail.component';
 import { ServiceOrderTrackingComponent } from './component/service-order-tracking/service-order-tracking.component';
+import { BudgetApprovalComponent } from './component/budget-approval/budget-approval.component';
 
 import { AuthInterceptor } from './service/auth.interceptor';
 import { HttpErrorInterceptor } from './service/http-error.interceptor';
@@ -68,6 +69,7 @@ import { HttpErrorInterceptor } from './service/http-error.interceptor';
     ServiceOrdersComponent,
     ServiceOrderDetailComponent,
     ServiceOrderTrackingComponent,
+    BudgetApprovalComponent,
   ],
   imports: [BrowserModule, FormsModule, AppRoutingModule, HttpClientModule],
   providers: [

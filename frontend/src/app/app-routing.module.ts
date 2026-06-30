@@ -12,10 +12,12 @@ import { SuppliersComponent } from './component/suppliers/suppliers.component';
 import { BudgetsComponent } from './component/budgets/budgets.component';
 import { ServiceOrdersComponent } from './component/service-orders/service-orders.component';
 import { ServiceOrderTrackingComponent } from './component/service-order-tracking/service-order-tracking.component';
+import { BudgetApprovalComponent } from './component/budget-approval/budget-approval.component';
 
 const routes: Routes = [
   { path: '', redirectTo: '/menu', pathMatch: 'full' },
   { path: 'login', component: LoginComponent },
+  { path: 'budget-approval', component: BudgetApprovalComponent },
   { path: 'track-service-order', component: ServiceOrderTrackingComponent },
   { path: 'menu', component: MenuComponent, canActivate: [AuthGuard] },
   { path: 'customers', component: CustomersComponent, canActivate: [AuthGuard] },

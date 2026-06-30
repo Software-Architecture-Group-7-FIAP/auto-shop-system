@@ -70,10 +70,10 @@ class FakeTokenGenerator:
 
 class FakeUrlBuilder:
     def approve_url(self, token: str) -> str:
-        return f"https://app.test/api/v1/public/budgets/{token}/approve"
+        return f"https://app.test/budget-approval?token={token}&action=approve"
 
     def reject_url(self, token: str) -> str:
-        return f"https://app.test/api/v1/public/budgets/{token}/reject"
+        return f"https://app.test/budget-approval?token={token}&action=reject"
 
 
 class FakePdfGenerator:
@@ -206,7 +206,7 @@ async def test_send_budget_email_marks_budget_sent_and_sends_email():
     ]
     assert emails.messages[0]["to"] == "ana@test.com"
     assert (
-        "Aprovar: https://app.test/api/v1/public/budgets/token-1/approve"
+        "Aprovar: https://app.test/budget-approval?token=token-1&action=approve"
         in emails.messages[0]["body"]
     )
     assert uow.commits == 1
