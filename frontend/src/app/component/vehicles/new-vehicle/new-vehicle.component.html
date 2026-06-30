@@ -1,5 +1,6 @@
 <p class="detail-title-text">Novo veículo</p>
-<form #formRef="ngForm" (ngSubmit)="saveVehicle(formRef.value)">
+<app-form-error-alert [title]="errorTitle" [message]="errorMessage"></app-form-error-alert>
+<form #formRef="ngForm" (ngSubmit)="saveVehicle(formRef.value)" (input)="clearError()">
   <div class="field-list">
     <div class="field-name" *ngIf="!customerId">
       <span>ID do cliente</span>
@@ -20,6 +21,7 @@
         name="plate"
         ngModel
         required
+        placeholder="ABC1D23"
       />
     </div>
     <div class="field-name">
@@ -32,6 +34,8 @@
         required
         minlength="2"
         maxlength="2"
+        placeholder="SP"
+        style="text-transform: uppercase"
       />
     </div>
     <div class="field-name">
@@ -87,7 +91,6 @@
       />
     </div>
   </div>
-  <p *ngIf="errorMessage" class="validation-result">{{ errorMessage }}</p>
   <div class="button-list">
     <button class="btn btn-primary" type="submit" [disabled]="formRef.invalid">
       Salvar

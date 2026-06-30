@@ -1,5 +1,6 @@
 <div *ngIf="vehicle">
   <p class="detail-title-text">Veículo #{{ vehicle.id }}</p>
+  <app-form-error-alert [title]="errorTitle" [message]="errorMessage"></app-form-error-alert>
   <form #formRef="ngForm">
     <div class="field-list">
       <div class="field-name">

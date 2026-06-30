@@ -1,6 +1,8 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { VehicleService } from '../../../service/vehicle.service';
+import { extractApiErrorMessage } from '../../../util/api-error';
+import { validateVehicleForm } from '../../../util/vehicle-form';
 
 @Component({
   selector: 'app-new-vehicle',
@@ -13,8 +15,13 @@ export class NewVehicleComponent {
   @Output() cancelled = new EventEmitter<void>();
 
   errorMessage = '';
+  errorTitle = 'Não foi possível cadastrar o veículo';
 
   constructor(private vehicleService: VehicleService) {}
+
+  clearError(): void {
+    this.errorMessage = '';
+  }
 
   saveVehicle(data: {
     customer_id?: string;
@@ -26,50 +33,58 @@ export class NewVehicleComponent {
     model: string;
     year: string;
   }): void {
-    const resolvedCustomerId = this.customerId ?? Number(data.customer_id);
-    if (!resolvedCustomerId) {
-      this.errorMessage = 'Cliente é obrigatório';
+    const validation = validateVehicleForm(
+      {
+        customer_id: this.customerId ?? data.customer_id,
+        plate: data.plate,
+        state: data.state,
+        city: data.city,
+        color: data.color,
+        brand: data.brand,
+        model: data.model,
+        year: data.year,
+      },
+      { requirePlate: true, requireCustomerId: !this.customerId }
+    );
+
+    if ('error' in validation) {
+      this.errorTitle = 'Dados inválidos no formulário';
+      this.errorMessage = validation.error;
       return;
     }
 
-    const body = {
-      customer_id: resolvedCustomerId,
-      plate: data.plate.trim(),
-      state: data.state.trim(),
-      city: data.city.trim(),
-      color: data.color.trim(),
-      brand: data.brand.trim(),
-      model: data.model.trim(),
-      year: Number(data.year),
-    };
-
+    const { data: body } = validation;
     this.errorMessage = '';
-    this.vehicleService.create(body).subscribe({
-      next: () => {
-        if (this.customerId) {
-          this.vehicleCreated.emit();
-        } else {
-          window.location.reload();
-        }
-      },
-      error: (error: HttpErrorResponse) => {
-        this.errorMessage = this.extractErrorMessage(error);
-      },
-    });
+    this.vehicleService
+      .create({
+        customer_id: this.customerId ?? body.customer_id,
+        plate: body.plate,
+        state: body.state,
+        city: body.city,
+        color: body.color,
+        brand: body.brand,
+        model: body.model,
+        year: body.year,
+      })
+      .subscribe({
+        next: () => {
+          if (this.customerId) {
+            this.vehicleCreated.emit();
+          } else {
+            window.location.reload();
+          }
+        },
+        error: (error: HttpErrorResponse) => {
+          this.errorTitle = 'Não foi possível cadastrar o veículo';
+          this.errorMessage = extractApiErrorMessage(
+            error,
+            'Não foi possível salvar o veículo.'
+          );
+        },
+      });
   }
 
   cancel(): void {
     this.cancelled.emit();
-  }
-
-  private extractErrorMessage(error: HttpErrorResponse): string {
-    const detail = error.error?.detail;
-    if (typeof detail === 'string') {
-      return detail;
-    }
-    if (Array.isArray(detail) && detail.length > 0) {
-      return detail.map((item: { msg?: string }) => item.msg ?? '').join('; ');
-    }
-    return 'Não foi possível salvar o veículo';
   }
 }
