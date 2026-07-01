@@ -150,6 +150,11 @@ export interface ServiceOrderUpdate {
   priority?: Priority;
 }
 
+export interface ServiceOrderStatusOverride {
+  status: ServiceOrderStatus;
+  reason: string;
+}
+
 export interface CnpjValidation {
   valid: boolean;
   legal_name: string | null;

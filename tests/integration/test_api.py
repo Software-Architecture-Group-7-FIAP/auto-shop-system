@@ -555,6 +555,25 @@ def test_full_flow(client, auth_headers):
     assert updated_os.status_code == 200
     assert updated_os.json()["mechanic_name"] == "Carlos Silva"
     assert updated_os.json()["priority"] == "Urgente"
+    assert updated_os.json()["status"] == "Em diagnóstico"
+
+    generic_status_update = client.put(
+        f"/api/v1/admin/service-orders/{os_id}",
+        headers=auth_headers,
+        json={"status": "Finalizada"},
+    )
+    assert generic_status_update.status_code == 422
+
+    status_override = client.patch(
+        f"/api/v1/admin/service-orders/{os_id}/status-override",
+        headers=auth_headers,
+        json={
+            "status": "Em diagnóstico",
+            "reason": "Correção administrativa no fluxo de teste",
+        },
+    )
+    assert status_override.status_code == 200
+    assert status_override.json()["status"] == "Em diagnóstico"
 
     no_op_update = client.put(
         f"/api/v1/admin/service-orders/{os_id}",
@@ -583,6 +602,7 @@ def test_full_flow(client, auth_headers):
         headers=auth_headers,
     )
     assert invoice.status_code == 201
+    assert invoice.json()["amount"] == 160.0
 
     invoice_lookup = client.get(
         f"/api/v1/admin/service-orders/{os_id}/invoice",
@@ -597,6 +617,12 @@ def test_full_flow(client, auth_headers):
     )
     assert paid.status_code == 200
     assert paid.json()["status"] == "Paga"
+
+    deliver = client.patch(
+        f"/api/v1/admin/service-orders/{os_id}/deliver",
+        headers=auth_headers,
+    )
+    assert deliver.status_code == 422
 
     track = client.get(
         f"/api/v1/public/service-orders/{os_id}?document=52998224725"

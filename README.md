@@ -153,6 +153,21 @@ curl -X POST http://localhost:8000/api/v1/admin/vehicles \
 
 No painel Angular, selecione um cliente em **Clientes** para listar e cadastrar veículos associados.
 
+## Faturamento e encerramento (T11 — RF38–RF40)
+
+Após finalizar a OS (`PATCH /admin/service-orders/{id}/finish`), o atendimento pode emitir fatura, registrar pagamento e encerrar a OS como entregue.
+
+### APIs administrativas (JWT)
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `POST` | `/api/v1/admin/service-orders/{id}/invoice` | Gerar fatura para OS finalizada |
+| `GET` | `/api/v1/admin/service-orders/{id}/invoice` | Consultar fatura da OS |
+| `PATCH` | `/api/v1/admin/invoices/{id}/pay` | Registrar pagamento integral |
+| `PATCH` | `/api/v1/admin/service-orders/{id}/deliver` | Entregar OS (fatura deve estar paga) |
+
+O pagamento integral altera automaticamente o status da OS para `Entregue`.
+
 ## Painel web Angular (admin completo)
 
 Frontend em **Angular 15** com CRUD master-detail para todas as entidades administrativas.

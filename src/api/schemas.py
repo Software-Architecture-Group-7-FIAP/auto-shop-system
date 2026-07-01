@@ -313,6 +313,11 @@ class SetPriorityRequest(BaseModel):
     priority: Priority
 
 
+class OverrideStatusRequest(BaseModel):
+    status: ServiceOrderStatus
+    reason: str = Field(min_length=1)
+
+
 class ReservationCreate(BaseModel):
     service_order_id: int
 

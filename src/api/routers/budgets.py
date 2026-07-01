@@ -215,6 +215,19 @@ async def send_budget_email(
         raise domain_error_handler(e)
 
 
+@admin_router.patch("/{budget_id}/approve", response_model=MessageResponse)
+def approve_budget_admin(
+    budget_id: int,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        service_order = compose_budget_approval_service(db).approve_budget_by_id(budget_id)
+        return MessageResponse(message=f"Orçamento aprovado. OS #{service_order.id} criada.")
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+
 @public_router.get("/{token}/approve", response_model=MessageResponse)
 def approve_budget(token: str, db: Session = Depends(get_db)):
     try:

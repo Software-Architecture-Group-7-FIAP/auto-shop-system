@@ -49,10 +49,22 @@ class ServiceOrderService:
         priority: Priority | None = None,
     ) -> ServiceOrder:
         service_order = self.get_by_id(service_order_id)
-        if mechanic_name is not None:
-            service_order.assign_mechanic(mechanic_name)
         if priority is not None:
             service_order.set_priority(priority)
+        if mechanic_name is not None:
+            service_order.assign_mechanic(mechanic_name)
+        updated = self.service_orders.save(service_order)
+        self.uow.commit()
+        return updated
+
+    def override_status(
+        self,
+        service_order_id: int,
+        status: ServiceOrderStatus,
+        reason: str,
+    ) -> ServiceOrder:
+        service_order = self.get_by_id(service_order_id)
+        service_order.override_status(status, reason)
         updated = self.service_orders.save(service_order)
         self.uow.commit()
         return updated
