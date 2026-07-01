@@ -12,6 +12,14 @@ def calculate_invoice_amount(service_order: ServiceOrder) -> float:
     return service_total + product_total
 
 
+def validate_invoice_total_matches_lines(service_order: ServiceOrder) -> None:
+    line_total = calculate_invoice_amount(service_order)
+    if abs(line_total - service_order.total_price) > 0.01:
+        raise ValidationError(
+            "Total da OS diverge da soma dos itens: revise os valores antes da emissão da fatura"
+        )
+
+
 def validate_priced_lines(service_order: ServiceOrder) -> None:
     for line in service_order.service_lines:
         if line.unit_price is None or line.unit_price <= 0:

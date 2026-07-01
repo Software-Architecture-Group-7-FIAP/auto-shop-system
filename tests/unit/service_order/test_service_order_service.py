@@ -205,17 +205,28 @@ def test_service_order_service_updates_status_manually():
     uow = FakeUnitOfWork()
     service = make_service(repository=repository, uow=uow)
 
-    updated = service.update(1, status=ServiceOrderStatus.FINALIZADA)
+    updated = service.override_status(
+        1,
+        ServiceOrderStatus.FINALIZADA,
+        "Correção administrativa",
+    )
 
     assert updated.status == ServiceOrderStatus.FINALIZADA
     assert repository.get_by_id(1).status == ServiceOrderStatus.FINALIZADA
     assert uow.commits == 1
 
 
-def test_service_order_entity_set_status():
+def test_service_order_entity_override_status_requires_reason():
     service_order = make_service_order(status=ServiceOrderStatus.AGUARDANDO_APROVACAO)
 
-    service_order.set_status(ServiceOrderStatus.EM_EXECUCAO)
+    with pytest.raises(ValidationError, match="Motivo"):
+        service_order.override_status(ServiceOrderStatus.EM_EXECUCAO, " ")
+
+
+def test_service_order_entity_override_status():
+    service_order = make_service_order(status=ServiceOrderStatus.AGUARDANDO_APROVACAO)
+
+    service_order.override_status(ServiceOrderStatus.EM_EXECUCAO, "Correção administrativa")
 
     assert service_order.status == ServiceOrderStatus.EM_EXECUCAO
 

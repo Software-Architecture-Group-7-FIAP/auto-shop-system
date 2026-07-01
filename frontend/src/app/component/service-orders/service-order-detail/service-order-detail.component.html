@@ -57,17 +57,6 @@
         />
       </div>
       <div class="field-name">
-        <span>Status</span>
-        <select
-          class="select-input medium-input"
-          name="status"
-          [(ngModel)]="selectedStatus"
-          [ngModelOptions]="{ standalone: true }"
-        >
-          <option *ngFor="let s of statusValues" [ngValue]="s">{{ s }}</option>
-        </select>
-      </div>
-      <div class="field-name">
         <span>Prioridade</span>
         <select
           class="select-input medium-input"
@@ -82,6 +71,38 @@
     <div class="button-list">
       <button class="btn btn-secondary" type="button" (click)="saveChanges()" [disabled]="isSaving">
         {{ isSaving ? 'Salvando...' : 'Salvar alterações' }}
+      </button>
+    </div>
+  </div>
+
+  <div class="action-section">
+    <h3>Override administrativo de status</h3>
+    <div class="field-list">
+      <div class="field-name">
+        <span>Novo status</span>
+        <select
+          class="select-input medium-input"
+          name="status"
+          [(ngModel)]="selectedStatus"
+          [ngModelOptions]="{ standalone: true }"
+        >
+          <option *ngFor="let s of statusValues" [ngValue]="s">{{ s }}</option>
+        </select>
+      </div>
+      <div class="field-name">
+        <span>Motivo</span>
+        <input
+          class="text-input medium-input"
+          type="text"
+          name="statusOverrideReason"
+          [(ngModel)]="statusOverrideReason"
+          [ngModelOptions]="{ standalone: true }"
+        />
+      </div>
+    </div>
+    <div class="button-list">
+      <button class="btn btn-secondary" type="button" (click)="overrideStatus()" [disabled]="isOverridingStatus">
+        {{ isOverridingStatus ? 'Alterando...' : 'Alterar status' }}
       </button>
     </div>
   </div>

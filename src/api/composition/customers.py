@@ -10,9 +10,7 @@ from src.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 
 
 def compose_customer_service(db: Session) -> CustomerService:
-    use_local_cpf = (
-        settings.skip_cpf_external_validation or not settings.invertexto_api_token.strip()
-    )
+    use_local_cpf = settings.skip_cpf_external_validation
     cpf_validator = (
         LocalCpfValidator()
         if use_local_cpf

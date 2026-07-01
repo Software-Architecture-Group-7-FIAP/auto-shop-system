@@ -229,6 +229,35 @@ def test_approve_budget_rejects_missing_token():
         service.approve_budget("missing")
 
 
+def test_approve_budget_rejects_budget_without_lines():
+    budget = replace(
+        make_budget(),
+        status=BudgetStatus.SENT,
+        approval_token="token-1",
+        service_lines=[],
+        product_lines=[],
+    )
+    service = make_service(repository=InMemoryBudgetRepository([budget]))
+
+    with pytest.raises(
+        ValidationError,
+        match="Orçamento deve ter linhas de serviço ou produto para ser aprovado",
+    ):
+        service.approve_budget("token-1")
+
+
+def test_approve_budget_rejects_rejected_budget():
+    budget = replace(
+        make_budget(),
+        status=BudgetStatus.REJECTED,
+        approval_token="token-1",
+    )
+    service = make_service(repository=InMemoryBudgetRepository([budget]))
+
+    with pytest.raises(ValidationError, match="Orçamento recusado não pode ser aprovado"):
+        service.approve_budget("token-1")
+
+
 def test_approve_budget_rejects_already_approved_budget_without_commit():
     budget = replace(make_budget(), status=BudgetStatus.APPROVED, approval_token="token-1")
     repository = InMemoryBudgetRepository([budget])

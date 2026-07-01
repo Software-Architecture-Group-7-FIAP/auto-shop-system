@@ -98,17 +98,21 @@ class BudgetApprovalService:
         budget = self.budgets.get_by_approval_token(token)
         if not budget:
             raise NotFoundError("Orçamento não encontrado")
+        self._validate_can_approve(budget)
         return self._approve_and_create_service_order(budget)
 
     def approve_budget_by_id(self, budget_id: int) -> CreatedServiceOrder:
         budget = self._get_by_id(budget_id)
+        self._validate_can_approve(budget)
+        return self._approve_and_create_service_order(budget)
+
+    def _validate_can_approve(self, budget: Budget) -> None:
         if budget.status == BudgetStatus.REJECTED:
             raise ValidationError("Orçamento recusado não pode ser aprovado")
         if not budget.service_lines and not budget.product_lines:
             raise ValidationError(
                 "Orçamento deve ter linhas de serviço ou produto para ser aprovado"
             )
-        return self._approve_and_create_service_order(budget)
 
     def _approve_and_create_service_order(self, budget: Budget) -> CreatedServiceOrder:
         budget.approve()

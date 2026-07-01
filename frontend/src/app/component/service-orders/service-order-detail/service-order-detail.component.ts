@@ -23,12 +23,14 @@ export class ServiceOrderDetailComponent implements OnChanges {
   mechanicName = '';
   selectedPriority: Priority = Priority.NORMAL;
   selectedStatus: ServiceOrderStatus = ServiceOrderStatus.AGUARDANDO_APROVACAO;
+  statusOverrideReason = '';
   priorityValues = Object.values(Priority);
   statusValues = Object.values(ServiceOrderStatus);
   invoice: Invoice | null = null;
   actionMessage = '';
   errorMessage = '';
   isSaving = false;
+  isOverridingStatus = false;
   isSendingEmail = false;
   isStarting = false;
   isFinishing = false;
@@ -89,7 +91,6 @@ export class ServiceOrderDetailComponent implements OnChanges {
     const name = this.mechanicName.trim();
     const payload: ServiceOrderUpdate = {
       priority: this.selectedPriority,
-      status: this.selectedStatus,
     };
     if (name) {
       payload.mechanic_name = name;
@@ -102,10 +103,6 @@ export class ServiceOrderDetailComponent implements OnChanges {
         this.selectedStatus = updated.status;
         this.parent.updateServiceOrderInList(updated);
         this.actionMessage = 'Ordem de serviço atualizada.';
-        if (!this.shouldShowBillingSection()) {
-          this.invoice = null;
-          this.invoiceKnownAbsent = false;
-        }
       },
       complete: () => {
         this.isSaving = false;
@@ -114,6 +111,44 @@ export class ServiceOrderDetailComponent implements OnChanges {
         this.isSaving = false;
       },
     });
+  }
+
+  overrideStatus(): void {
+    const reason = this.statusOverrideReason.trim();
+    if (!reason) {
+      this.errorMessage = 'Motivo obrigatório para alterar status.';
+      return;
+    }
+    this.isOverridingStatus = true;
+    this.errorMessage = '';
+    this.serviceOrderService
+      .overrideStatus(this.serviceOrderId, {
+        status: this.selectedStatus,
+        reason,
+      })
+      .subscribe({
+        next: (updated) => {
+          this.serviceOrder = updated;
+          this.selectedStatus = updated.status;
+          this.statusOverrideReason = '';
+          this.parent.updateServiceOrderInList(updated);
+          this.actionMessage = 'Status da OS alterado por override administrativo.';
+          if (!this.shouldShowBillingSection()) {
+            this.invoice = null;
+            this.invoiceKnownAbsent = false;
+          } else {
+            this.invoiceKnownAbsent = false;
+            this.loadInvoice();
+          }
+        },
+        complete: () => {
+          this.isOverridingStatus = false;
+        },
+        error: (error) => {
+          this.isOverridingStatus = false;
+          this.setErrorMessage(error, 'Não foi possível alterar o status.');
+        },
+      });
   }
 
   sendEmail(): void {

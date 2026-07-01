@@ -11,6 +11,7 @@ from src.api.schemas import (
     AssignMechanicRequest,
     AverageExecutionTimeResponse,
     MessageResponse,
+    OverrideStatusRequest,
     ServiceOrderPublicResponse,
     ServiceOrderResponse,
     ServiceOrderUpdate,
@@ -73,7 +74,23 @@ def update_service_order(
             service_order_id=service_order_id,
             mechanic_name=data.mechanic_name,
             priority=data.priority,
-            status=data.status,
+        )
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+
+@admin_router.patch("/{service_order_id}/status-override", response_model=ServiceOrderResponse)
+def override_status(
+    service_order_id: int,
+    data: OverrideStatusRequest,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        return compose_service_order_service(db).override_status(
+            service_order_id,
+            data.status,
+            data.reason,
         )
     except DomainError as e:
         raise domain_error_handler(e)

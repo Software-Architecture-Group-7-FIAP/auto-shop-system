@@ -255,7 +255,7 @@ def test_invoice_service_rejects_deliver_without_paid_invoice():
 
 def test_invoice_service_calculates_amount_from_lines():
     service_order = make_service_order(
-        total_price=999.0,
+        total_price=80.0,
         service_lines=[
             ServiceOrderServiceLine(
                 id=1,
@@ -274,6 +274,28 @@ def test_invoice_service_calculates_amount_from_lines():
     invoice = service.create_invoice(1)
 
     assert invoice.amount == 80.0
+
+
+def test_invoice_service_rejects_total_that_diverges_from_lines():
+    service_order = make_service_order(
+        total_price=999.0,
+        service_lines=[
+            ServiceOrderServiceLine(
+                id=1,
+                service_order_id=1,
+                service_id=10,
+                quantity=2,
+                unit_price=40.0,
+            )
+        ],
+        product_lines=[],
+    )
+    service = make_service(
+        service_orders=InMemoryServiceOrderRepository([service_order])
+    )
+
+    with pytest.raises(ValidationError, match="Total da OS diverge"):
+        service.create_invoice(1)
 
 
 def test_invoice_service_rejects_unpriced_lines():

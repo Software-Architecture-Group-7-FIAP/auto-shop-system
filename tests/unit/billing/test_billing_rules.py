@@ -1,7 +1,11 @@
 import pytest
 from dataclasses import replace
 
-from src.domain.billing.rules import calculate_invoice_amount, validate_priced_lines
+from src.domain.billing.rules import (
+    calculate_invoice_amount,
+    validate_invoice_total_matches_lines,
+    validate_priced_lines,
+)
 from src.domain.enums import ServiceOrderStatus
 from src.domain.exceptions import ValidationError
 from src.domain.service_order.entity import (
@@ -18,6 +22,7 @@ def _service_order(**overrides) -> ServiceOrder:
         customer_id=3,
         vehicle_id=4,
         status=ServiceOrderStatus.FINALIZADA,
+        total_price=130.0,
         service_lines=[
             ServiceOrderServiceLine(
                 id=1,
@@ -80,3 +85,10 @@ def test_validate_priced_lines_rejects_zero_product_price():
 
     with pytest.raises(ValidationError, match="precificação válida"):
         validate_priced_lines(order)
+
+
+def test_validate_invoice_total_matches_lines_rejects_divergent_total():
+    order = _service_order(total_price=999.0)
+
+    with pytest.raises(ValidationError, match="Total da OS diverge"):
+        validate_invoice_total_matches_lines(order)
