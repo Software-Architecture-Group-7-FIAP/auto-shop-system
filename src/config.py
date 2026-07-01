@@ -84,6 +84,7 @@ class Settings(BaseSettings):
 
     def is_production_like(self) -> bool:
         return self.app_env.lower() in {"production", "prod", "staging"}
+    skip_cpf_external_validation: bool = False
 
 
 settings = Settings()

@@ -1,0 +1,25 @@
+.form-error-alert {
+  margin: 1rem 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid #f87171;
+  border-left: 4px solid #ef4444;
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.12);
+  color: #fecaca;
+}
+
+.form-error-alert__title {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fca5a5;
+}
+
+.form-error-alert__message {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: #fecaca;
+  white-space: pre-wrap;
+}

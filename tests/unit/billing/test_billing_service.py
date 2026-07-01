@@ -7,7 +7,7 @@ from src.application.services.invoice_service import InvoiceService
 from src.domain.billing.entity import Invoice
 from src.domain.enums import InvoiceStatus, ServiceOrderStatus
 from src.domain.exceptions import NotFoundError, ValidationError
-from src.domain.service_order.entity import ServiceOrder
+from src.domain.service_order.entity import ServiceOrder, ServiceOrderServiceLine
 
 
 class InMemoryInvoiceRepository:
@@ -103,6 +103,15 @@ def make_service_order(**overrides) -> ServiceOrder:
         vehicle_id=4,
         status=ServiceOrderStatus.FINALIZADA,
         total_price=150.0,
+        service_lines=[
+            ServiceOrderServiceLine(
+                id=1,
+                service_order_id=1,
+                service_id=10,
+                quantity=1,
+                unit_price=150.0,
+            )
+        ],
     )
     return replace(base, **overrides)
 
@@ -242,3 +251,77 @@ def test_invoice_service_rejects_deliver_without_paid_invoice():
 
     with pytest.raises(ValidationError, match="Fatura deve estar paga para entregar a OS"):
         service.deliver(1)
+
+
+def test_invoice_service_calculates_amount_from_lines():
+    service_order = make_service_order(
+        total_price=80.0,
+        service_lines=[
+            ServiceOrderServiceLine(
+                id=1,
+                service_order_id=1,
+                service_id=10,
+                quantity=2,
+                unit_price=40.0,
+            )
+        ],
+        product_lines=[],
+    )
+    service = make_service(
+        service_orders=InMemoryServiceOrderRepository([service_order])
+    )
+
+    invoice = service.create_invoice(1)
+
+    assert invoice.amount == 80.0
+
+
+def test_invoice_service_rejects_total_that_diverges_from_lines():
+    service_order = make_service_order(
+        total_price=999.0,
+        service_lines=[
+            ServiceOrderServiceLine(
+                id=1,
+                service_order_id=1,
+                service_id=10,
+                quantity=2,
+                unit_price=40.0,
+            )
+        ],
+        product_lines=[],
+    )
+    service = make_service(
+        service_orders=InMemoryServiceOrderRepository([service_order])
+    )
+
+    with pytest.raises(ValidationError, match="Total da OS diverge"):
+        service.create_invoice(1)
+
+
+def test_invoice_service_rejects_unpriced_lines():
+    service_order = make_service_order(
+        service_lines=[
+            ServiceOrderServiceLine(
+                id=1,
+                service_order_id=1,
+                service_id=10,
+                quantity=1,
+                unit_price=0.0,
+            )
+        ],
+    )
+    service = make_service(
+        service_orders=InMemoryServiceOrderRepository([service_order])
+    )
+
+    with pytest.raises(ValidationError, match="precificação válida"):
+        service.create_invoice(1)
+
+
+def test_invoice_service_rejects_duplicate_payment():
+    invoice = Invoice(id=1, service_order_id=1, amount=150.0)
+    invoice.pay(datetime(2026, 1, 1, 10, 0, 0))
+    service = make_service(invoices=InMemoryInvoiceRepository([invoice]))
+
+    with pytest.raises(ValidationError, match="Fatura já está paga"):
+        service.pay_invoice(1)

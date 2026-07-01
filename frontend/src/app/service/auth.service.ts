@@ -13,6 +13,7 @@ export class AuthService {
   constructor(private http: HttpClient) {}
 
   login(credentials: LoginRequest): Observable<TokenResponse> {
+    this.logout();
     return this.http.post<TokenResponse>(`${this.authUrl}/login`, credentials).pipe(
       tap((response) => {
         localStorage.setItem(TOKEN_KEY, response.access_token);
@@ -27,7 +28,12 @@ export class AuthService {
   }
 
   getToken(): string | null {
-    return localStorage.getItem(TOKEN_KEY);
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) {
+      return null;
+    }
+    const trimmed = token.trim();
+    return trimmed.length > 0 ? trimmed : null;
   }
 
   getUsername(): string | null {
@@ -35,6 +41,23 @@ export class AuthService {
   }
 
   isLoggedIn(): boolean {
-    return !!this.getToken();
+    const token = this.getToken();
+    return !!token && !this.isTokenExpired(token);
+  }
+
+  isTokenExpired(token: string): boolean {
+    try {
+      const payload = token.split('.')[1];
+      if (!payload) {
+        return true;
+      }
+      const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+      if (typeof decoded.exp !== 'number') {
+        return true;
+      }
+      return decoded.exp * 1000 < Date.now();
+    } catch {
+      return true;
+    }
   }
 }

@@ -27,7 +27,7 @@ services:
       - "8001:8000"
     environment:
       DATABASE_URL: postgresql://oficina:oficina@db:5432/oficina
-      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY to a strong secret}
+      SECRET_KEY: dev-secret-key
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
       SMTP_FROM: noreply@oficina.local

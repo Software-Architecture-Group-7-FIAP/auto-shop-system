@@ -1,7 +1,7 @@
 import pytest
 
 from src.domain.exceptions import ValidationError
-from src.domain.value_objects.validators import DocumentValidator, PlateValidator
+from src.domain.value_objects.validators import DocumentValidator, PlateValidator, StateValidator
 
 
 class TestDocumentValidator:
@@ -24,5 +24,14 @@ class TestPlateValidator:
         assert PlateValidator.validate("ABC1D23") == "ABC1D23"
 
     def test_invalid_plate(self):
-        with pytest.raises(ValidationError):
+        with pytest.raises(ValidationError, match="Veículo inválido"):
             PlateValidator.validate("INVALID")
+
+
+class TestStateValidator:
+    def test_valid_state(self):
+        assert StateValidator.validate("sp") == "SP"
+
+    def test_invalid_state(self):
+        with pytest.raises(ValidationError, match="UF inválida"):
+            StateValidator.validate("XX")

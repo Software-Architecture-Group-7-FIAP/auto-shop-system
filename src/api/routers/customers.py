@@ -2,8 +2,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from src.api.composition.customers import compose_customer_service
+from src.api.composition.vehicles import compose_vehicle_service
 from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.mappers.customers import customer_to_response
+from src.api.mappers.vehicles import vehicle_to_response
 from src.api.schemas import (
     CnpjValidationResponse,
     CpfValidationResponse,
@@ -11,6 +13,7 @@ from src.api.schemas import (
     CustomerDocumentAdd,
     CustomerResponse,
     CustomerUpdate,
+    VehicleResponse,
 )
 from src.domain.auth.entity import User
 from src.domain.exceptions import DomainError
@@ -91,6 +94,19 @@ def validate_cpf(
             valid=result.valid,
             formatted=result.formatted,
         )
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+
+@router.get("/{customer_id}/vehicles", response_model=list[VehicleResponse])
+def list_customer_vehicles(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    try:
+        vehicles = compose_vehicle_service(db).list_by_customer(customer_id)
+        return [vehicle_to_response(vehicle) for vehicle in vehicles]
     except DomainError as e:
         raise domain_error_handler(e)
 

@@ -11,3 +11,4 @@ requirements-export/
 pdf-extract.txt
 .cursor/
 debug-*.log
+.claude

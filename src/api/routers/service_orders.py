@@ -7,14 +7,17 @@ from src.api.composition.service_orders import (
 )
 from src.api.composition.execution import compose_execution_service
 from src.api.dependencies import domain_error_handler, get_current_user
+from src.api.mappers.service_orders import service_order_with_withdrawals_to_response
 from src.api.rate_limit import rate_limit
 from src.api.schemas import (
     AssignMechanicRequest,
     AverageExecutionTimeResponse,
     MessageResponse,
+    OverrideStatusRequest,
     ServiceOrderPublicResponse,
     ServiceOrderResponse,
     ServiceOrderUpdate,
+    ServiceOrderWithWithdrawalsResponse,
     SetPriorityRequest,
 )
 from src.domain.enums import ServiceOrderStatus
@@ -42,12 +45,24 @@ def average_execution_time(
     return compose_service_order_service(db).get_average_execution_time()
 
 
-@admin_router.get("/in-progress/with-withdrawals", response_model=list[ServiceOrderResponse])
+@admin_router.get(
+    "/in-progress/with-withdrawals",
+    response_model=list[ServiceOrderWithWithdrawalsResponse],
+)
 def list_os_with_withdrawals(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    return compose_execution_service(db).list_os_with_withdrawals()
+    details = compose_execution_service(db).list_os_with_withdrawal_details()
+    return [service_order_with_withdrawals_to_response(detail) for detail in details]
+
+
+@admin_router.get("/queue", response_model=list[ServiceOrderResponse])
+def list_execution_queue(
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    return compose_execution_service(db).list_execution_queue()
 
 
 @admin_router.get("/{service_order_id}", response_model=ServiceOrderResponse)
@@ -74,6 +89,23 @@ def update_service_order(
             service_order_id=service_order_id,
             mechanic_name=data.mechanic_name,
             priority=data.priority,
+        )
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+
+@admin_router.patch("/{service_order_id}/status-override", response_model=ServiceOrderResponse)
+def override_status(
+    service_order_id: int,
+    data: OverrideStatusRequest,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        return compose_service_order_service(db).override_status(
+            service_order_id,
+            data.status,
+            data.reason,
         )
     except DomainError as e:
         raise domain_error_handler(e)

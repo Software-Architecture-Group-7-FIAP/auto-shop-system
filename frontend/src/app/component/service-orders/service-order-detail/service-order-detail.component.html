@@ -18,10 +18,6 @@
       <label class="readonly">{{ serviceOrder.status }}</label>
     </div>
     <div class="field-name">
-      <span>Prioridade</span>
-      <label class="readonly">{{ serviceOrder.priority }}</label>
-    </div>
-    <div class="field-name">
       <span>Mecânico</span>
       <label class="readonly">{{ serviceOrder.mechanic_name || '—' }}</label>
     </div>
@@ -80,6 +76,38 @@
   </div>
 
   <div class="action-section">
+    <h3>Override administrativo de status</h3>
+    <div class="field-list">
+      <div class="field-name">
+        <span>Novo status</span>
+        <select
+          class="select-input medium-input"
+          name="status"
+          [(ngModel)]="selectedStatus"
+          [ngModelOptions]="{ standalone: true }"
+        >
+          <option *ngFor="let s of statusValues" [ngValue]="s">{{ s }}</option>
+        </select>
+      </div>
+      <div class="field-name">
+        <span>Motivo</span>
+        <input
+          class="text-input medium-input"
+          type="text"
+          name="statusOverrideReason"
+          [(ngModel)]="statusOverrideReason"
+          [ngModelOptions]="{ standalone: true }"
+        />
+      </div>
+    </div>
+    <div class="button-list">
+      <button class="btn btn-secondary" type="button" (click)="overrideStatus()" [disabled]="isOverridingStatus">
+        {{ isOverridingStatus ? 'Alterando...' : 'Alterar status' }}
+      </button>
+    </div>
+  </div>
+
+  <div class="action-section">
     <h3>Ações</h3>
     <div class="button-list">
       <button class="btn btn-secondary" type="button" (click)="sendEmail()" [disabled]="isSendingEmail">
@@ -103,34 +131,20 @@
       >
         {{ isFinishing ? 'Finalizando...' : 'Finalizar serviço' }}
       </button>
-      <button
-        *ngIf="canCreateInvoice()"
-        class="btn btn-secondary"
-        type="button"
-        (click)="createInvoice()"
-        [disabled]="isCreatingInvoice"
-      >
-        {{ isCreatingInvoice ? 'Criando...' : 'Criar fatura' }}
-      </button>
-      <button
-        *ngIf="canPayInvoice()"
-        class="btn btn-primary"
-        type="button"
-        (click)="payInvoice()"
-        [disabled]="isPayingInvoice"
-      >
-        {{ isPayingInvoice ? 'Registrando...' : 'Registrar pagamento' }}
-      </button>
     </div>
     <span *ngIf="shouldShowStart() && !canStart()" class="action-message">
       Mecânico obrigatório para iniciar. Salve o mecânico antes de iniciar.
     </span>
   </div>
 
+  <app-service-order-billing-panel
+    [serviceOrderId]="serviceOrderId"
+    [serviceOrder]="serviceOrder"
+    (serviceOrderChanged)="onBillingServiceOrderChanged($event)"
+    (actionMessage)="onBillingActionMessage($event)"
+  ></app-service-order-billing-panel>
+
   <div *ngIf="actionMessage" class="action-message">
     {{ actionMessage }}
-  </div>
-  <div *ngIf="invoice" class="action-message">
-    Fatura: #{{ invoice.id }} — {{ invoice.status }} — R$ {{ invoice.amount | number: '1.2-2' }}
   </div>
 </div>

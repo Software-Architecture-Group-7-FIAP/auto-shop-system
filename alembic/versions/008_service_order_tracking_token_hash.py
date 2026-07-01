@@ -1,7 +1,7 @@
 """add service order tracking token hash
 
-Revision ID: 008_service_order_tracking_token_hash
-Revises: 007_repair_budget_product_lines_service_id
+Revision ID: 008
+Revises: 007
 Create Date: 2026-06-30
 """
 
@@ -9,8 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "008_service_order_tracking_token_hash"
-down_revision = "007_repair_budget_product_lines_service_id"
+revision = "008"
+down_revision = "007"
 branch_labels = None
 depends_on = None
 

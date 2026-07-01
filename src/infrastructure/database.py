@@ -82,10 +82,16 @@ class CustomerModel(Base):
 
 class VehicleModel(Base):
     __tablename__ = "vehicles"
+    __table_args__ = (
+        UniqueConstraint("customer_id", "plate", name="uq_vehicles_customer_plate"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
-    plate: Mapped[str] = mapped_column(String(10), unique=True, index=True)
+    plate: Mapped[str] = mapped_column(String(10), index=True)
+    state: Mapped[str] = mapped_column(String(2))
+    city: Mapped[str] = mapped_column(String(100))
+    color: Mapped[str] = mapped_column(String(50))
     brand: Mapped[str] = mapped_column(String(100))
     model: Mapped[str] = mapped_column(String(100))
     year: Mapped[int] = mapped_column(Integer)

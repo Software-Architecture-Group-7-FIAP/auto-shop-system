@@ -1,7 +1,6 @@
 import { Component, Input, OnChanges } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
-  Invoice,
-  InvoiceStatus,
   Priority,
   ServiceOrder,
   ServiceOrderStatus,
@@ -21,17 +20,18 @@ export class ServiceOrderDetailComponent implements OnChanges {
   serviceOrder: ServiceOrder | undefined;
   mechanicName = '';
   selectedPriority: Priority = Priority.NORMAL;
+  selectedStatus: ServiceOrderStatus = ServiceOrderStatus.AGUARDANDO_APROVACAO;
+  statusOverrideReason = '';
   priorityValues = Object.values(Priority);
-  invoice: Invoice | null = null;
+  statusValues = Object.values(ServiceOrderStatus);
   actionMessage = '';
+  errorMessage = '';
   isSaving = false;
+  isOverridingStatus = false;
   isSendingEmail = false;
   isStarting = false;
   isFinishing = false;
-  isCreatingInvoice = false;
-  isPayingInvoice = false;
   readonly serviceOrderStatus = ServiceOrderStatus;
-  readonly invoiceStatus = InvoiceStatus;
 
   constructor(
     private serviceOrderService: ServiceOrderService,
@@ -41,7 +41,7 @@ export class ServiceOrderDetailComponent implements OnChanges {
   ngOnChanges(): void {
     if (this.serviceOrderId) {
       this.actionMessage = '';
-      this.invoice = null;
+      this.errorMessage = '';
       this.loadServiceOrder();
     }
   }
@@ -51,31 +51,24 @@ export class ServiceOrderDetailComponent implements OnChanges {
       this.serviceOrder = data;
       this.mechanicName = data.mechanic_name || '';
       this.selectedPriority = data.priority;
-      this.loadInvoice();
-    });
-  }
-
-  loadInvoice(): void {
-    this.serviceOrderService.getInvoice(this.serviceOrderId).subscribe({
-      next: (invoice) => {
-        this.invoice = invoice;
-      },
-      error: () => {
-        this.invoice = null;
-      },
+      this.selectedStatus = data.status;
     });
   }
 
   saveChanges(): void {
     const name = this.mechanicName.trim();
-    const payload: ServiceOrderUpdate = { priority: this.selectedPriority };
+    const payload: ServiceOrderUpdate = {
+      priority: this.selectedPriority,
+    };
     if (name) {
       payload.mechanic_name = name;
     }
     this.isSaving = true;
+    this.errorMessage = '';
     this.serviceOrderService.update(this.serviceOrderId, payload).subscribe({
       next: (updated) => {
         this.serviceOrder = updated;
+        this.selectedStatus = updated.status;
         this.parent.updateServiceOrderInList(updated);
         this.actionMessage = 'Ordem de serviço atualizada.';
       },
@@ -86,6 +79,37 @@ export class ServiceOrderDetailComponent implements OnChanges {
         this.isSaving = false;
       },
     });
+  }
+
+  overrideStatus(): void {
+    const reason = this.statusOverrideReason.trim();
+    if (!reason) {
+      this.errorMessage = 'Motivo obrigatório para alterar status.';
+      return;
+    }
+    this.isOverridingStatus = true;
+    this.errorMessage = '';
+    this.serviceOrderService
+      .overrideStatus(this.serviceOrderId, {
+        status: this.selectedStatus,
+        reason,
+      })
+      .subscribe({
+        next: (updated) => {
+          this.serviceOrder = updated;
+          this.selectedStatus = updated.status;
+          this.statusOverrideReason = '';
+          this.parent.updateServiceOrderInList(updated);
+          this.actionMessage = 'Status da OS alterado por override administrativo.';
+        },
+        complete: () => {
+          this.isOverridingStatus = false;
+        },
+        error: (error) => {
+          this.isOverridingStatus = false;
+          this.setErrorMessage(error, 'Não foi possível alterar o status.');
+        },
+      });
   }
 
   sendEmail(): void {
@@ -172,53 +196,20 @@ export class ServiceOrderDetailComponent implements OnChanges {
     });
   }
 
-  canCreateInvoice(): boolean {
-    return this.serviceOrder?.status === ServiceOrderStatus.FINALIZADA && !this.invoice;
+  private setErrorMessage(error: unknown, fallback: string): void {
+    const httpError = error as HttpErrorResponse;
+    this.errorMessage =
+      (typeof httpError?.error?.detail === 'string' && httpError.error.detail) ||
+      fallback;
   }
 
-  canPayInvoice(): boolean {
-    return (
-      this.serviceOrder?.status === ServiceOrderStatus.FINALIZADA &&
-      this.invoice?.status === InvoiceStatus.PENDING
-    );
+  onBillingServiceOrderChanged(updated: ServiceOrder): void {
+    this.serviceOrder = updated;
+    this.selectedStatus = updated.status;
+    this.parent.updateServiceOrderInList(updated);
   }
 
-  createInvoice(): void {
-    if (!this.canCreateInvoice()) {
-      return;
-    }
-    this.isCreatingInvoice = true;
-    this.serviceOrderService.createInvoice(this.serviceOrderId).subscribe({
-      next: (invoice) => {
-        this.invoice = invoice;
-        this.actionMessage = `Fatura #${invoice.id} criada — R$ ${invoice.amount.toFixed(2)}`;
-      },
-      complete: () => {
-        this.isCreatingInvoice = false;
-      },
-      error: () => {
-        this.isCreatingInvoice = false;
-      },
-    });
-  }
-
-  payInvoice(): void {
-    if (!this.invoice || !this.canPayInvoice()) {
-      return;
-    }
-    this.isPayingInvoice = true;
-    this.serviceOrderService.payInvoice(this.invoice.id).subscribe({
-      next: (invoice) => {
-        this.invoice = invoice;
-        this.loadServiceOrder();
-        this.actionMessage = 'Pagamento registrado. OS entregue.';
-      },
-      complete: () => {
-        this.isPayingInvoice = false;
-      },
-      error: () => {
-        this.isPayingInvoice = false;
-      },
-    });
+  onBillingActionMessage(message: string): void {
+    this.actionMessage = message;
   }
 }

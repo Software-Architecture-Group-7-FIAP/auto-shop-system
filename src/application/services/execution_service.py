@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from src.application.ports.execution import (
     ExecutionClock,
     ExecutionEmailSender,
@@ -6,17 +8,25 @@ from src.application.ports.execution import (
     ExecutionReservationGateway,
 )
 from src.application.ports.unit_of_work import UnitOfWork
-from src.domain.enums import ServiceOrderStatus
+from src.domain.enums import ServiceOrderStatus, StockWithdrawalStatus
 from src.domain.exceptions import NotFoundError
 from src.domain.execution.entity import (
     StockWithdrawal,
     enqueue_service_order,
     finish_service_order,
+    order_execution_queue,
     start_service_order,
+    validate_withdrawal_quantity,
 )
 from src.domain.execution.repository import StockWithdrawalRepository
 from src.domain.service_order.entity import ServiceOrder
 from src.domain.service_order.repository import ServiceOrderRepository
+
+
+@dataclass
+class ServiceOrderWithdrawalDetail:
+    service_order: ServiceOrder
+    withdrawals: list[StockWithdrawal]
 
 
 class ExecutionService:
@@ -54,12 +64,16 @@ class ExecutionService:
         self.uow.commit()
         return updated
 
+    def list_execution_queue(self) -> list[ServiceOrder]:
+        waiting = self.service_orders.list_all(ServiceOrderStatus.AGUARDANDO_APROVACAO)
+        return order_execution_queue(waiting)
+
     def finish_service(self, service_order_id: int) -> ServiceOrder:
         service_order = self._get_os(service_order_id)
-        finish_service_order(service_order, self.clock.now())
+        withdrawn = self.withdrawals.fulfilled_quantity_by_product(service_order_id)
+        finish_service_order(service_order, self.clock.now(), withdrawn)
 
         for line in service_order.product_lines:
-            self.products.decrement_stock(line.product_id, line.quantity)
             self.reservations.consume_active_for_product(
                 service_order_id,
                 line.product_id,
@@ -72,11 +86,18 @@ class ExecutionService:
     async def request_stock_withdrawal(
         self, service_order_id: int, product_id: int, quantity: int
     ) -> StockWithdrawal:
-        self._get_os(service_order_id)
+        service_order = self._get_os(service_order_id)
+        existing = self.withdrawals.list_by_service_order_id(service_order_id)
+        already_requested = sum(
+            w.quantity
+            for w in existing
+            if w.product_id == product_id and w.status != StockWithdrawalStatus.CANCELLED
+        )
+        validate_withdrawal_quantity(service_order, product_id, quantity, already_requested)
+
         withdrawal = self.withdrawals.add(
             StockWithdrawal.create(service_order_id, product_id, quantity)
         )
-
         await self.emails.send_email(
             self.recipients.stock_withdrawal_recipient(),
             f"Retirada de estoque solicitada - OS #{service_order_id}",
@@ -84,6 +105,16 @@ class ExecutionService:
         )
         self.uow.commit()
         return withdrawal
+
+    def fulfill_withdrawal(self, withdrawal_id: int) -> StockWithdrawal:
+        withdrawal = self.withdrawals.get_by_id(withdrawal_id)
+        if not withdrawal:
+            raise NotFoundError("Solicitação de retirada não encontrada")
+        withdrawal.fulfill(self.clock.now())
+        self.products.decrement_stock(withdrawal.product_id, withdrawal.quantity)
+        updated = self.withdrawals.save(withdrawal)
+        self.uow.commit()
+        return updated
 
     def list_pending_withdrawals(self) -> list[StockWithdrawal]:
         return self.withdrawals.list_pending()
@@ -96,6 +127,30 @@ class ExecutionService:
             ids,
             ServiceOrderStatus.EM_EXECUCAO,
         )
+
+    def list_os_with_withdrawal_details(self) -> list[ServiceOrderWithdrawalDetail]:
+        ids = self.withdrawals.list_fulfilled_service_order_ids()
+        if not ids:
+            return []
+        orders = self.service_orders.list_by_ids_and_status(
+            ids,
+            ServiceOrderStatus.EM_EXECUCAO,
+        )
+        withdrawals = self.withdrawals.list_by_service_order_ids(
+            [order.id for order in orders if order.id is not None]
+        )
+        withdrawals_by_order: dict[int, list[StockWithdrawal]] = {}
+        for withdrawal in withdrawals:
+            withdrawals_by_order.setdefault(withdrawal.service_order_id, []).append(
+                withdrawal
+            )
+        return [
+            ServiceOrderWithdrawalDetail(
+                service_order=order,
+                withdrawals=withdrawals_by_order.get(order.id or 0, []),
+            )
+            for order in orders
+        ]
 
     def _get_os(self, service_order_id: int) -> ServiceOrder:
         service_order = self.service_orders.get_by_id(service_order_id)

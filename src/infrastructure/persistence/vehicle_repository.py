@@ -14,6 +14,9 @@ class SqlAlchemyVehicleRepository:
         model = VehicleModel(
             customer_id=vehicle.customer_id,
             plate=str(vehicle.plate),
+            state=vehicle.state,
+            city=vehicle.city,
+            color=vehicle.color,
             brand=vehicle.brand,
             model=vehicle.model,
             year=vehicle.year,
@@ -41,10 +44,13 @@ class SqlAlchemyVehicleRepository:
         )
         return [self._to_domain(model) for model in models]
 
-    def exists_by_plate(self, plate: Plate) -> bool:
+    def exists_by_customer_and_plate(self, customer_id: int, plate: Plate) -> bool:
         return (
             self.db.query(VehicleModel)
-            .filter(VehicleModel.plate == str(plate))
+            .filter(
+                VehicleModel.customer_id == customer_id,
+                VehicleModel.plate == str(plate),
+            )
             .first()
             is not None
         )
@@ -57,6 +63,9 @@ class SqlAlchemyVehicleRepository:
         if not model:
             raise NotFoundError("Veículo não encontrado")
 
+        model.state = vehicle.state
+        model.city = vehicle.city
+        model.color = vehicle.color
         model.brand = vehicle.brand
         model.model = vehicle.model
         model.year = vehicle.year
@@ -81,6 +90,9 @@ class SqlAlchemyVehicleRepository:
             id=model.id,
             customer_id=model.customer_id,
             plate=Plate.create(model.plate),
+            state=model.state,
+            city=model.city,
+            color=model.color,
             brand=model.brand,
             model=model.model,
             year=model.year,
