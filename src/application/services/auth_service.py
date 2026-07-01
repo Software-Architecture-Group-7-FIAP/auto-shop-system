@@ -4,6 +4,7 @@ from src.application.ports.auth import (
     PasswordHasher,
 )
 from src.application.ports.unit_of_work import UnitOfWork
+from src.domain.auth.entity import User
 from src.domain.auth.repository import UserRepository
 from src.domain.exceptions import DomainError, UnauthorizedError
 

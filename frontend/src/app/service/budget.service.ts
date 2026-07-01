@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import {
   AvailabilityItem,
@@ -8,6 +8,7 @@ import {
   BudgetServiceLine,
   MessageResponse,
 } from '../model/models';
+import { SKIP_GLOBAL_ERROR_ALERT } from './http-error.interceptor';
 
 @Injectable({ providedIn: 'root' })
 export class BudgetService {
@@ -130,6 +131,28 @@ export class BudgetService {
       `${this.url}/${budgetId}/approve`,
       {},
       this.httpOptions
+    );
+  }
+
+  approvePublicBudget(token: string): Observable<MessageResponse> {
+    return this.http.post<MessageResponse>(
+      `api/v1/public/budgets/${encodeURIComponent(token)}/approve`,
+      {},
+      {
+        ...this.httpOptions,
+        context: new HttpContext().set(SKIP_GLOBAL_ERROR_ALERT, true),
+      }
+    );
+  }
+
+  rejectPublicBudget(token: string): Observable<MessageResponse> {
+    return this.http.post<MessageResponse>(
+      `api/v1/public/budgets/${encodeURIComponent(token)}/reject`,
+      {},
+      {
+        ...this.httpOptions,
+        context: new HttpContext().set(SKIP_GLOBAL_ERROR_ALERT, true),
+      }
     );
   }
 }

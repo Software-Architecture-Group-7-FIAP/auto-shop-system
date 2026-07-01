@@ -35,6 +35,7 @@ export class BudgetDetailComponent implements OnChanges {
   actionMessage = '';
   errorMessage = '';
   isApproving = false;
+  isSendingEmail = false;
   readonly budgetStatus = BudgetStatus;
 
   constructor(
@@ -142,9 +143,20 @@ export class BudgetDetailComponent implements OnChanges {
   }
 
   sendEmail(): void {
-    this.budgetService.sendEmail(this.budgetId).subscribe((updated) => {
-      this.budget = updated;
-      this.parent.updateBudgetInList(updated);
+    this.isSendingEmail = true;
+    this.actionMessage = '';
+    this.budgetService.sendEmail(this.budgetId).subscribe({
+      next: (updated) => {
+        this.budget = updated;
+        this.parent.updateBudgetInList(updated);
+        this.actionMessage = 'E-mail do orçamento enviado com sucesso.';
+      },
+      complete: () => {
+        this.isSendingEmail = false;
+      },
+      error: () => {
+        this.isSendingEmail = false;
+      },
     });
   }
 

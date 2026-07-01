@@ -1,0 +1,50 @@
+<main class="approval-page">
+  <section class="approval-card">
+    <h1>Confirmação do orçamento</h1>
+    <p>
+      Para sua segurança, o link do e-mail não aprova nem recusa automaticamente.
+      Confirme sua escolha abaixo.
+    </p>
+
+    <div class="action-buttons" *ngIf="token">
+      <button
+        class="btn"
+        type="button"
+        [class.selected]="selectedAction === 'approve'"
+        (click)="selectAction('approve')"
+        [disabled]="isSubmitting || isSuccess"
+      >
+        Aprovar orçamento
+      </button>
+
+      <button
+        class="btn btn-secondary"
+        type="button"
+        [class.selected]="selectedAction === 'reject'"
+        (click)="selectAction('reject')"
+        [disabled]="isSubmitting || isSuccess"
+      >
+        Recusar orçamento
+      </button>
+    </div>
+
+    <button
+      *ngIf="token && selectedAction && !isSuccess"
+      class="btn btn-primary confirm-button"
+      type="button"
+      (click)="submit()"
+      [disabled]="isSubmitting"
+    >
+      {{ isSubmitting ? 'Enviando...' : actionLabel() }}
+    </button>
+
+    <div
+      *ngIf="message"
+      class="message"
+      [class.success]="isSuccess"
+      [class.error]="!isSuccess"
+    >
+      {{ message }}
+    </div>
+  </section>
+</main>

@@ -24,10 +24,6 @@ class Settings(BaseSettings):
     cors_allowed_origins: str = "http://localhost:4200"
     cors_allow_credentials: bool = True
     security_hsts_enabled: bool = False
-    rate_limit_enabled: bool = True
-    rate_limit_window_seconds: int = 60
-    rate_limit_login_requests: int = 10
-    rate_limit_public_requests: int = 30
     invertexto_api_token: str = ""
     dev_admin_password: str | None = None
     dev_admin_email: str = "admin@oficina.local"
@@ -69,6 +65,8 @@ class Settings(BaseSettings):
                 raise ValueError("SMTP TLS is required in production-like environments")
             if self.cors_allow_credentials and "*" in self.cors_origins():
                 raise ValueError("Wildcard CORS is unsafe with credentials enabled")
+            if not self.invertexto_api_token:
+                raise ValueError("INVERTEXTO_API_TOKEN is required in production-like environments")
         if self.smtp_use_tls and self.smtp_starttls:
             raise ValueError("SMTP_USE_TLS and SMTP_STARTTLS are mutually exclusive")
         return self

@@ -2,7 +2,6 @@ from unittest.mock import patch
 
 from src.application.ports.cnpj_validator import CnpjValidationResult
 from src.application.ports.cpf_validator import CpfValidationResult
-from src.api.rate_limit import clear_rate_limits
 from src.config import settings
 
 
@@ -67,27 +66,6 @@ def test_login(client):
     )
     assert response.status_code == 200
     assert "access_token" in response.json()
-
-
-def test_login_rate_limit(client):
-    original_limit = settings.rate_limit_login_requests
-    try:
-        clear_rate_limits()
-        settings.rate_limit_login_requests = 1
-        first = client.post(
-            "/api/v1/auth/login",
-            json={"username": "bad", "password": "bad"},
-        )
-        second = client.post(
-            "/api/v1/auth/login",
-            json={"username": "bad", "password": "bad"},
-        )
-    finally:
-        settings.rate_limit_login_requests = original_limit
-        clear_rate_limits()
-
-    assert first.status_code == 401
-    assert second.status_code == 429
 
 
 def test_customer_crud(client, auth_headers):
@@ -816,7 +794,8 @@ def test_validate_and_create_pj_customer(mock_validate, client, auth_headers):
 
 
 @patch("src.infrastructure.external.invertexto_cpf.HttpInvertextoCpfValidator.validate")
-def test_validate_and_create_pf_customer(mock_validate, client, auth_headers):
+def test_validate_and_create_pf_customer(mock_validate, client, auth_headers, monkeypatch):
+    monkeypatch.setattr(settings, "invertexto_api_token", "test-token")
     mock_validate.return_value = CpfValidationResult(
         valid=True,
         formatted="529.982.247-25",

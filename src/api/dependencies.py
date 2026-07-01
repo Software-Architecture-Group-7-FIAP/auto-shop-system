@@ -30,6 +30,7 @@ def domain_error_handler(exc: DomainError) -> HTTPException:
         "conflict_error": status.HTTP_409_CONFLICT,
         "unauthorized": status.HTTP_401_UNAUTHORIZED,
         "forbidden": status.HTTP_403_FORBIDDEN,
+        "service_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
     }
     return HTTPException(
         status_code=status_map.get(exc.code, status.HTTP_400_BAD_REQUEST),

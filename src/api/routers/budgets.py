@@ -4,7 +4,6 @@ from sqlalchemy.orm import Session
 from src.api.composition.budget_approval import compose_budget_approval_service
 from src.api.composition.budgets import compose_budget_service
 from src.api.dependencies import domain_error_handler, get_current_user
-from src.api.rate_limit import rate_limit
 from src.api.schemas import (
     AvailabilityItem,
     BudgetCreate,
@@ -231,7 +230,6 @@ def approve_budget_admin(
 @public_router.post(
     "/{token}/approve",
     response_model=MessageResponse,
-    dependencies=[Depends(rate_limit("public-budgets", "rate_limit_public_requests"))],
 )
 def approve_budget(token: str, db: Session = Depends(get_db)):
     try:
@@ -244,7 +242,6 @@ def approve_budget(token: str, db: Session = Depends(get_db)):
 @public_router.post(
     "/{token}/reject",
     response_model=MessageResponse,
-    dependencies=[Depends(rate_limit("public-budgets", "rate_limit_public_requests"))],
 )
 def reject_budget(token: str, db: Session = Depends(get_db)):
     try:

@@ -63,10 +63,9 @@ export class ServiceOrderService {
     return this.http.post<MessageResponse>(`${this.url}/${id}/send-email`, {}, this.httpOptions);
   }
 
-  trackPublic(id: number, document: string): Observable<ServiceOrderPublic> {
-    const encodedDocument = encodeURIComponent(document);
+  trackPublic(token: string): Observable<ServiceOrderPublic> {
     return this.http.get<ServiceOrderPublic>(
-      `api/v1/public/service-orders/${id}?document=${encodedDocument}`,
+      `api/v1/public/service-orders/track/${encodeURIComponent(token)}`,
       {
         context: new HttpContext().set(SKIP_GLOBAL_ERROR_ALERT, true),
       }

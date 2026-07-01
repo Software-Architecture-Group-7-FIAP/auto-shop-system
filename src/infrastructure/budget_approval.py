@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 from sqlalchemy.orm import Session
 
 from src.application.ports.budget_approval import (
@@ -34,10 +36,15 @@ class SignedBudgetApprovalTokenService:
 
 class SettingsBudgetApprovalUrlBuilder:
     def approve_url(self, token: str) -> str:
-        return f"{settings.app_base_url}/api/v1/public/budgets/{token}/approve"
+        return self._frontend_url(token, "approve")
 
     def reject_url(self, token: str) -> str:
-        return f"{settings.app_base_url}/api/v1/public/budgets/{token}/reject"
+        return self._frontend_url(token, "reject")
+
+    @staticmethod
+    def _frontend_url(token: str, action: str) -> str:
+        query = urlencode({"token": token, "action": action})
+        return f"{settings.frontend_public_url.rstrip('/')}/budget-approval?{query}"
 
 
 class ReportLabBudgetPdfGenerator:

@@ -8,7 +8,6 @@ from src.api.composition.service_orders import (
 from src.api.composition.execution import compose_execution_service
 from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.mappers.service_orders import service_order_with_withdrawals_to_response
-from src.api.rate_limit import rate_limit
 from src.api.schemas import (
     AssignMechanicRequest,
     AverageExecutionTimeResponse,
@@ -156,7 +155,6 @@ async def send_os_email(
 @public_router.get(
     "/track/{token}",
     response_model=ServiceOrderPublicResponse,
-    dependencies=[Depends(rate_limit("public-service-orders", "rate_limit_public_requests"))],
 )
 def track_service_order(
     token: str,

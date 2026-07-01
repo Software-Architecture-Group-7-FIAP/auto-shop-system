@@ -4,6 +4,7 @@ from email.message import EmailMessage
 
 from src.application.ports.email import EmailAttachment
 from src.config import settings
+from src.domain.exceptions import ServiceUnavailableError
 
 
 async def send_email(
@@ -32,12 +33,17 @@ async def send_email(
             filename=attachment.filename,
         )
 
-    await aiosmtplib.send(
-        message,
-        hostname=settings.smtp_host,
-        port=settings.smtp_port,
-        username=settings.smtp_user or None,
-        password=settings.smtp_password_value(),
-        use_tls=settings.smtp_use_tls,
-        start_tls=settings.smtp_starttls,
-    )
+    try:
+        await aiosmtplib.send(
+            message,
+            hostname=settings.smtp_host,
+            port=settings.smtp_port,
+            username=settings.smtp_user or None,
+            password=settings.smtp_password_value(),
+            use_tls=settings.smtp_use_tls,
+            start_tls=settings.smtp_starttls,
+        )
+    except (aiosmtplib.SMTPException, OSError) as exc:
+        raise ServiceUnavailableError(
+            "Serviço de email indisponível. Verifique a configuração SMTP."
+        ) from exc

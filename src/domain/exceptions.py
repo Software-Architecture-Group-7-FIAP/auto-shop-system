@@ -28,3 +28,8 @@ class UnauthorizedError(DomainError):
 class ForbiddenError(DomainError):
     def __init__(self, message: str = "Forbidden"):
         super().__init__(message, "forbidden")
+
+
+class ServiceUnavailableError(DomainError):
+    def __init__(self, message: str):
+        super().__init__(message, "service_unavailable")
