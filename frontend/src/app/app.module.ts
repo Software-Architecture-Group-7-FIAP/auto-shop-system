@@ -39,6 +39,7 @@ import { ServiceOrderDetailComponent } from './component/service-orders/service-
 import { ServiceOrderTrackingComponent } from './component/service-order-tracking/service-order-tracking.component';
 import { BudgetApprovalComponent } from './component/budget-approval/budget-approval.component';
 
+import { FormErrorAlertComponent } from './component/shared/form-error-alert.component';
 import { AuthInterceptor } from './service/auth.interceptor';
 import { HttpErrorInterceptor } from './service/http-error.interceptor';
 

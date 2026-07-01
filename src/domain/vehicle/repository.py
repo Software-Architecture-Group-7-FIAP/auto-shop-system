@@ -17,7 +17,7 @@ class VehicleRepository(Protocol):
     def list_by_customer(self, customer_id: int) -> list[Vehicle]:
         ...
 
-    def exists_by_plate(self, plate: Plate) -> bool:
+    def exists_by_customer_and_plate(self, customer_id: int, plate: Plate) -> bool:
         ...
 
     def save(self, vehicle: Vehicle) -> Vehicle:

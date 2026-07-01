@@ -29,4 +29,45 @@ class PlateValidator:
         normalized = plate.upper().replace("-", "").replace(" ", "")
         if cls.LEGACY_PATTERN.match(normalized) or cls.MERCOSUL_PATTERN.match(normalized):
             return normalized
-        raise ValidationError("Placa inválida (formato antigo ou Mercosul)")
+        raise ValidationError("Veículo inválido")
+
+
+class StateValidator:
+    VALID_STATES = frozenset(
+        {
+            "AC",
+            "AL",
+            "AP",
+            "AM",
+            "BA",
+            "CE",
+            "DF",
+            "ES",
+            "GO",
+            "MA",
+            "MT",
+            "MS",
+            "MG",
+            "PA",
+            "PB",
+            "PR",
+            "PE",
+            "PI",
+            "RJ",
+            "RN",
+            "RS",
+            "RO",
+            "RR",
+            "SC",
+            "SP",
+            "SE",
+            "TO",
+        }
+    )
+
+    @classmethod
+    def validate(cls, state: str) -> str:
+        normalized = state.strip().upper()
+        if normalized not in cls.VALID_STATES:
+            raise ValidationError("UF inválida")
+        return normalized

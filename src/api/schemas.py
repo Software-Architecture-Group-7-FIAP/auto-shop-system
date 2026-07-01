@@ -91,12 +91,18 @@ class CpfValidationResponse(BaseModel):
 class VehicleCreate(BaseModel):
     customer_id: int
     plate: str
+    state: str = Field(min_length=2, max_length=2)
+    city: str = Field(min_length=1)
+    color: str = Field(min_length=1)
     brand: str
     model: str
     year: int = Field(ge=1900, le=2100)
 
 
 class VehicleUpdate(BaseModel):
+    state: str | None = Field(default=None, min_length=2, max_length=2)
+    city: str | None = Field(default=None, min_length=1)
+    color: str | None = Field(default=None, min_length=1)
     brand: str | None = None
     model: str | None = None
     year: int | None = Field(default=None, ge=1900, le=2100)
@@ -106,6 +112,9 @@ class VehicleResponse(BaseModel):
     id: int
     customer_id: int
     plate: str
+    state: str
+    city: str
+    color: str
     brand: str
     model: str
     year: int
@@ -315,6 +324,11 @@ class AssignMechanicRequest(BaseModel):
 
 class SetPriorityRequest(BaseModel):
     priority: Priority
+
+
+class OverrideStatusRequest(BaseModel):
+    status: ServiceOrderStatus
+    reason: str = Field(min_length=1)
 
 
 class ReservationCreate(BaseModel):

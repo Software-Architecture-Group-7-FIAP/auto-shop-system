@@ -8,6 +8,7 @@ import {
   Priority,
   ServiceOrder,
   ServiceOrderPublic,
+  ServiceOrderStatusOverride,
   ServiceOrderUpdate,
 } from '../model/models';
 import { SKIP_GLOBAL_ERROR_ALERT } from './http-error.interceptor';
@@ -46,6 +47,14 @@ export class ServiceOrderService {
     return this.http.patch<ServiceOrder>(
       `${this.url}/${id}/priority`,
       { priority },
+      this.httpOptions
+    );
+  }
+
+  overrideStatus(id: number, payload: ServiceOrderStatusOverride): Observable<ServiceOrder> {
+    return this.http.patch<ServiceOrder>(
+      `${this.url}/${id}/status-override`,
+      payload,
       this.httpOptions
     );
   }

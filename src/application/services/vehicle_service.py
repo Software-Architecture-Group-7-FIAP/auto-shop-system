@@ -17,7 +17,15 @@ class VehicleService:
         self.uow = uow
 
     def create(
-        self, customer_id: int, plate: str, brand: str, model: str, year: int
+        self,
+        customer_id: int,
+        plate: str,
+        state: str,
+        city: str,
+        color: str,
+        brand: str,
+        model: str,
+        year: int,
     ) -> Vehicle:
         if not self.customers.exists(customer_id):
             raise NotFoundError("Cliente não encontrado")
@@ -25,12 +33,15 @@ class VehicleService:
         vehicle = Vehicle.create(
             customer_id=customer_id,
             plate=plate,
+            state=state,
+            city=city,
+            color=color,
             brand=brand,
             model=model,
             year=year,
         )
-        if self.vehicles.exists_by_plate(vehicle.plate):
-            raise ConflictError("Veículo com esta placa já existe")
+        if self.vehicles.exists_by_customer_and_plate(customer_id, vehicle.plate):
+            raise ConflictError("Veículo com esta placa já existe para o cliente")
 
         created = self.vehicles.add(vehicle)
         self.uow.commit()
@@ -46,17 +57,22 @@ class VehicleService:
         return self.vehicles.list_all(skip, limit)
 
     def list_by_customer(self, customer_id: int) -> list[Vehicle]:
+        if not self.customers.exists(customer_id):
+            raise NotFoundError("Cliente não encontrado")
         return self.vehicles.list_by_customer(customer_id)
 
     def update(
         self,
         vehicle_id: int,
+        state: str | None,
+        city: str | None,
+        color: str | None,
         brand: str | None,
         model: str | None,
         year: int | None,
     ) -> Vehicle:
         vehicle = self.get_by_id(vehicle_id)
-        vehicle.update_details(brand, model, year)
+        vehicle.update_details(state, city, color, brand, model, year)
         updated = self.vehicles.save(vehicle)
         self.uow.commit()
         return updated

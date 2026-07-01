@@ -1,9 +1,11 @@
 import { Component, Input, OnChanges } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   AvailabilityItem,
   Budget,
   BudgetProductLine,
   BudgetServiceLine,
+  BudgetStatus,
   CatalogService,
   Product,
 } from '../../../model/models';
@@ -44,6 +46,7 @@ export class BudgetDetailComponent implements OnChanges {
     if (this.budgetId) {
       this.availabilityItems = [];
       this.actionMessage = '';
+      this.errorMessage = '';
       this.loadBudget();
       this.loadProducts();
       this.loadCatalogServices();
@@ -150,6 +153,41 @@ export class BudgetDetailComponent implements OnChanges {
       },
       error: () => {
         this.isSendingEmail = false;
+      },
+    });
+  }
+
+  canApprove(): boolean {
+    if (!this.budget) {
+      return false;
+    }
+    const hasLines = this.serviceLines.length > 0 || this.productLines.length > 0;
+    return (
+      hasLines &&
+      [BudgetStatus.DRAFT, BudgetStatus.SENT].includes(this.budget.status)
+    );
+  }
+
+  approve(): void {
+    if (!this.canApprove()) {
+      return;
+    }
+    this.isApproving = true;
+    this.errorMessage = '';
+    this.budgetService.approve(this.budgetId).subscribe({
+      next: (response) => {
+        this.actionMessage = response.message;
+        this.reloadBudget();
+      },
+      complete: () => {
+        this.isApproving = false;
+      },
+      error: (error) => {
+        this.isApproving = false;
+        const httpError = error as HttpErrorResponse;
+        this.errorMessage =
+          (typeof httpError?.error?.detail === 'string' && httpError.error.detail) ||
+          'Não foi possível aprovar o orçamento.';
       },
     });
   }

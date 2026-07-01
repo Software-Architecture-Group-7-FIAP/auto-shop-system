@@ -149,6 +149,61 @@ Resposta admin inclui `documents: ["52998224725"]` (lista normalizada, sem másc
 
 Por segurança, a rota pública retorna apenas `{ "id", "name" }` — sem e-mail, telefone ou endereço.
 
+## Gestão de veículos (T03 — RF02)
+
+Veículos vinculados a clientes cadastrados (T02). Regras de domínio:
+
+- Placa validada nos formatos **legado** (`ABC1234`) e **Mercosul** (`ABC1D23`)
+- Placa inválida → HTTP 422 com mensagem `Veículo inválido`
+- Não pode haver dois veículos com a **mesma placa para o mesmo cliente** → HTTP 409
+- UF validada contra siglas brasileiras (2 letras)
+
+### APIs administrativas (JWT)
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `POST` | `/api/v1/admin/vehicles` | Cadastrar veículo |
+| `GET` | `/api/v1/admin/vehicles` | Listar todos os veículos |
+| `GET` | `/api/v1/admin/vehicles/{id}` | Buscar veículo por ID |
+| `PUT` | `/api/v1/admin/vehicles/{id}` | Atualizar veículo |
+| `DELETE` | `/api/v1/admin/vehicles/{id}` | Remover veículo |
+| `GET` | `/api/v1/admin/customers/{id}/vehicles` | Listar veículos do cliente |
+
+Exemplo de criação:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/admin/vehicles \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customer_id": 1,
+    "plate": "ABC1D23",
+    "state": "SP",
+    "city": "São Paulo",
+    "color": "Prata",
+    "brand": "VW",
+    "model": "Gol",
+    "year": 2021
+  }'
+```
+
+No painel Angular, selecione um cliente em **Clientes** para listar e cadastrar veículos associados.
+
+## Faturamento e encerramento (T11 — RF38–RF40)
+
+Após finalizar a OS (`PATCH /admin/service-orders/{id}/finish`), o atendimento pode emitir fatura, registrar pagamento e encerrar a OS como entregue.
+
+### APIs administrativas (JWT)
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `POST` | `/api/v1/admin/service-orders/{id}/invoice` | Gerar fatura para OS finalizada |
+| `GET` | `/api/v1/admin/service-orders/{id}/invoice` | Consultar fatura da OS |
+| `PATCH` | `/api/v1/admin/invoices/{id}/pay` | Registrar pagamento integral |
+| `PATCH` | `/api/v1/admin/service-orders/{id}/deliver` | Entregar OS (fatura deve estar paga) |
+
+O pagamento integral altera automaticamente o status da OS para `Entregue`.
+
 ## Painel web Angular (admin completo)
 
 Frontend em **Angular 15** com CRUD master-detail para todas as entidades administrativas.
