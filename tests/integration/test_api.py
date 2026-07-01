@@ -33,6 +33,21 @@ def _supplier_payload(**overrides):
     return payload
 
 
+def _vehicle_payload(customer_id: int, **overrides):
+    payload = {
+        "customer_id": customer_id,
+        "plate": "ABC1D23",
+        "state": "SP",
+        "city": "São Paulo",
+        "color": "Prata",
+        "brand": "VW",
+        "model": "Gol",
+        "year": 2021,
+    }
+    payload.update(overrides)
+    return payload
+
+
 def _create_supplier(client, auth_headers, **overrides):
     return client.post(
         "/api/v1/admin/suppliers",
@@ -140,18 +155,87 @@ def test_vehicle_crud(client, auth_headers):
         json=_pf_customer_payload(name="Pedro", email="pedro@test.com", phone=None),
     ).json()
 
-    vehicle = client.post(
+    create = client.post(
         "/api/v1/admin/vehicles",
         headers=auth_headers,
-        json={
-            "customer_id": customer["id"],
-            "plate": "ABC1D23",
-            "brand": "VW",
-            "model": "Gol",
-            "year": 2021,
-        },
+        json=_vehicle_payload(customer["id"]),
     )
-    assert vehicle.status_code == 201
+    assert create.status_code == 201
+    vehicle = create.json()
+    assert vehicle["state"] == "SP"
+    assert vehicle["city"] == "São Paulo"
+    assert vehicle["color"] == "Prata"
+
+    listed = client.get(
+        f"/api/v1/admin/customers/{customer['id']}/vehicles",
+        headers=auth_headers,
+    )
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+    assert listed.json()[0]["plate"] == "ABC1D23"
+
+    updated = client.put(
+        f"/api/v1/admin/vehicles/{vehicle['id']}",
+        headers=auth_headers,
+        json={"color": "Preto"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["color"] == "Preto"
+
+    deleted = client.delete(
+        f"/api/v1/admin/vehicles/{vehicle['id']}",
+        headers=auth_headers,
+    )
+    assert deleted.status_code == 204
+
+
+def test_vehicle_rejects_invalid_plate(client, auth_headers):
+    customer = client.post(
+        "/api/v1/admin/customers",
+        headers=auth_headers,
+        json=_pf_customer_payload(name="Pedro", email="pedro2@test.com", phone=None),
+    ).json()
+
+    response = client.post(
+        "/api/v1/admin/vehicles",
+        headers=auth_headers,
+        json=_vehicle_payload(customer["id"], plate="INVALID"),
+    )
+    assert response.status_code == 422
+    assert "Veículo inválido" in response.json()["detail"]
+
+
+def test_vehicle_rejects_duplicate_plate_for_same_customer(client, auth_headers):
+    customer = client.post(
+        "/api/v1/admin/customers",
+        headers=auth_headers,
+        json=_pf_customer_payload(name="Pedro", email="pedro3@test.com", phone=None),
+    ).json()
+
+    first = client.post(
+        "/api/v1/admin/vehicles",
+        headers=auth_headers,
+        json=_vehicle_payload(customer["id"]),
+    )
+    assert first.status_code == 201
+
+    duplicate = client.post(
+        "/api/v1/admin/vehicles",
+        headers=auth_headers,
+        json=_vehicle_payload(customer["id"], brand="Fiat", model="Uno"),
+    )
+    assert duplicate.status_code == 409
+
+
+def test_customer_vehicles_requires_auth(client, auth_headers):
+    customer = client.post(
+        "/api/v1/admin/customers",
+        headers=auth_headers,
+        json=_pf_customer_payload(name="Pedro", email="pedro4@test.com", phone=None),
+    ).json()
+
+    response = client.get(f"/api/v1/admin/customers/{customer['id']}/vehicles")
+    assert response.status_code == 401
 
 
 def test_service_catalog_crud_and_product_lines(client, auth_headers):
@@ -372,13 +456,7 @@ def test_full_flow(client, auth_headers):
     vehicle = client.post(
         "/api/v1/admin/vehicles",
         headers=auth_headers,
-        json={
-            "customer_id": customer["id"],
-            "plate": "XYZ9A87",
-            "brand": "Toyota",
-            "model": "Corolla",
-            "year": 2022,
-        },
+        json=_vehicle_payload(customer["id"], plate="XYZ9A87", brand="Toyota", model="Corolla", year=2022),
     ).json()
 
     service = client.post(
@@ -477,6 +555,25 @@ def test_full_flow(client, auth_headers):
     assert updated_os.status_code == 200
     assert updated_os.json()["mechanic_name"] == "Carlos Silva"
     assert updated_os.json()["priority"] == "Urgente"
+    assert updated_os.json()["status"] == "Em diagnóstico"
+
+    generic_status_update = client.put(
+        f"/api/v1/admin/service-orders/{os_id}",
+        headers=auth_headers,
+        json={"status": "Finalizada"},
+    )
+    assert generic_status_update.status_code == 422
+
+    status_override = client.patch(
+        f"/api/v1/admin/service-orders/{os_id}/status-override",
+        headers=auth_headers,
+        json={
+            "status": "Em diagnóstico",
+            "reason": "Correção administrativa no fluxo de teste",
+        },
+    )
+    assert status_override.status_code == 200
+    assert status_override.json()["status"] == "Em diagnóstico"
 
     no_op_update = client.put(
         f"/api/v1/admin/service-orders/{os_id}",
@@ -534,6 +631,7 @@ def test_full_flow(client, auth_headers):
         headers=auth_headers,
     )
     assert invoice.status_code == 201
+    assert invoice.json()["amount"] == 160.0
 
     invoice_lookup = client.get(
         f"/api/v1/admin/service-orders/{os_id}/invoice",
@@ -548,6 +646,12 @@ def test_full_flow(client, auth_headers):
     )
     assert paid.status_code == 200
     assert paid.json()["status"] == "Paga"
+
+    deliver = client.patch(
+        f"/api/v1/admin/service-orders/{os_id}/deliver",
+        headers=auth_headers,
+    )
+    assert deliver.status_code == 422
 
     track = client.get(
         f"/api/v1/public/service-orders/{os_id}?document=52998224725"

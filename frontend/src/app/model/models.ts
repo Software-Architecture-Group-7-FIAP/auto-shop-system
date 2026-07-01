@@ -50,6 +50,9 @@ export interface Vehicle {
   id: number;
   customer_id: number;
   plate: string;
+  state: string;
+  city: string;
+  color: string;
   brand: string;
   model: string;
   year: number;
@@ -145,6 +148,11 @@ export interface ServiceOrderPublic {
 export interface ServiceOrderUpdate {
   mechanic_name?: string;
   priority?: Priority;
+}
+
+export interface ServiceOrderStatusOverride {
+  status: ServiceOrderStatus;
+  reason: string;
 }
 
 export interface CnpjValidation {

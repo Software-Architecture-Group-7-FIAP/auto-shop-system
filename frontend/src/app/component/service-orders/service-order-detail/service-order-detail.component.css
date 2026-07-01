@@ -6,3 +6,9 @@
   font-size: 0.85rem;
   color: var(--color-text);
 }
+
+.error-message {
+  margin-top: 0.75rem;
+  color: #c62828;
+  font-size: 0.85rem;
+}

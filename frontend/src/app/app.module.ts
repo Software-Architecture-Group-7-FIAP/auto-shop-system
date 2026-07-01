@@ -38,6 +38,7 @@ import { ServiceOrdersComponent } from './component/service-orders/service-order
 import { ServiceOrderDetailComponent } from './component/service-orders/service-order-detail/service-order-detail.component';
 import { ServiceOrderTrackingComponent } from './component/service-order-tracking/service-order-tracking.component';
 
+import { FormErrorAlertComponent } from './component/shared/form-error-alert.component';
 import { AuthInterceptor } from './service/auth.interceptor';
 import { HttpErrorInterceptor } from './service/http-error.interceptor';
 
@@ -68,6 +69,7 @@ import { HttpErrorInterceptor } from './service/http-error.interceptor';
     ServiceOrdersComponent,
     ServiceOrderDetailComponent,
     ServiceOrderTrackingComponent,
+    FormErrorAlertComponent,
   ],
   imports: [BrowserModule, FormsModule, AppRoutingModule, HttpClientModule],
   providers: [

@@ -6,6 +6,7 @@ import {
   Budget,
   BudgetProductLine,
   BudgetServiceLine,
+  MessageResponse,
 } from '../model/models';
 
 @Injectable({ providedIn: 'root' })
@@ -119,6 +120,14 @@ export class BudgetService {
   sendEmail(budgetId: number): Observable<Budget> {
     return this.http.post<Budget>(
       `${this.url}/${budgetId}/send-email`,
+      {},
+      this.httpOptions
+    );
+  }
+
+  approve(budgetId: number): Observable<MessageResponse> {
+    return this.http.patch<MessageResponse>(
+      `${this.url}/${budgetId}/approve`,
       {},
       this.httpOptions
     );

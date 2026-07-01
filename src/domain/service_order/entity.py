@@ -49,5 +49,12 @@ class ServiceOrder:
     def set_priority(self, priority: Priority) -> None:
         self.priority = priority
 
+    def override_status(self, status: ServiceOrderStatus, reason: str) -> None:
+        if not reason.strip():
+            raise ValidationError("Motivo da alteração de status é obrigatório")
+        self.status = status
+
     def mark_delivered(self) -> None:
+        if self.status != ServiceOrderStatus.FINALIZADA:
+            raise ValidationError("OS deve estar finalizada para ser entregue")
         self.status = ServiceOrderStatus.ENTREGUE
