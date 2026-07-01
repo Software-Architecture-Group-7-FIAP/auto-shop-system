@@ -24,3 +24,9 @@ class StockWithdrawalRepository(Protocol):
 
     def list_by_service_order_id(self, service_order_id: int) -> list[StockWithdrawal]:
         ...
+
+    def list_by_service_order_ids(
+        self,
+        service_order_ids: list[int],
+    ) -> list[StockWithdrawal]:
+        ...

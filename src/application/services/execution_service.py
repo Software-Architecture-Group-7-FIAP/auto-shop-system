@@ -74,7 +74,6 @@ class ExecutionService:
         finish_service_order(service_order, self.clock.now(), withdrawn)
 
         for line in service_order.product_lines:
-            self.products.decrement_stock(line.product_id, line.quantity)
             self.reservations.consume_active_for_product(
                 service_order_id,
                 line.product_id,
@@ -112,6 +111,7 @@ class ExecutionService:
         if not withdrawal:
             raise NotFoundError("Solicitação de retirada não encontrada")
         withdrawal.fulfill(self.clock.now())
+        self.products.decrement_stock(withdrawal.product_id, withdrawal.quantity)
         updated = self.withdrawals.save(withdrawal)
         self.uow.commit()
         return updated
@@ -136,10 +136,18 @@ class ExecutionService:
             ids,
             ServiceOrderStatus.EM_EXECUCAO,
         )
+        withdrawals = self.withdrawals.list_by_service_order_ids(
+            [order.id for order in orders if order.id is not None]
+        )
+        withdrawals_by_order: dict[int, list[StockWithdrawal]] = {}
+        for withdrawal in withdrawals:
+            withdrawals_by_order.setdefault(withdrawal.service_order_id, []).append(
+                withdrawal
+            )
         return [
             ServiceOrderWithdrawalDetail(
                 service_order=order,
-                withdrawals=self.withdrawals.list_by_service_order_id(order.id),
+                withdrawals=withdrawals_by_order.get(order.id or 0, []),
             )
             for order in orders
         ]

@@ -104,6 +104,15 @@ class InMemoryStockWithdrawalRepository:
             if w.service_order_id == service_order_id
         ]
 
+    def list_by_service_order_ids(
+        self,
+        service_order_ids: list[int],
+    ) -> list[StockWithdrawal]:
+        return [
+            w for w in self.withdrawals.values()
+            if w.service_order_id in service_order_ids
+        ]
+
 
 class FakeProductGateway:
     def __init__(self):
@@ -277,7 +286,7 @@ def test_execution_service_finishes_order_and_consumes_inventory():
 
     assert updated.status == ServiceOrderStatus.FINALIZADA
     assert updated.finished_at == datetime(2026, 1, 1, 8, 0, 0)
-    assert products.decrements == [(10, 2)]
+    assert products.decrements == []
     assert reservations.consumed == [(1, 10)]
 
 
@@ -307,13 +316,15 @@ def test_execution_service_fulfills_withdrawal():
             )
         ]
     )
+    products = FakeProductGateway()
     uow = FakeUnitOfWork()
-    service = make_service(withdrawals=withdrawals, uow=uow)
+    service = make_service(withdrawals=withdrawals, products=products, uow=uow)
 
     updated = service.fulfill_withdrawal(1)
 
     assert updated.status == StockWithdrawalStatus.FULFILLED
     assert updated.fulfilled_at == datetime(2026, 1, 1, 8, 0, 0)
+    assert products.decrements == [(10, 2)]
     assert uow.commits == 1
 
 

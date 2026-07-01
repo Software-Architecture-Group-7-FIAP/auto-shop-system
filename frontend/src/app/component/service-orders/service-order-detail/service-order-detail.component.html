@@ -137,51 +137,12 @@
     </span>
   </div>
 
-  <div *ngIf="shouldShowBillingSection()" class="action-section">
-    <h3>Faturamento</h3>
-    <p *ngIf="!invoice" class="action-message">
-      Nenhuma fatura emitida para esta OS.
-    </p>
-    <div *ngIf="invoice" class="field-list">
-      <div class="field-name">
-        <span>Fatura</span>
-        <label class="readonly">#{{ invoice.id }}</label>
-      </div>
-      <div class="field-name">
-        <span>Status</span>
-        <label class="readonly">{{ invoice.status }}</label>
-      </div>
-      <div class="field-name">
-        <span>Valor</span>
-        <label class="readonly">R$ {{ invoice.amount | number: '1.2-2' }}</label>
-      </div>
-      <div class="field-name" *ngIf="invoice.paid_at">
-        <span>Pago em</span>
-        <label class="readonly">{{ invoice.paid_at | date: 'dd/MM/yyyy HH:mm' }}</label>
-      </div>
-    </div>
-    <div class="button-list">
-      <button
-        *ngIf="canCreateInvoice()"
-        class="btn btn-secondary"
-        type="button"
-        (click)="createInvoice()"
-        [disabled]="isCreatingInvoice"
-      >
-        {{ isCreatingInvoice ? 'Criando...' : 'Criar fatura' }}
-      </button>
-      <button
-        *ngIf="canPayInvoice()"
-        class="btn btn-primary"
-        type="button"
-        (click)="payInvoice()"
-        [disabled]="isPayingInvoice"
-      >
-        {{ isPayingInvoice ? 'Registrando...' : 'Registrar pagamento' }}
-      </button>
-    </div>
-    <p *ngIf="errorMessage" class="error-message">{{ errorMessage }}</p>
-  </div>
+  <app-service-order-billing-panel
+    [serviceOrderId]="serviceOrderId"
+    [serviceOrder]="serviceOrder"
+    (serviceOrderChanged)="onBillingServiceOrderChanged($event)"
+    (actionMessage)="onBillingActionMessage($event)"
+  ></app-service-order-billing-panel>
 
   <div *ngIf="actionMessage" class="action-message">
     {{ actionMessage }}

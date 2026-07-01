@@ -69,6 +69,19 @@ class SqlAlchemyStockWithdrawalRepository:
         )
         return [self._to_domain(model) for model in models]
 
+    def list_by_service_order_ids(
+        self,
+        service_order_ids: list[int],
+    ) -> list[StockWithdrawal]:
+        if not service_order_ids:
+            return []
+        models = (
+            self.db.query(StockWithdrawalModel)
+            .filter(StockWithdrawalModel.service_order_id.in_(service_order_ids))
+            .all()
+        )
+        return [self._to_domain(model) for model in models]
+
     def fulfilled_quantity_by_product(self, service_order_id: int) -> dict[int, int]:
         rows = (
             self.db.query(

@@ -7,18 +7,17 @@ from src.api.composition.service_orders import (
 )
 from src.api.composition.execution import compose_execution_service
 from src.api.dependencies import domain_error_handler, get_current_user
+from src.api.mappers.service_orders import service_order_with_withdrawals_to_response
 from src.api.schemas import (
     AssignMechanicRequest,
     AverageExecutionTimeResponse,
     MessageResponse,
     OverrideStatusRequest,
-    ServiceOrderProductLineResponse,
     ServiceOrderPublicResponse,
     ServiceOrderResponse,
     ServiceOrderUpdate,
     ServiceOrderWithWithdrawalsResponse,
     SetPriorityRequest,
-    StockWithdrawalResponse,
 )
 from src.domain.enums import ServiceOrderStatus
 from src.domain.exceptions import DomainError
@@ -54,39 +53,7 @@ def list_os_with_withdrawals(
     _: UserModel = Depends(get_current_user),
 ):
     details = compose_execution_service(db).list_os_with_withdrawal_details()
-    return [
-        ServiceOrderWithWithdrawalsResponse(
-            id=d.service_order.id,
-            status=d.service_order.status,
-            priority=d.service_order.priority,
-            mechanic_name=d.service_order.mechanic_name,
-            total_price=d.service_order.total_price,
-            started_at=d.service_order.started_at,
-            created_at=d.service_order.created_at,
-            product_lines=[
-                ServiceOrderProductLineResponse(
-                    id=line.id,
-                    product_id=line.product_id,
-                    quantity=line.quantity,
-                    unit_price=line.unit_price,
-                )
-                for line in d.service_order.product_lines
-            ],
-            withdrawals=[
-                StockWithdrawalResponse(
-                    id=w.id,
-                    service_order_id=w.service_order_id,
-                    product_id=w.product_id,
-                    quantity=w.quantity,
-                    status=w.status,
-                    requested_at=w.requested_at,
-                    fulfilled_at=w.fulfilled_at,
-                )
-                for w in d.withdrawals
-            ],
-        )
-        for d in details
-    ]
+    return [service_order_with_withdrawals_to_response(detail) for detail in details]
 
 
 @admin_router.get("/queue", response_model=list[ServiceOrderResponse])
