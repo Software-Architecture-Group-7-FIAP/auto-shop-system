@@ -717,13 +717,13 @@ def test_execution_queue_orders_pending_service_orders_by_priority(client, auth_
         vehicle = client.post(
             "/api/v1/admin/vehicles",
             headers=auth_headers,
-            json={
-                "customer_id": customer["id"],
-                "plate": plate,
-                "brand": "Toyota",
-                "model": "Corolla",
-                "year": 2022,
-            },
+            json=_vehicle_payload(
+                customer["id"],
+                plate=plate,
+                brand="Toyota",
+                model="Corolla",
+                year=2022,
+            ),
         ).json()
         budget = client.post(
             "/api/v1/admin/budgets",
@@ -740,7 +740,7 @@ def test_execution_queue_orders_pending_service_orders_by_priority(client, auth_
             headers=auth_headers,
         )
         token = send.json()["approval_token"]
-        client.get(f"/api/v1/public/budgets/{token}/approve")
+        client.post(f"/api/v1/public/budgets/{token}/approve")
         orders = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()
         return next(order for order in orders if order["vehicle_id"] == vehicle["id"])
 
@@ -796,6 +796,7 @@ def test_validate_and_create_pj_customer(mock_validate, client, auth_headers):
 @patch("src.infrastructure.external.invertexto_cpf.HttpInvertextoCpfValidator.validate")
 def test_validate_and_create_pf_customer(mock_validate, client, auth_headers, monkeypatch):
     monkeypatch.setattr(settings, "invertexto_api_token", "test-token")
+    monkeypatch.setattr(settings, "skip_cpf_external_validation", False)
     mock_validate.return_value = CpfValidationResult(
         valid=True,
         formatted="529.982.247-25",
