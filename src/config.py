@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     cors_allow_credentials: bool = True
     security_hsts_enabled: bool = False
     invertexto_api_token: str = ""
+    skip_cpf_external_validation: bool = False
     dev_admin_password: str | None = None
     dev_admin_email: str = "admin@oficina.local"
 

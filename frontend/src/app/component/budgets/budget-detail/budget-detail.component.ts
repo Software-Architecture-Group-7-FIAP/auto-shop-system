@@ -33,7 +33,10 @@ export class BudgetDetailComponent implements OnChanges {
   productQuantity = 1;
   availabilityItems: AvailabilityItem[] = [];
   actionMessage = '';
+  errorMessage = '';
   isSendingEmail = false;
+  isApproving = false;
+  readonly budgetStatus = BudgetStatus;
 
   constructor(
     private budgetService: BudgetService,
