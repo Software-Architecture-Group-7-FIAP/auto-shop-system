@@ -1,10 +1,18 @@
+<<<<<<< HEAD:docs/security/bandit-report.txt
+Run started:2026-06-29 20:02:00.523446+00:00
+=======
 Run started:2026-06-29 08:07:11.834281+00:00
+>>>>>>> origin/main:docs/bandit-report.txt
 
 Test results:
 	No issues identified.
 
 Code scanned:
+<<<<<<< HEAD:docs/security/bandit-report.txt
+	Total lines of code: 5902
+=======
 	Total lines of code: 5811
+>>>>>>> origin/main:docs/bandit-report.txt
 	Total lines skipped (#nosec): 0
 	Total potential issues skipped due to specifically being disabled (e.g., #nosec BXXX): 0
 
