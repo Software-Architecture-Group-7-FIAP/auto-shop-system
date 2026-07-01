@@ -115,4 +115,36 @@
       <p *ngIf="!cnpjValidation.valid">CNPJ inválido</p>
     </div>
   </div>
+
+  <div class="action-section">
+    <h3>Veículos do cliente</h3>
+    <ul class="model-list vehicle-list" *ngIf="vehicles.length > 0">
+      <li class="list-header">
+        <span class="col-1">Placa</span>
+        <span class="col-2">Marca / Modelo</span>
+        <span class="col-3">Cor</span>
+        <span class="col-4">Ano</span>
+      </li>
+      <li *ngFor="let vehicle of vehicles" class="list-item">
+        <span class="col-1">{{ vehicle.plate }}</span>
+        <span class="col-2">{{ vehicle.brand }} / {{ vehicle.model }}</span>
+        <span class="col-3">{{ vehicle.color }}</span>
+        <span class="col-4">{{ vehicle.year }}</span>
+      </li>
+    </ul>
+    <p *ngIf="vehicles.length === 0 && !creatingNewVehicle" class="validation-result">
+      Nenhum veículo cadastrado para este cliente.
+    </p>
+    <div class="button-list" *ngIf="!creatingNewVehicle">
+      <button class="btn btn-secondary" type="button" (click)="showVehicleForm()">
+        Adicionar novo
+      </button>
+    </div>
+    <app-new-vehicle
+      *ngIf="creatingNewVehicle"
+      [customerId]="customerId"
+      (vehicleCreated)="onVehicleCreated()"
+      (cancelled)="onVehicleFormCancelled()"
+    ></app-new-vehicle>
+  </div>
 </div>
