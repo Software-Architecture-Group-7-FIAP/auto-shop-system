@@ -1,7 +1,7 @@
 """Require supplier for products.
 
 Revision ID: 005
-Revises: 004a
+Revises: 004
 Create Date: 2026-06-23
 """
 
@@ -12,7 +12,7 @@ from alembic import op
 
 
 revision: str = "005"
-down_revision: Union[str, None] = "004a"
+down_revision: Union[str, None] = "004"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

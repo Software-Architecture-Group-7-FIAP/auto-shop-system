@@ -4,7 +4,7 @@ from src.application.services.budget_approval_service import BudgetApprovalServi
 from src.infrastructure.budget_approval import (
     ReportLabBudgetPdfGenerator,
     SettingsBudgetApprovalUrlBuilder,
-    SignedBudgetApprovalTokenGenerator,
+    SignedBudgetApprovalTokenService,
     SmtpEmailSender,
     SqlAlchemyApprovedBudgetServiceOrderCreator,
     SqlAlchemyBudgetApprovalContactLookup,
@@ -17,7 +17,7 @@ def compose_budget_approval_service(db: Session) -> BudgetApprovalService:
     return BudgetApprovalService(
         budgets=SqlAlchemyBudgetRepository(db),
         contacts=SqlAlchemyBudgetApprovalContactLookup(db),
-        tokens=SignedBudgetApprovalTokenGenerator(),
+        tokens=SignedBudgetApprovalTokenService(),
         urls=SettingsBudgetApprovalUrlBuilder(),
         pdfs=ReportLabBudgetPdfGenerator(),
         emails=SmtpEmailSender(),

@@ -1,7 +1,7 @@
 from src.application.ports.budget_approval import (
     ApprovedBudgetServiceOrderCreator,
     BudgetApprovalContactLookup,
-    BudgetApprovalTokenGenerator,
+    BudgetApprovalTokenService,
     BudgetApprovalUrlBuilder,
     BudgetPdfGenerator,
     CreatedServiceOrder,
@@ -13,13 +13,15 @@ from src.domain.budget.repository import BudgetRepository
 from src.domain.enums import BudgetStatus
 from src.domain.exceptions import NotFoundError, ValidationError
 
+INVALID_APPROVAL_TOKEN_MESSAGE = "Orçamento inválido ou expirado"
+
 
 class BudgetApprovalService:
     def __init__(
         self,
         budgets: BudgetRepository,
         contacts: BudgetApprovalContactLookup,
-        tokens: BudgetApprovalTokenGenerator,
+        tokens: BudgetApprovalTokenService,
         urls: BudgetApprovalUrlBuilder,
         pdfs: BudgetPdfGenerator,
         emails: EmailSender,
@@ -95,9 +97,7 @@ class BudgetApprovalService:
         return updated_budget
 
     def approve_budget(self, token: str) -> CreatedServiceOrder:
-        budget = self.budgets.get_by_approval_token(token)
-        if not budget:
-            raise NotFoundError("Orçamento não encontrado")
+        budget = self._get_budget_by_valid_token(token)
         self._validate_can_approve(budget)
         return self._approve_and_create_service_order(budget)
 
@@ -122,14 +122,23 @@ class BudgetApprovalService:
         return service_order
 
     def reject_budget(self, token: str) -> Budget:
-        budget = self.budgets.get_by_approval_token(token)
-        if not budget:
-            raise NotFoundError("Orçamento não encontrado")
+        budget = self._get_budget_by_valid_token(token)
 
         budget.reject()
         updated_budget = self.budgets.save(budget)
         self.uow.commit()
         return updated_budget
+
+    def _get_budget_by_valid_token(self, token: str) -> Budget:
+        try:
+            budget_id = self.tokens.validate(token)
+        except ValueError as exc:
+            raise NotFoundError(INVALID_APPROVAL_TOKEN_MESSAGE) from exc
+
+        budget = self.budgets.get_by_id(budget_id)
+        if not budget or budget.approval_token != token:
+            raise NotFoundError(INVALID_APPROVAL_TOKEN_MESSAGE)
+        return budget
 
     def _get_by_id(self, budget_id: int) -> Budget:
         budget = self.budgets.get_by_id(budget_id)

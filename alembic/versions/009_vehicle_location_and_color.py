@@ -1,7 +1,7 @@
 """Add vehicle location/color fields and per-customer plate uniqueness.
 
-Revision ID: 006
-Revises: 005
+Revision ID: 009
+Revises: 008
 Create Date: 2026-06-30
 """
 
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision: str = "006"
-down_revision: Union[str, None] = "005"
+revision: str = "009"
+down_revision: Union[str, None] = "008"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -22,7 +22,9 @@ def upgrade() -> None:
     op.add_column("vehicles", sa.Column("city", sa.String(100), nullable=True))
     op.add_column("vehicles", sa.Column("color", sa.String(50), nullable=True))
 
-    op.execute("UPDATE vehicles SET state = 'SP', city = 'Não informado', color = 'Não informado'")
+    op.execute(
+        "UPDATE vehicles SET state = 'SP', city = 'Não informado', color = 'Não informado'"
+    )
 
     op.alter_column("vehicles", "state", nullable=False)
     op.alter_column("vehicles", "city", nullable=False)

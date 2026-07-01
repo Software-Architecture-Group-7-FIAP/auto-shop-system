@@ -17,7 +17,13 @@ npm start
 
 Abra [http://localhost:4200](http://localhost:4200).
 
-Login padrão: `admin` / `admin123`
+Login: `admin` / senha definida em `DEV_ADMIN_PASSWORD` ao rodar o seed do backend.
+
+Em banco novo, execute na raiz do projeto antes de entrar no painel:
+
+```bash
+DEV_ADMIN_PASSWORD=admin123 poetry run python -m src.scripts.seed_dev_admin
+```
 
 O proxy em `proxy.conf.json` encaminha `/api/*` para `http://localhost:8000`.
 

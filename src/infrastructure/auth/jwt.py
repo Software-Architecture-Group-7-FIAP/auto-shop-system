@@ -21,11 +21,11 @@ class JwtAccessTokenService:
             minutes=settings.access_token_expire_minutes
         )
         payload = {"sub": subject, "exp": expire}
-        return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+        return jwt.encode(payload, settings.jwt_secret(), algorithm=settings.algorithm)
 
     def decode_token(self, token: str) -> str:
         try:
-            payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+            payload = jwt.decode(token, settings.jwt_secret(), algorithms=[settings.algorithm])
             username: str | None = payload.get("sub")
             if username is None:
                 raise UnauthorizedError("Token inválido")

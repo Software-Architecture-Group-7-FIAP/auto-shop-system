@@ -4,6 +4,8 @@ from src.application.ports.service_order import (
     ServiceOrderEmailSender,
     ServiceOrderPdfGenerator,
 )
+from src.application.ports.service_order_tracking import ServiceOrderTrackingTokenService
+from src.application.ports.unit_of_work import UnitOfWork
 from src.application.services.service_order_tracking import build_service_order_tracking_url
 from src.domain.exceptions import NotFoundError
 from src.domain.service_order.repository import ServiceOrderRepository
@@ -16,13 +18,17 @@ class ServiceOrderEmailService:
         contacts: ServiceOrderContactLookup,
         pdfs: ServiceOrderPdfGenerator,
         emails: ServiceOrderEmailSender,
+        tracking_tokens: ServiceOrderTrackingTokenService,
         frontend_public_url: str,
+        uow: UnitOfWork,
     ):
         self.service_orders = service_orders
         self.contacts = contacts
         self.pdfs = pdfs
         self.emails = emails
+        self.tracking_tokens = tracking_tokens
         self.frontend_public_url = frontend_public_url
+        self.uow = uow
 
     async def send_os_email(self, service_order_id: int) -> None:
         service_order = self.service_orders.get_by_id(service_order_id)
@@ -34,10 +40,8 @@ class ServiceOrderEmailService:
         vehicle = self.contacts.get_vehicle(service_order.vehicle_id)
         if not customer or not vehicle:
             raise NotFoundError("Dados da OS não encontrados")
-        tracking_url = build_service_order_tracking_url(
-            self.frontend_public_url,
-            service_order.id,
-        )
+        token = self.tracking_tokens.create_token()
+        tracking_url = build_service_order_tracking_url(self.frontend_public_url, token)
 
         pdf = self.pdfs.generate_service_order_pdf(
             service_order.id,
@@ -51,7 +55,7 @@ class ServiceOrderEmailService:
         body = (
             f"Sua OS #{service_order.id} está com status: {service_order.status.value}.\n\n"
             f"Acompanhe sua OS:\n{tracking_url}\n\n"
-            "Informe seu CPF/CNPJ para consultar o progresso."
+            "Use o link acima para consultar o progresso."
         )
         await self.emails.send_email(
             customer.email,
@@ -65,3 +69,8 @@ class ServiceOrderEmailService:
                 ),
             ),
         )
+        self.service_orders.set_tracking_token_fingerprint(
+            service_order.id,
+            self.tracking_tokens.fingerprint(token),
+        )
+        self.uow.commit()

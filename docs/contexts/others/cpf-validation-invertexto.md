@@ -57,11 +57,11 @@ Adicione o token ao arquivo `.env`:
 INVERTEXTO_API_TOKEN=seu-token-aqui
 ```
 
-Definido em [`src/config.py`](../src/config.py) como `invertexto_api_token`. Se o token estiver ausente, a validação externa de CPF retorna:
+Definido em [`src/config.py`](../src/config.py) como `invertexto_api_token`.
 
-```
-Serviço de validação de CPF indisponível
-```
+Em ambiente de desenvolvimento, se o token estiver ausente, o sistema usa apenas a validação estrutural local do CPF para não bloquear testes manuais do MVP.
+
+Em ambientes de produção ou staging, `INVERTEXTO_API_TOKEN` é obrigatório.
 
 ---
 
@@ -69,9 +69,9 @@ Serviço de validação de CPF indisponível
 
 | Operação | CPF externo |
 |----------|-------------|
-| `POST /api/v1/admin/customers` | Sim, se documento tiver 11 dígitos |
-| `POST /api/v1/admin/customers/{id}/documents` | Sim, se novo documento for CPF |
-| `GET /api/v1/admin/customers/validate-cpf/{cpf}` | Sim (pré-validação no frontend) |
+| `POST /api/v1/admin/customers` | Sim, se `INVERTEXTO_API_TOKEN` estiver configurado |
+| `POST /api/v1/admin/customers/{id}/documents` | Sim, se `INVERTEXTO_API_TOKEN` estiver configurado |
+| `GET /api/v1/admin/customers/validate-cpf/{cpf}` | Sim, se `INVERTEXTO_API_TOKEN` estiver configurado; caso contrário, usa validação local |
 
 ---
 
@@ -97,7 +97,8 @@ Erros comuns:
 |----------|------|----------|
 | CPF com formato inválido (local) | 422 | `CPF inválido` |
 | Invertexto retorna `valid: false` | 422 | `CPF inválido` |
-| Token ausente / API indisponível | 422 | `Serviço de validação de CPF indisponível` |
+| Token ausente em desenvolvimento | 200 | Usa validação local |
+| API indisponível com token configurado | 422 | `Serviço de validação de CPF indisponível` |
 | Token rejeitado (401) | 422 | `Serviço de validação de CPF indisponível` |
 
 ---

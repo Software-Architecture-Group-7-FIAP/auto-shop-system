@@ -2,12 +2,15 @@ from unittest.mock import patch
 
 from src.application.ports.cnpj_validator import CnpjValidationResult
 from src.application.ports.cpf_validator import CpfValidationResult
+from src.config import settings
 
 
 def test_health(client):
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
 
 
 def _pf_customer_payload(**overrides):
@@ -76,9 +79,21 @@ def test_customer_crud(client, auth_headers):
     assert create.json()["documents"] == ["52998224725"]
     assert create.json()["address"] == "Rua A, 100"
 
-    get_doc = client.get("/api/v1/customers/by-document/52998224725")
+    get_doc = client.post(
+        "/api/v1/customers/lookup",
+        json={"document": "52998224725", "email": "maria@test.com"},
+    )
     assert get_doc.status_code == 200
     assert get_doc.json() == {"id": customer_id, "name": "Maria Silva"}
+
+    wrong_factor = client.post(
+        "/api/v1/customers/lookup",
+        json={"document": "52998224725", "email": "wrong@test.com"},
+    )
+    assert wrong_factor.status_code == 404
+
+    old_public_lookup = client.get("/api/v1/customers/by-document/52998224725")
+    assert old_public_lookup.status_code == 404
 
     get_admin_doc = client.get(
         "/api/v1/admin/customers/by-document/52998224725",
@@ -136,7 +151,10 @@ def test_customer_rejects_duplicate_document(client, auth_headers):
 
 
 def test_customer_public_lookup_not_found(client):
-    response = client.get("/api/v1/customers/by-document/52998224725")
+    response = client.post(
+        "/api/v1/customers/lookup",
+        json={"document": "52998224725", "email": "maria@test.com"},
+    )
     assert response.status_code == 404
 
 
@@ -524,7 +542,22 @@ def test_full_flow(client, auth_headers):
     token = send.json().get("approval_token")
     assert token
 
-    approve = client.get(f"/api/v1/public/budgets/{token}/approve")
+    get_approve = client.get(f"/api/v1/public/budgets/{token}/approve")
+    assert get_approve.status_code == 405
+
+    get_reject = client.get(f"/api/v1/public/budgets/{token}/reject")
+    assert get_reject.status_code == 405
+
+    budget_after_get = client.get(
+        f"/api/v1/admin/budgets/{budget['id']}",
+        headers=auth_headers,
+    ).json()
+    assert budget_after_get["status"] == "Enviado"
+
+    orders_after_get = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()
+    assert orders_after_get == []
+
+    approve = client.post(f"/api/v1/public/budgets/{token}/approve")
     assert approve.status_code == 200
 
     orders = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()
@@ -582,10 +615,14 @@ def test_full_flow(client, auth_headers):
     )
     assert no_op_update.status_code == 422
 
-    send_os = client.post(
-        f"/api/v1/admin/service-orders/{os_id}/send-email",
-        headers=auth_headers,
-    )
+    with patch(
+        "src.infrastructure.auth.service_order_tracking.HmacServiceOrderTrackingTokenService.create_token",
+        return_value="service-order-tracking-token",
+    ):
+        send_os = client.post(
+            f"/api/v1/admin/service-orders/{os_id}/send-email",
+            headers=auth_headers,
+        )
     assert send_os.status_code == 200
 
     reservations = client.post(
@@ -647,15 +684,16 @@ def test_full_flow(client, auth_headers):
     assert paid.status_code == 200
     assert paid.json()["status"] == "Paga"
 
+    old_track = client.get(f"/api/v1/public/service-orders/{os_id}?document=52998224725")
+    assert old_track.status_code in {404, 405}
+
     deliver = client.patch(
         f"/api/v1/admin/service-orders/{os_id}/deliver",
         headers=auth_headers,
     )
     assert deliver.status_code == 422
 
-    track = client.get(
-        f"/api/v1/public/service-orders/{os_id}?document=52998224725"
-    )
+    track = client.get("/api/v1/public/service-orders/track/service-order-tracking-token")
     assert track.status_code == 200
     assert track.json()["status"] == "Entregue"
     assert "mechanic_name" not in track.json()
@@ -679,13 +717,13 @@ def test_execution_queue_orders_pending_service_orders_by_priority(client, auth_
         vehicle = client.post(
             "/api/v1/admin/vehicles",
             headers=auth_headers,
-            json={
-                "customer_id": customer["id"],
-                "plate": plate,
-                "brand": "Toyota",
-                "model": "Corolla",
-                "year": 2022,
-            },
+            json=_vehicle_payload(
+                customer["id"],
+                plate=plate,
+                brand="Toyota",
+                model="Corolla",
+                year=2022,
+            ),
         ).json()
         budget = client.post(
             "/api/v1/admin/budgets",
@@ -702,7 +740,7 @@ def test_execution_queue_orders_pending_service_orders_by_priority(client, auth_
             headers=auth_headers,
         )
         token = send.json()["approval_token"]
-        client.get(f"/api/v1/public/budgets/{token}/approve")
+        client.post(f"/api/v1/public/budgets/{token}/approve")
         orders = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()
         return next(order for order in orders if order["vehicle_id"] == vehicle["id"])
 
@@ -756,7 +794,9 @@ def test_validate_and_create_pj_customer(mock_validate, client, auth_headers):
 
 
 @patch("src.infrastructure.external.invertexto_cpf.HttpInvertextoCpfValidator.validate")
-def test_validate_and_create_pf_customer(mock_validate, client, auth_headers):
+def test_validate_and_create_pf_customer(mock_validate, client, auth_headers, monkeypatch):
+    monkeypatch.setattr(settings, "invertexto_api_token", "test-token")
+    monkeypatch.setattr(settings, "skip_cpf_external_validation", False)
     mock_validate.return_value = CpfValidationResult(
         valid=True,
         formatted="529.982.247-25",

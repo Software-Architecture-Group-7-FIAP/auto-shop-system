@@ -70,21 +70,6 @@ def make_auth_service(
     )
 
 
-def test_auth_service_creates_default_admin_once():
-    users = InMemoryUserRepository()
-    uow = FakeUnitOfWork()
-    service = make_auth_service(users=users, uow=uow)
-
-    service.ensure_default_admin()
-    service.ensure_default_admin()
-
-    admin = users.get_by_username("admin")
-    assert admin is not None
-    assert admin.email == "admin@oficina.local"
-    assert admin.hashed_password == "hashed:admin123"
-    assert uow.commits == 1
-
-
 def test_auth_service_login_returns_access_token():
     users = InMemoryUserRepository(
         [

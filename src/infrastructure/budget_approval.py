@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 from sqlalchemy.orm import Session
 
 from src.application.ports.budget_approval import (
@@ -9,7 +11,10 @@ from src.config import settings
 from src.domain.budget.entity import Budget
 from src.domain.enums import ServiceOrderStatus
 from src.domain.exceptions import ValidationError
-from src.infrastructure.auth.tokens import create_signed_approval_token
+from src.infrastructure.auth.tokens import (
+    create_signed_approval_token,
+    validate_approval_token,
+)
 from src.infrastructure.database import (
     CustomerModel,
     ServiceOrderModel,
@@ -21,17 +26,25 @@ from src.infrastructure.email.service import send_email
 from src.infrastructure.pdf.generator import generate_budget_pdf
 
 
-class SignedBudgetApprovalTokenGenerator:
+class SignedBudgetApprovalTokenService:
     def create_for_budget(self, budget_id: int) -> str:
         return create_signed_approval_token(budget_id)
+
+    def validate(self, token: str) -> int:
+        return validate_approval_token(token)
 
 
 class SettingsBudgetApprovalUrlBuilder:
     def approve_url(self, token: str) -> str:
-        return f"{settings.app_base_url}/api/v1/public/budgets/{token}/approve"
+        return self._frontend_url(token, "approve")
 
     def reject_url(self, token: str) -> str:
-        return f"{settings.app_base_url}/api/v1/public/budgets/{token}/reject"
+        return self._frontend_url(token, "reject")
+
+    @staticmethod
+    def _frontend_url(token: str, action: str) -> str:
+        query = urlencode({"token": token, "action": action})
+        return f"{settings.frontend_public_url.rstrip('/')}/budget-approval?{query}"
 
 
 class ReportLabBudgetPdfGenerator:

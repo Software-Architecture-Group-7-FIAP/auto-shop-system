@@ -21,6 +21,7 @@ from src.api.routers import (
     vehicles,
 )
 from src.domain.exceptions import DomainError
+from src.config import settings
 
 
 def _configure_app_logging() -> None:
@@ -38,15 +39,6 @@ _configure_app_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from src.infrastructure.database import SessionLocal
-
-    db = SessionLocal()
-    try:
-        from src.api.composition.auth import compose_auth_service
-
-        compose_auth_service(db).ensure_default_admin()
-    finally:
-        db.close()
     yield
 
 
@@ -59,11 +51,29 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200"],
-    allow_credentials=True,
+    allow_origins=settings.cors_origins(),
+    allow_credentials=settings.cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(), microphone=(), geolocation=()",
+    )
+    if settings.security_hsts_enabled:
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains",
+        )
+    return response
 
 
 @app.exception_handler(DomainError)
@@ -74,6 +84,7 @@ async def domain_exception_handler(request: Request, exc: DomainError):
         "conflict_error": 409,
         "unauthorized": 401,
         "forbidden": 403,
+        "service_unavailable": 503,
     }
     return JSONResponse(
         status_code=status_map.get(exc.code, 400),

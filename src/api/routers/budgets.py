@@ -22,7 +22,6 @@ from src.infrastructure.database import UserModel, get_db
 admin_router = APIRouter(prefix="/admin/budgets", tags=["Budgets"])
 public_router = APIRouter(prefix="/public/budgets", tags=["Public Budgets"])
 
-
 @admin_router.post("", response_model=BudgetResponse, status_code=201)
 def create_budget(
     data: BudgetCreate,
@@ -228,7 +227,10 @@ def approve_budget_admin(
         raise domain_error_handler(e)
 
 
-@public_router.get("/{token}/approve", response_model=MessageResponse)
+@public_router.post(
+    "/{token}/approve",
+    response_model=MessageResponse,
+)
 def approve_budget(token: str, db: Session = Depends(get_db)):
     try:
         service_order = compose_budget_approval_service(db).approve_budget(token)
@@ -237,7 +239,10 @@ def approve_budget(token: str, db: Session = Depends(get_db)):
         raise domain_error_handler(e)
 
 
-@public_router.get("/{token}/reject", response_model=MessageResponse)
+@public_router.post(
+    "/{token}/reject",
+    response_model=MessageResponse,
+)
 def reject_budget(token: str, db: Session = Depends(get_db)):
     try:
         compose_budget_approval_service(db).reject_budget(token)

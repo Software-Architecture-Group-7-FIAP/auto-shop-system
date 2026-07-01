@@ -1,7 +1,7 @@
 """Ensure one product line per service product.
 
-Revision ID: 004a
-Revises: 004
+Revision ID: 006
+Revises: 005
 Create Date: 2026-06-23
 """
 
@@ -10,13 +10,26 @@ from typing import Sequence, Union
 from alembic import op
 
 
-revision: str = "004a"
-down_revision: Union[str, None] = "004"
+revision: str = "006"
+down_revision: Union[str, None] = "005"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    op.execute(
+        """
+        UPDATE service_product_lines AS survivor
+        SET quantity = duplicates.total_quantity
+        FROM (
+            SELECT MIN(id) AS survivor_id, SUM(quantity) AS total_quantity
+            FROM service_product_lines
+            GROUP BY service_id, product_id
+            HAVING COUNT(*) > 1
+        ) AS duplicates
+        WHERE survivor.id = duplicates.survivor_id
+        """
+    )
     op.execute(
         """
         DELETE FROM service_product_lines

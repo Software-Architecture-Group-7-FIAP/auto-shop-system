@@ -64,6 +64,19 @@ class CustomerPublicResponse(BaseModel):
     name: str
 
 
+class CustomerPublicLookupRequest(BaseModel):
+    document: str
+    email: EmailStr | None = None
+    phone: str | None = None
+    plate: str | None = None
+
+    @model_validator(mode="after")
+    def require_second_factor(self):
+        if self.email is None and self.phone is None and self.plate is None:
+            raise ValueError("Informe email, phone ou plate")
+        return self
+
+
 class CnpjValidationResponse(BaseModel):
     valid: bool
     legal_name: str | None = None
