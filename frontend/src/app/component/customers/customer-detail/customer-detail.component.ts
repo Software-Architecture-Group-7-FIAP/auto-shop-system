@@ -1,6 +1,7 @@
 import { Component, Input, OnChanges } from '@angular/core';
-import { CnpjValidation, CpfValidation, Customer } from '../../../model/models';
+import { CnpjValidation, CpfValidation, Customer, Vehicle } from '../../../model/models';
 import { CustomerService } from '../../../service/customer.service';
+import { VehicleService } from '../../../service/vehicle.service';
 import { CustomersComponent } from '../customers.component';
 
 @Component({
@@ -12,23 +13,28 @@ export class CustomerDetailComponent implements OnChanges {
   @Input() customerId!: number;
 
   customer: Customer | undefined;
+  vehicles: Vehicle[] = [];
   isCustomerChanged = false;
+  creatingNewVehicle = false;
   newDocument = '';
   cnpjValidation: CnpjValidation | null = null;
   cpfValidation: CpfValidation | null = null;
 
   constructor(
     private customerService: CustomerService,
+    private vehicleService: VehicleService,
     private parent: CustomersComponent
   ) {}
 
   ngOnChanges(): void {
     if (this.customerId) {
       this.isCustomerChanged = false;
+      this.creatingNewVehicle = false;
       this.newDocument = '';
       this.cnpjValidation = null;
       this.cpfValidation = null;
       this.loadCustomer();
+      this.loadVehicles();
     }
   }
 
@@ -36,6 +42,12 @@ export class CustomerDetailComponent implements OnChanges {
     this.customerService.getById(this.customerId).subscribe((data) => {
       this.customer = data;
       this.isCustomerChanged = false;
+    });
+  }
+
+  loadVehicles(): void {
+    this.vehicleService.getByCustomer(this.customerId).subscribe((data) => {
+      this.vehicles = data.sort((a, b) => a.id - b.id);
     });
   }
 
@@ -94,5 +106,18 @@ export class CustomerDetailComponent implements OnChanges {
       this.newDocument = '';
       this.parent.updateCustomerInList(updated);
     });
+  }
+
+  showVehicleForm(): void {
+    this.creatingNewVehicle = true;
+  }
+
+  onVehicleCreated(): void {
+    this.creatingNewVehicle = false;
+    this.loadVehicles();
+  }
+
+  onVehicleFormCancelled(): void {
+    this.creatingNewVehicle = false;
   }
 }

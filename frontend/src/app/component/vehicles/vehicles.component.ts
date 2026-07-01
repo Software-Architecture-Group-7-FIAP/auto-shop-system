@@ -1,6 +1,8 @@
 import { Component, OnInit } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Vehicle } from '../../model/models';
 import { VehicleService } from '../../service/vehicle.service';
+import { extractApiErrorMessage } from '../../util/api-error';
 
 @Component({
   selector: 'app-vehicles',
@@ -11,12 +13,27 @@ export class VehiclesComponent implements OnInit {
   vehicles: Vehicle[] = [];
   selectedVehicleId: number | undefined;
   creatingNewVehicle = false;
+  loadErrorMessage = '';
+  loadErrorTitle = 'Não foi possível carregar os veículos';
 
   constructor(private vehicleService: VehicleService) {}
 
   ngOnInit(): void {
-    this.vehicleService.getAll().subscribe((data) => {
-      this.vehicles = data.sort((a, b) => a.id - b.id);
+    this.loadVehicles();
+  }
+
+  loadVehicles(): void {
+    this.loadErrorMessage = '';
+    this.vehicleService.getAll().subscribe({
+      next: (data) => {
+        this.vehicles = data.sort((a, b) => a.id - b.id);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.loadErrorMessage = extractApiErrorMessage(
+          error,
+          'Não foi possível carregar a lista de veículos.'
+        );
+      },
     });
   }
 

@@ -6,6 +6,11 @@
     ></app-head-navigation>
   </div>
   <div class="model-list-block scrollbar">
+    <app-form-error-alert
+      *ngIf="loadErrorMessage"
+      [title]="loadErrorTitle"
+      [message]="loadErrorMessage"
+    ></app-form-error-alert>
     <ul class="model-list">
       <li class="list-header">
         <span class="col-1">ID</span>
