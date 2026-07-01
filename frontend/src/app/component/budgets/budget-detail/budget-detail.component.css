@@ -18,6 +18,20 @@
   color: #c44;
 }
 
+.action-message {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: var(--color-surface);
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.error-message {
+  margin-top: 0.75rem;
+  color: #c62828;
+  font-size: 0.85rem;
+}
+
 .product-lines-table {
   width: 100%;
   max-width: 100%;

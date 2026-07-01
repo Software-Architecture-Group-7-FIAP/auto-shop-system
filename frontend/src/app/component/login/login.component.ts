@@ -14,8 +14,11 @@ export class LoginComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    if (this.authService.isLoggedIn()) {
+    const token = this.authService.getToken();
+    if (token && this.authService.isLoggedIn()) {
       this.router.navigate(['/menu']);
+    } else if (token) {
+      this.authService.logout();
     }
   }
 

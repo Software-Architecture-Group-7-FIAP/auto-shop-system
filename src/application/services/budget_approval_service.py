@@ -10,7 +10,8 @@ from src.application.ports.budget_approval import (
 from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.budget.entity import Budget
 from src.domain.budget.repository import BudgetRepository
-from src.domain.exceptions import NotFoundError
+from src.domain.enums import BudgetStatus
+from src.domain.exceptions import NotFoundError, ValidationError
 
 INVALID_APPROVAL_TOKEN_MESSAGE = "Orçamento inválido ou expirado"
 

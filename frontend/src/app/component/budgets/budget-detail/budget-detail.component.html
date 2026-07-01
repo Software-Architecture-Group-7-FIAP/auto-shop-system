@@ -248,6 +248,16 @@
             <button class="btn btn-primary" type="button" (click)="sendEmail()" [disabled]="isSendingEmail">
                 {{ isSendingEmail ? 'Enviando...' : 'Enviar e-mail' }}
             </button>
+
+            <button
+                *ngIf="canApprove()"
+                class="btn btn-primary"
+                type="button"
+                (click)="approve()"
+                [disabled]="isApproving"
+            >
+                {{ isApproving ? 'Aprovando...' : 'Aprovar orçamento' }}
+            </button>
         </div>
 
         <div *ngIf="actionMessage" class="action-message">

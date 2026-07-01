@@ -18,10 +18,6 @@
       <label class="readonly">{{ serviceOrder.status }}</label>
     </div>
     <div class="field-name">
-      <span>Prioridade</span>
-      <label class="readonly">{{ serviceOrder.priority }}</label>
-    </div>
-    <div class="field-name">
       <span>Mecânico</span>
       <label class="readonly">{{ serviceOrder.mechanic_name || '—' }}</label>
     </div>
@@ -80,6 +76,38 @@
   </div>
 
   <div class="action-section">
+    <h3>Override administrativo de status</h3>
+    <div class="field-list">
+      <div class="field-name">
+        <span>Novo status</span>
+        <select
+          class="select-input medium-input"
+          name="status"
+          [(ngModel)]="selectedStatus"
+          [ngModelOptions]="{ standalone: true }"
+        >
+          <option *ngFor="let s of statusValues" [ngValue]="s">{{ s }}</option>
+        </select>
+      </div>
+      <div class="field-name">
+        <span>Motivo</span>
+        <input
+          class="text-input medium-input"
+          type="text"
+          name="statusOverrideReason"
+          [(ngModel)]="statusOverrideReason"
+          [ngModelOptions]="{ standalone: true }"
+        />
+      </div>
+    </div>
+    <div class="button-list">
+      <button class="btn btn-secondary" type="button" (click)="overrideStatus()" [disabled]="isOverridingStatus">
+        {{ isOverridingStatus ? 'Alterando...' : 'Alterar status' }}
+      </button>
+    </div>
+  </div>
+
+  <div class="action-section">
     <h3>Ações</h3>
     <div class="button-list">
       <button class="btn btn-secondary" type="button" (click)="sendEmail()" [disabled]="isSendingEmail">
@@ -103,6 +131,36 @@
       >
         {{ isFinishing ? 'Finalizando...' : 'Finalizar serviço' }}
       </button>
+    </div>
+    <span *ngIf="shouldShowStart() && !canStart()" class="action-message">
+      Mecânico obrigatório para iniciar. Salve o mecânico antes de iniciar.
+    </span>
+  </div>
+
+  <div *ngIf="shouldShowBillingSection()" class="action-section">
+    <h3>Faturamento</h3>
+    <p *ngIf="!invoice" class="action-message">
+      Nenhuma fatura emitida para esta OS.
+    </p>
+    <div *ngIf="invoice" class="field-list">
+      <div class="field-name">
+        <span>Fatura</span>
+        <label class="readonly">#{{ invoice.id }}</label>
+      </div>
+      <div class="field-name">
+        <span>Status</span>
+        <label class="readonly">{{ invoice.status }}</label>
+      </div>
+      <div class="field-name">
+        <span>Valor</span>
+        <label class="readonly">R$ {{ invoice.amount | number: '1.2-2' }}</label>
+      </div>
+      <div class="field-name" *ngIf="invoice.paid_at">
+        <span>Pago em</span>
+        <label class="readonly">{{ invoice.paid_at | date: 'dd/MM/yyyy HH:mm' }}</label>
+      </div>
+    </div>
+    <div class="button-list">
       <button
         *ngIf="canCreateInvoice()"
         class="btn btn-secondary"
@@ -122,15 +180,10 @@
         {{ isPayingInvoice ? 'Registrando...' : 'Registrar pagamento' }}
       </button>
     </div>
-    <span *ngIf="shouldShowStart() && !canStart()" class="action-message">
-      Mecânico obrigatório para iniciar. Salve o mecânico antes de iniciar.
-    </span>
+    <p *ngIf="errorMessage" class="error-message">{{ errorMessage }}</p>
   </div>
 
   <div *ngIf="actionMessage" class="action-message">
     {{ actionMessage }}
-  </div>
-  <div *ngIf="invoice" class="action-message">
-    Fatura: #{{ invoice.id }} — {{ invoice.status }} — R$ {{ invoice.amount | number: '1.2-2' }}
   </div>
 </div>
