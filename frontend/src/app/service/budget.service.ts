@@ -126,6 +126,14 @@ export class BudgetService {
     );
   }
 
+  approve(budgetId: number): Observable<MessageResponse> {
+    return this.http.patch<MessageResponse>(
+      `${this.url}/${budgetId}/approve`,
+      {},
+      this.httpOptions
+    );
+  }
+
   approvePublicBudget(token: string): Observable<MessageResponse> {
     return this.http.post<MessageResponse>(
       `api/v1/public/budgets/${encodeURIComponent(token)}/approve`,

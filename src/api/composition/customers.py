@@ -5,6 +5,7 @@ from src.application.services.customer_service import CustomerService
 from src.config import settings
 from src.infrastructure.external.brasil_api_cnpj import HttpBrasilApiCnpjValidator
 from src.infrastructure.external.invertexto_cpf import HttpInvertextoCpfValidator
+from src.infrastructure.external.local_cpf import LocalCpfValidator
 from src.infrastructure.persistence.customer_public_lookup import (
     SqlAlchemyCustomerVehicleOwnershipLookup,
 )
@@ -13,8 +14,11 @@ from src.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 
 
 def compose_customer_service(db: Session) -> CustomerService:
+    use_local_cpf = settings.skip_cpf_external_validation
     cpf_validator = (
-        HttpInvertextoCpfValidator(token=settings.invertexto_api_token)
+        LocalCpfValidator()
+        if use_local_cpf
+        else HttpInvertextoCpfValidator(token=settings.invertexto_api_token)
         if settings.invertexto_api_token
         else None
     )
