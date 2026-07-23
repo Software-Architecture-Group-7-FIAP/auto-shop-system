@@ -1,0 +1,62 @@
+name: Validate PR Source
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+      - "release-*"
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - edited
+
+jobs:
+  validate-pr-source:
+    name: Validate PR Source
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate source and target branches
+        shell: bash
+        env:
+          SOURCE_BRANCH: ${{ github.head_ref }}
+          TARGET_BRANCH: ${{ github.base_ref }}
+        run: |
+          echo "Origem: ${SOURCE_BRANCH}"
+          echo "Destino: ${TARGET_BRANCH}"
+
+          case "${TARGET_BRANCH}" in
+            main)
+              if [[ "${SOURCE_BRANCH}" =~ ^release-.+$ ]] ||
+                 [[ "${SOURCE_BRANCH}" =~ ^hotfix-.+$ ]]; then
+                echo "PR permitido: ${SOURCE_BRANCH} → main"
+                exit 0
+              fi
+
+              echo "::error::A branch main só pode receber Pull Requests de release-<tag> ou hotfix-<tag>."
+              exit 1
+              ;;
+
+            release-*)
+              if [[ "${SOURCE_BRANCH}" == "develop" ]]; then
+                echo "PR permitido: develop → ${TARGET_BRANCH}"
+                exit 0
+              fi
+
+              echo "::error::Branches release-* só podem receber Pull Requests da develop."
+              exit 1
+              ;;
+
+            develop)
+              echo "PR permitido: qualquer branch → develop"
+              exit 0
+              ;;
+
+            *)
+              echo "::error::Branch de destino não prevista: ${TARGET_BRANCH}"
+              exit 1
+              ;;
+          esac
