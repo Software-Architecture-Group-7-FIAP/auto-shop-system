@@ -1,4 +1,4 @@
-name: Validate PR Source
+name: Validate Pull Request Source
 
 on:
   pull_request:
@@ -14,8 +14,8 @@ on:
       - edited
 
 jobs:
-  validate-pr-source:
-    name: Validate PR Source
+  validate-source:
+    name: Validate Pull Request Source
     runs-on: ubuntu-latest
 
     steps:
