@@ -13,7 +13,7 @@ from src.domain.budget.repository import BudgetRepository
 from src.domain.enums import BudgetStatus
 from src.domain.exceptions import NotFoundError, ValidationError
 
-INVALID_APPROVAL_TOKEN_MESSAGE = "Or?amento inv?lido ou expirado"
+INVALID_APPROVAL_TOKEN_MESSAGE = "Orçamento inválido ou expirado"
 
 
 class BudgetApprovalService:
@@ -40,7 +40,7 @@ class BudgetApprovalService:
     async def send_budget_email(self, budget_id: int) -> Budget:
         budget = self._get_by_id(budget_id)
         if budget.id is None:
-            raise NotFoundError("Or?amento n?o encontrado")
+            raise NotFoundError("Orçamento não encontrado")
 
         token = self.tokens.create_for_budget(budget.id)
         budget.mark_sent(token)
@@ -56,7 +56,7 @@ class BudgetApprovalService:
         for line in updated_budget.service_lines:
             service_lines.append(
                 {
-                    "name": f"Servi?o #{line.service_id}",
+                    "name": f"Serviço #{line.service_id}",
                     "quantity": line.quantity,
                     "total": line.unit_price * line.quantity,
                 }
@@ -83,14 +83,14 @@ class BudgetApprovalService:
         approve_url = self.urls.approve_url(token)
         reject_url = self.urls.reject_url(token)
         html = f"""
-        <p>Ol? {customer_name},</p>
-        <p>Segue seu or?amento #{updated_budget.id} no valor de R$ {updated_budget.total_price:.2f}.</p>
-        <p><a href="{approve_url}">Aprovar or?amento</a> | <a href="{reject_url}">Recusar or?amento</a></p>
+        <p>Olá {customer_name},</p>
+        <p>Segue seu orçamento #{updated_budget.id} no valor de R$ {updated_budget.total_price:.2f}.</p>
+        <p><a href="{approve_url}">Aprovar orçamento</a> | <a href="{reject_url}">Recusar orçamento</a></p>
         """
         await self.emails.send_email(
             customer_email,
-            f"Or?amento #{updated_budget.id}",
-            f"Or?amento #{updated_budget.id} - Total: R$ {updated_budget.total_price:.2f}. Aprovar: {approve_url}",
+            f"Orçamento #{updated_budget.id}",
+            f"Orçamento #{updated_budget.id} - Total: R$ {updated_budget.total_price:.2f}. Aprovar: {approve_url}",
             html,
         )
         self.uow.commit()
@@ -108,10 +108,10 @@ class BudgetApprovalService:
 
     def _validate_can_approve(self, budget: Budget) -> None:
         if budget.status == BudgetStatus.REJECTED:
-            raise ValidationError("Or?amento recusado n?o pode ser aprovado")
+            raise ValidationError("Orçamento recusado não pode ser aprovado")
         if not budget.service_lines and not budget.product_lines:
             raise ValidationError(
-                "Or?amento deve ter linhas de servi?o ou produto para ser aprovado"
+                "Orçamento deve ter linhas de serviço ou produto para ser aprovado"
             )
 
     def _approve_and_create_service_order(self, budget: Budget) -> CreatedServiceOrder:
@@ -143,5 +143,5 @@ class BudgetApprovalService:
     def _get_by_id(self, budget_id: int) -> Budget:
         budget = self.budgets.get_by_id(budget_id)
         if not budget:
-            raise NotFoundError("Or?amento n?o encontrado")
+            raise NotFoundError("Orçamento não encontrado")
         return budget

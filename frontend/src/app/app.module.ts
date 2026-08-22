@@ -73,6 +73,7 @@ import { HttpErrorInterceptor } from './service/http-error.interceptor';
     ServiceOrderDetailComponent,
     ServiceOrderTrackingComponent,
     BudgetApprovalComponent,
+    FormErrorAlertComponent,
   ],
   imports: [BrowserModule, FormsModule, AppRoutingModule, HttpClientModule],
   providers: [

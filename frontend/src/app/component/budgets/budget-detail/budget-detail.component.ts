@@ -36,7 +36,6 @@ export class BudgetDetailComponent implements OnChanges {
   errorMessage = '';
   isSendingEmail = false;
   isApproving = false;
-  isSendingEmail = false;
   readonly budgetStatus = BudgetStatus;
 
   constructor(
