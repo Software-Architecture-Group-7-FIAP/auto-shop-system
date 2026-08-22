@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from src.api.composition.customers import compose_customer_public_lookup_service
@@ -18,7 +18,12 @@ router = APIRouter(prefix="/customers", tags=["Public Customers"])
     "/lookup",
     response_model=CustomerPublicResponse,
 )
-def lookup_customer(data: CustomerPublicLookupRequest, db: Session = Depends(get_db)):
+def lookup_customer(
+    data: CustomerPublicLookupRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    response.headers["Cache-Control"] = "no-store"
     try:
         customer = compose_customer_public_lookup_service(db).lookup(
             CustomerPublicLookupCriteria(

@@ -1,4 +1,5 @@
 from dataclasses import replace
+from datetime import datetime
 
 import pytest
 
@@ -11,6 +12,9 @@ from src.application.services.budget_approval_service import BudgetApprovalServi
 from src.domain.budget.entity import Budget, BudgetProductLine, BudgetServiceLine
 from src.domain.enums import BudgetStatus
 from src.domain.exceptions import NotFoundError, ValidationError
+
+# Raw tokens are never stored; the repository is keyed by their fingerprint.
+FUTURE = datetime(2030, 1, 1)
 
 
 class InMemoryBudgetRepository:
@@ -25,13 +29,16 @@ class InMemoryBudgetRepository:
     def get_by_id(self, budget_id: int) -> Budget | None:
         return self.budgets.get(budget_id)
 
-    def get_by_approval_token(self, token: str) -> Budget | None:
+    def get_by_approval_token_fingerprint(self, token_fingerprint: str) -> Budget | None:
         for budget in self.budgets.values():
-            if budget.approval_token == token:
+            if budget.approval_token_hash == token_fingerprint:
                 return budget
         return None
 
     def list_all(self) -> list[Budget]:
+        return list(self.budgets.values())
+
+    def list_revision_family(self, budget_id: int) -> list[Budget]:
         return list(self.budgets.values())
 
     def add_service_line(self, line: BudgetServiceLine) -> BudgetServiceLine:
@@ -66,6 +73,12 @@ class FakeTokenGenerator:
         if prefix != "token":
             raise ValueError("Invalid token")
         return int(budget_id)
+
+    def fingerprint(self, token: str) -> str:
+        return f"fp:{token}"
+
+    def expires_at(self, token: str) -> datetime:
+        return FUTURE
 
 
 class FakeUrlBuilder:
@@ -196,7 +209,8 @@ async def test_send_budget_email_marks_budget_sent_and_sends_email():
     budget = await service.send_budget_email(1)
 
     assert budget.status == BudgetStatus.SENT
-    assert budget.approval_token == "token-1"
+    assert budget.approval_token_hash == "fp:token-1"
+    assert budget.approval_expires_at == FUTURE
     assert repository.get_by_id(1).status == BudgetStatus.SENT
     assert pdfs.calls[0]["service_lines"] == [
         {"name": "Serviço #20", "quantity": 1, "total": 100.0}
@@ -213,7 +227,8 @@ async def test_send_budget_email_marks_budget_sent_and_sends_email():
 
 
 def test_approve_budget_marks_budget_approved_and_creates_service_order():
-    budget = replace(make_budget(), status=BudgetStatus.SENT, approval_token="token-1")
+    budget = replace(make_budget(), status=BudgetStatus.SENT,
+                     approval_token_hash="fp:token-1", approval_expires_at=FUTURE)
     repository = InMemoryBudgetRepository([budget])
     service_orders = FakeServiceOrderCreator()
     uow = FakeUnitOfWork()
@@ -239,7 +254,8 @@ def test_approve_budget_rejects_missing_token():
 
 
 def test_approve_budget_rejects_token_for_different_budget():
-    budget = replace(make_budget(), status=BudgetStatus.SENT, approval_token="token-1")
+    budget = replace(make_budget(), status=BudgetStatus.SENT,
+                     approval_token_hash="fp:token-1", approval_expires_at=FUTURE)
     service = make_service(repository=InMemoryBudgetRepository([budget]))
 
     with pytest.raises(NotFoundError, match="Orçamento inválido ou expirado"):
@@ -250,7 +266,8 @@ def test_approve_budget_rejects_budget_without_lines():
     budget = replace(
         make_budget(),
         status=BudgetStatus.SENT,
-        approval_token="token-1",
+        approval_token_hash="fp:token-1",
+        approval_expires_at=FUTURE,
         service_lines=[],
         product_lines=[],
     )
@@ -267,7 +284,8 @@ def test_approve_budget_rejects_rejected_budget():
     budget = replace(
         make_budget(),
         status=BudgetStatus.REJECTED,
-        approval_token="token-1",
+        approval_token_hash="fp:token-1",
+        approval_expires_at=FUTURE,
     )
     service = make_service(repository=InMemoryBudgetRepository([budget]))
 
@@ -276,7 +294,8 @@ def test_approve_budget_rejects_rejected_budget():
 
 
 def test_approve_budget_rejects_already_approved_budget_without_commit():
-    budget = replace(make_budget(), status=BudgetStatus.APPROVED, approval_token="token-1")
+    budget = replace(make_budget(), status=BudgetStatus.APPROVED,
+                     approval_token_hash="fp:token-1", approval_expires_at=FUTURE)
     repository = InMemoryBudgetRepository([budget])
     service_orders = FakeServiceOrderCreator()
     uow = FakeUnitOfWork()
@@ -294,7 +313,14 @@ def test_approve_budget_rejects_already_approved_budget_without_commit():
 
 
 def test_approve_budget_by_id_creates_service_order():
-    budget = make_budget()
+    # Deliberately expired: staff approval is authenticated and must not be
+    # gated on the TTL of the customer's e-mail link.
+    budget = replace(
+        make_budget(),
+        status=BudgetStatus.SENT,
+        approval_token_hash="fp:token-1",
+        approval_expires_at=datetime(2020, 1, 1),
+    )
     repository = InMemoryBudgetRepository([budget])
     service_orders = FakeServiceOrderCreator()
     uow = FakeUnitOfWork()
@@ -312,7 +338,9 @@ def test_approve_budget_by_id_creates_service_order():
 
 
 def test_approve_budget_by_id_rejects_budget_without_lines():
-    budget = replace(make_budget(), service_lines=[], product_lines=[])
+    budget = replace(
+        make_budget(), status=BudgetStatus.SENT, service_lines=[], product_lines=[]
+    )
     service = make_service(repository=InMemoryBudgetRepository([budget]))
 
     with pytest.raises(
@@ -331,7 +359,8 @@ def test_approve_budget_by_id_rejects_rejected_budget():
 
 
 def test_reject_budget_marks_budget_rejected():
-    budget = replace(make_budget(), status=BudgetStatus.SENT, approval_token="token-1")
+    budget = replace(make_budget(), status=BudgetStatus.SENT,
+                     approval_token_hash="fp:token-1", approval_expires_at=FUTURE)
     repository = InMemoryBudgetRepository([budget])
     uow = FakeUnitOfWork()
     service = make_service(repository=repository, uow=uow)

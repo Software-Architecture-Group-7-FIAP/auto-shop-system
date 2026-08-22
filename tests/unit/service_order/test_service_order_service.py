@@ -7,8 +7,9 @@ from src.application.ports.service_order import ServiceOrderCustomer, ServiceOrd
 from src.application.services.service_order_email_service import ServiceOrderEmailService
 from src.application.services.service_order_service import ServiceOrderService
 from src.application.services.service_order_tracking import build_service_order_tracking_url
+from src.domain.auth.entity import UserRole
 from src.domain.enums import Priority, ServiceOrderStatus
-from src.domain.exceptions import NotFoundError, ValidationError
+from src.domain.exceptions import ForbiddenError, NotFoundError, ValidationError
 from src.domain.service_order.entity import ServiceOrder
 
 
@@ -37,6 +38,7 @@ class InMemoryServiceOrderRepository:
         self,
         service_order_id: int,
         token_fingerprint: str,
+        expires_at=None,
     ) -> None:
         self.tracking_token_fingerprints[service_order_id] = token_fingerprint
 
@@ -248,13 +250,48 @@ def test_service_order_service_updates_status_manually():
 
     updated = service.override_status(
         1,
-        ServiceOrderStatus.FINALIZADA,
+        ServiceOrderStatus.EM_DIAGNOSTICO,
         "Correção administrativa",
+        actor_role=UserRole.ADMIN,
     )
 
-    assert updated.status == ServiceOrderStatus.FINALIZADA
-    assert repository.get_by_id(1).status == ServiceOrderStatus.FINALIZADA
+    assert updated.status == ServiceOrderStatus.EM_DIAGNOSTICO
+    assert repository.get_by_id(1).status == ServiceOrderStatus.EM_DIAGNOSTICO
     assert uow.commits == 1
+
+
+def test_service_order_service_override_status_requires_admin():
+    repository = InMemoryServiceOrderRepository(
+        [make_service_order(status=ServiceOrderStatus.AGUARDANDO_APROVACAO)]
+    )
+    uow = FakeUnitOfWork()
+    service = make_service(repository=repository, uow=uow)
+
+    with pytest.raises(ForbiddenError, match="Apenas administradores"):
+        service.override_status(
+            1,
+            ServiceOrderStatus.EM_DIAGNOSTICO,
+            "Correção administrativa",
+            actor_role=UserRole.OPERATOR,
+        )
+
+    assert repository.get_by_id(1).status == ServiceOrderStatus.AGUARDANDO_APROVACAO
+    assert uow.commits == 0
+
+
+def test_service_order_service_override_status_cannot_skip_to_execution():
+    repository = InMemoryServiceOrderRepository(
+        [make_service_order(status=ServiceOrderStatus.AGUARDANDO_APROVACAO)]
+    )
+    service = make_service(repository=repository)
+
+    with pytest.raises(ValidationError, match="estados iniciais"):
+        service.override_status(
+            1,
+            ServiceOrderStatus.FINALIZADA,
+            "Correção administrativa",
+            actor_role=UserRole.ADMIN,
+        )
 
 
 def test_service_order_entity_override_status_requires_reason():
@@ -267,9 +304,12 @@ def test_service_order_entity_override_status_requires_reason():
 def test_service_order_entity_override_status():
     service_order = make_service_order(status=ServiceOrderStatus.AGUARDANDO_APROVACAO)
 
-    service_order.override_status(ServiceOrderStatus.EM_EXECUCAO, "Correção administrativa")
+    service_order.override_status(
+        ServiceOrderStatus.EM_DIAGNOSTICO, "Correção administrativa"
+    )
 
-    assert service_order.status == ServiceOrderStatus.EM_EXECUCAO
+    assert service_order.status == ServiceOrderStatus.EM_DIAGNOSTICO
+    assert service_order.status_history[-1].transition_type == "break_glass_override"
 
 
 def test_service_order_service_sets_priority_and_commits():
@@ -365,7 +405,7 @@ async def test_service_order_email_service_uses_ports():
     assert pdfs.calls[0]["status"] == "Em diagnóstico"
     assert pdfs.calls[0]["mechanic_name"] == "Mecânico A"
     assert pdfs.calls[0]["tracking_url"].startswith(
-        "http://localhost:4200/track-service-order?token="
+        "http://localhost:4200/track-service-order#"
     )
     assert repository.tracking_token_fingerprints[1] == "fingerprint:tracking-token"
     message = emails.messages[0]
@@ -428,5 +468,5 @@ async def test_service_order_email_service_does_not_persist_token_when_email_fai
 
 def test_build_service_order_tracking_url_trims_trailing_slash():
     assert build_service_order_tracking_url("http://localhost:4200/", "token-10") == (
-        "http://localhost:4200/track-service-order?token=token-10"
+        "http://localhost:4200/track-service-order#token-10"
     )

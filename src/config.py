@@ -1,3 +1,5 @@
+from urllib.parse import urlparse
+
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -9,8 +11,18 @@ class Settings(BaseSettings):
     app_env: str = "development"
     secret_key: SecretStr = Field(..., min_length=32)
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 60
+    access_token_expire_minutes: int = 15
+    access_token_secret: SecretStr | None = None
+    refresh_token_pepper: SecretStr | None = None
+    refresh_token_expire_days: int = 7
+    login_max_attempts: int = 10
+    login_attempt_window_seconds: int = 300
+    login_lockout_seconds: int = 900
+    login_rate_limit_max_buckets: int = 10_000
     budget_approval_token_expire_hours: int = 72
+    budget_approval_token_secret: SecretStr | None = None
+    tracking_token_secret: SecretStr | None = None
+    tracking_token_expire_days: int = 7
     smtp_host: str = "localhost"
     smtp_port: int = 1025
     smtp_user: str = ""
@@ -28,6 +40,7 @@ class Settings(BaseSettings):
     skip_cpf_external_validation: bool = False
     dev_admin_password: str | None = None
     dev_admin_email: str = "admin@oficina.local"
+    skip_cpf_external_validation: bool = False
 
     @field_validator("secret_key", mode="before")
     @classmethod
@@ -59,6 +72,22 @@ class Settings(BaseSettings):
             return None
         return value
 
+    @field_validator(
+        "access_token_secret",
+        "refresh_token_pepper",
+        "budget_approval_token_secret",
+        "tracking_token_secret",
+        mode="before",
+    )
+    @classmethod
+    def validate_purpose_secret(cls, value: SecretStr | str | None) -> SecretStr | str | None:
+        if value is None or value == "":
+            return None
+        raw = value.get_secret_value() if isinstance(value, SecretStr) else str(value)
+        if len(raw) < 32 or "replace-with" in raw or "change-me" in raw:
+            raise ValueError("Purpose-specific secrets must contain at least 32 random characters")
+        return value
+
     @model_validator(mode="after")
     def validate_security_sensitive_settings(self) -> "Settings":
         if self.is_production_like():
@@ -68,6 +97,16 @@ class Settings(BaseSettings):
                 raise ValueError("Wildcard CORS is unsafe with credentials enabled")
             if not self.invertexto_api_token:
                 raise ValueError("INVERTEXTO_API_TOKEN is required in production-like environments")
+            if not self.access_token_secret:
+                raise ValueError("ACCESS_TOKEN_SECRET is required in production-like environments")
+            if not self.refresh_token_pepper:
+                raise ValueError("REFRESH_TOKEN_PEPPER is required in production-like environments")
+            if not self.budget_approval_token_secret:
+                raise ValueError(
+                    "BUDGET_APPROVAL_TOKEN_SECRET is required in production-like environments"
+                )
+            if not self.tracking_token_secret:
+                raise ValueError("TRACKING_TOKEN_SECRET is required in production-like environments")
         if self.smtp_use_tls and self.smtp_starttls:
             raise ValueError("SMTP_USE_TLS and SMTP_STARTTLS are mutually exclusive")
         return self
@@ -75,15 +114,63 @@ class Settings(BaseSettings):
     def jwt_secret(self) -> str:
         return self.secret_key.get_secret_value()
 
+    def access_token_secret_value(self) -> str:
+        return self.access_token_secret.get_secret_value() if self.access_token_secret else self.jwt_secret()
+
+    def refresh_token_pepper_value(self) -> str:
+        return self.refresh_token_pepper.get_secret_value() if self.refresh_token_pepper else self.jwt_secret()
+
+    def budget_approval_secret(self) -> str:
+        return (
+            self.budget_approval_token_secret.get_secret_value()
+            if self.budget_approval_token_secret
+            else self.jwt_secret()
+        )
+
+    def tracking_secret(self) -> str:
+        return (
+            self.tracking_token_secret.get_secret_value()
+            if self.tracking_token_secret
+            else self.jwt_secret()
+        )
+
     def smtp_password_value(self) -> str | None:
         return self.smtp_password.get_secret_value() if self.smtp_password else None
 
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
 
+    def request_origins(self) -> list[str]:
+        """Origins allowed to send state-changing requests.
+
+        The app serves its own legacy panel from ``app_base_url``, so that
+        origin is always trusted in addition to the configured CORS list.
+        """
+        origins = self.cors_origins()
+        own_origin = self.own_origin()
+        if own_origin and own_origin not in origins:
+            origins = origins + [own_origin]
+        return origins
+
+    def own_origin(self) -> str | None:
+        parsed = urlparse(self.app_base_url)
+        if not parsed.scheme or not parsed.netloc:
+            return None
+        return f"{parsed.scheme}://{parsed.netloc}"
+
     def is_production_like(self) -> bool:
-        return self.app_env.lower() in {"production", "prod", "staging"}
-    skip_cpf_external_validation: bool = False
+        """Deny by default: anything not explicitly a dev environment is prod.
+
+        A typo such as ``APP_ENV=prd`` must not silently drop the ``Secure``
+        cookie flag or skip the production validations below.
+        """
+        return self.app_env.lower() not in {
+            "development",
+            "dev",
+            "local",
+            "test",
+            "testing",
+        }
 
 
 settings = Settings()

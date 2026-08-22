@@ -72,5 +72,8 @@ class ServiceOrderEmailService:
         self.service_orders.set_tracking_token_fingerprint(
             service_order.id,
             self.tracking_tokens.fingerprint(token),
+            # The link remains usable throughout the repair. Delivery starts
+            # the seven-day retention window in the persistence adapter.
+            None,
         )
         self.uow.commit()

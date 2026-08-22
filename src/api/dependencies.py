@@ -1,26 +1,50 @@
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import Cookie, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from src.api.composition.auth import compose_auth_service
+from src.api.auth_cookies import ACCESS_COOKIE, CSRF_COOKIE
+from src.api.composition.auth import compose_auth_service, compose_refresh_session_service
+from src.api.csrf import enforce_csrf
 from src.domain.auth.entity import User
+from src.domain.auth.entity import UserRole
 from src.domain.exceptions import DomainError, UnauthorizedError
 from src.infrastructure.database import get_db
 
-security = HTTPBearer()
-
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    access_token: str | None = Cookie(default=None, alias=ACCESS_COOKIE),
+    csrf_token: str | None = Cookie(default=None, alias=CSRF_COOKIE),
     db: Session = Depends(get_db),
 ) -> User:
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Autenticação necessária",
+        )
+    enforce_csrf(request, csrf_token)
     try:
-        return compose_auth_service(db).get_current_user(credentials.credentials)
+        auth = compose_auth_service(db)
+        claims = auth.token_decoder.decode_claims(access_token)
+        session_id = claims.get("sid")
+        user = auth.get_current_user(access_token)
+        sessions = compose_refresh_session_service(db)
+        if not isinstance(session_id, str) or not sessions.belongs_to_user(session_id, user.id):
+            raise UnauthorizedError("Sessão inválida")
+        return user
     except UnauthorizedError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=exc.message,
         )
+
+
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Apenas administradores podem executar esta operação",
+        )
+    return current_user
 
 
 def domain_error_handler(exc: DomainError) -> HTTPException:

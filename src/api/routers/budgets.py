@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from src.api.composition.budget_approval import compose_budget_approval_service
@@ -7,6 +9,8 @@ from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.schemas import (
     AvailabilityItem,
     BudgetCreate,
+    BudgetDecisionRequest,
+    BudgetDecisionResponse,
     BudgetProductLineCreate,
     BudgetProductLineUpdate,
     BudgetProductLineResponse,
@@ -205,11 +209,16 @@ def get_estimated_delivery(
 @admin_router.post("/{budget_id}/send-email", response_model=BudgetResponse)
 async def send_budget_email(
     budget_id: int,
+    request: Request,
     db: Session = Depends(get_db),
-    _: UserModel = Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     try:
-        return await compose_budget_approval_service(db).send_budget_email(budget_id)
+        return await compose_budget_approval_service(db).send_budget_email(
+            budget_id,
+            actor_id=current_user.id,
+            request_id=request.headers.get("x-request-id") or str(uuid4()),
+        )
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -217,35 +226,60 @@ async def send_budget_email(
 @admin_router.patch("/{budget_id}/approve", response_model=MessageResponse)
 def approve_budget_admin(
     budget_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    try:
+        service_order = compose_budget_approval_service(db).approve_budget_by_id(
+            budget_id,
+            actor_id=current_user.id,
+            request_id=request.headers.get("x-request-id") or str(uuid4()),
+        )
+        return MessageResponse(message=f"Orçamento aprovado. OS #{service_order.id} criada.")
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+
+@public_router.post("/decisions", response_model=BudgetDecisionResponse)
+def decide_budget(
+    data: BudgetDecisionRequest,
+    response: Response,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        result = compose_budget_approval_service(db).decide_budget(
+            data.token,
+            data.decision,
+            request_id=request.headers.get("x-request-id") or str(uuid4()),
+        )
+        if data.decision == "approve":
+            message = (
+                f"Orçamento aprovado. OS #{result.service_order.id} criada."
+                if result.service_order
+                else "Orçamento já aprovado."
+            )
+        else:
+            message = "Orçamento já recusado." if result.already_processed else "Orçamento recusado."
+        return BudgetDecisionResponse(
+            message=message,
+            status=result.status,
+            already_processed=result.already_processed,
+            service_order_id=result.service_order.id if result.service_order else None,
+        )
+    except DomainError as e:
+        raise domain_error_handler(e)
+
+
+@admin_router.post("/{budget_id}/revisions", response_model=BudgetResponse, status_code=201)
+def create_budget_revision(
+    budget_id: int,
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
     try:
-        service_order = compose_budget_approval_service(db).approve_budget_by_id(budget_id)
-        return MessageResponse(message=f"Orçamento aprovado. OS #{service_order.id} criada.")
-    except DomainError as e:
-        raise domain_error_handler(e)
-
-
-@public_router.post(
-    "/{token}/approve",
-    response_model=MessageResponse,
-)
-def approve_budget(token: str, db: Session = Depends(get_db)):
-    try:
-        service_order = compose_budget_approval_service(db).approve_budget(token)
-        return MessageResponse(message=f"Orçamento aprovado. OS #{service_order.id} criada.")
-    except DomainError as e:
-        raise domain_error_handler(e)
-
-
-@public_router.post(
-    "/{token}/reject",
-    response_model=MessageResponse,
-)
-def reject_budget(token: str, db: Session = Depends(get_db)):
-    try:
-        compose_budget_approval_service(db).reject_budget(token)
-        return MessageResponse(message="Orçamento recusado.")
+        return compose_budget_service(db).create_revision(budget_id)
     except DomainError as e:
         raise domain_error_handler(e)

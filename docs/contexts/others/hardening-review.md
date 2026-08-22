@@ -2,6 +2,24 @@
 
 Escopo da revisão: codebase inteiro, com foco em clean code, fronteiras DDD e segurança.
 
+> Status atual (2026-08): os itens de transição de OS, revisões de orçamento,
+> tokens públicos, sessões por cookie e redação de PII foram implementados nas
+> migrations 010 e 011. O contrato vigente usa `POST /public/budgets/decisions`,
+> `POST /public/service-orders/track`, cookies HttpOnly/CSRF e fingerprints HMAC.
+> Este arquivo permanece como histórico da auditoria; consulte o README e
+> `docs/security/security-report.md` para os contratos vigentes.
+
+> Fechamento da rodada de code review (2026-08-21). Também foram endereçados:
+> item 7 (política de transição agora vive no agregado — `ServiceOrder._REVISABLE_STATUSES`
+> e `ensure_can_apply_budget_revision`), item 12 (CORS com métodos e headers
+> explícitos, mais `Content-Security-Policy`), e o `RefreshSessionService`
+> passou a ser composto por `api/composition/auth.py` como os demais contextos.
+> Item 10 (`alert()` global) também foi encerrado: o interceptor agora publica
+> em `NotificationService`, renderizado por `app-notifications`.
+> **Continuam abertos:** item 5 (`BudgetApprovalService` ainda concentra token,
+> e-mail, PDF e commit), item 6 (`SqlAlchemyBudgetRepository` mistura ports),
+> item 8 (`api/schemas.py` monolítico) e item 11 (detalhe de OS mistura T08 e T11).
+
 Data: 2026-06-28
 
 Formato dos itens:

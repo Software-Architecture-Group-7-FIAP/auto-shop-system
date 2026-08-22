@@ -1,6 +1,5 @@
 const API = "/api/v1";
-const TOKEN_KEY = "oficina_token";
-const USER_KEY = "oficina_user";
+let currentUser = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -14,20 +13,6 @@ const authUser = $("auth-user");
 const resultsOutput = $("results-output");
 const customerList = $("customer-list");
 const toast = $("toast");
-
-function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-function setSession(token, username) {
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(USER_KEY, username);
-}
-
-function clearSession() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
-}
 
 function showToast(message, type = "success") {
   toast.textContent = message;
@@ -62,15 +47,38 @@ function setAuthenticated(isAuth, username = "") {
   if (isAuth) loadCustomers();
 }
 
-async function api(path, options = {}) {
+function csrfToken() {
+  const entry = document.cookie.split("; ").find((value) => value.startsWith("oficina_csrf="));
+  return entry ? decodeURIComponent(entry.substring("oficina_csrf=".length)) : null;
+}
+
+let refreshInFlight = null;
+
+// Parallel 401s must share one rotation: two concurrent refreshes send the
+// same cookie, and the server reads the second as token reuse and revokes the
+// whole session family.
+function refreshSession() {
+  if (!refreshInFlight) {
+    refreshInFlight = api("/auth/refresh", { method: "POST", body: "{}" }, false).finally(
+      () => {
+        refreshInFlight = null;
+      }
+    );
+  }
+  return refreshInFlight;
+}
+
+async function api(path, options = {}, allowRefresh = true) {
   const headers = {
     "Content-Type": "application/json",
     ...(options.headers || {}),
   };
-  const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
+  if (options.method && !["GET", "HEAD", "OPTIONS"].includes(options.method.toUpperCase())) {
+    const csrf = csrfToken();
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+  }
 
-  const response = await fetch(`${API}${path}`, { ...options, headers });
+  const response = await fetch(`${API}${path}`, { ...options, headers, credentials: "include" });
   let body = null;
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
@@ -79,6 +87,10 @@ async function api(path, options = {}) {
     body = await response.text();
   }
 
+  if (response.status === 401 && allowRefresh && path.startsWith("/admin/")) {
+    await refreshSession();
+    return api(path, options, false);
+  }
   if (!response.ok) {
     const detail = body?.detail || `Erro ${response.status}`;
     throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
@@ -153,16 +165,17 @@ $("login-form").addEventListener("submit", async (e) => {
         password: $("password").value,
       }),
     });
-    setSession(data.access_token, $("username").value.trim());
-    setAuthenticated(true, $("username").value.trim());
+    currentUser = data;
+    setAuthenticated(true, data.username);
     showToast("Login realizado com sucesso");
   } catch (err) {
     showToast(err.message, "error");
   }
 });
 
-$("logout-btn").addEventListener("click", () => {
-  clearSession();
+$("logout-btn").addEventListener("click", async () => {
+  await api("/auth/logout", { method: "POST", body: "{}" }).catch(() => undefined);
+  currentUser = null;
   setAuthenticated(false);
   resultsPanel.classList.add("hidden");
   showToast("Sessão encerrada");
@@ -179,8 +192,10 @@ $("validate-cnpj-btn").addEventListener("click", async () => {
     return;
   }
   try {
-    const encoded = encodeURIComponent(cnpj.replace(/\D/g, ""));
-    const result = await api(`/admin/customers/validate-cnpj/${encoded}`);
+    const result = await api("/admin/customers/validate-cnpj", {
+      method: "POST",
+      body: JSON.stringify({ document: cnpj.replace(/\D/g, "") }),
+    });
     showResults(result);
     showToast(`CNPJ válido: ${result.legal_name || "OK"}`);
   } catch (err) {
@@ -220,7 +235,10 @@ $("search-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const doc = $("search-document").value.trim().replace(/\D/g, "");
   try {
-    const customer = await api(`/admin/customers/by-document/${doc}`);
+    const customer = await api("/admin/customers/by-document", {
+      method: "POST",
+      body: JSON.stringify({ document: doc }),
+    });
     showResults(customer);
     showToast("Cliente encontrado");
   } catch (err) {
@@ -238,9 +256,9 @@ $("refresh-list").addEventListener("click", loadCustomers);
 
 // Init
 updateDocumentLabel();
-const savedUser = localStorage.getItem(USER_KEY);
-if (getToken() && savedUser) {
-  setAuthenticated(true, savedUser);
-} else {
-  setAuthenticated(false);
-}
+api("/auth/me")
+  .then((user) => {
+    currentUser = user;
+    setAuthenticated(true, user.username);
+  })
+  .catch(() => setAuthenticated(false));
