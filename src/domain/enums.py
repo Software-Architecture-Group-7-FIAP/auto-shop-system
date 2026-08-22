@@ -5,6 +5,7 @@ class ServiceOrderStatus(StrEnum):
     RECEBIDA = "Recebida"
     EM_DIAGNOSTICO = "Em diagnóstico"
     AGUARDANDO_APROVACAO = "Aguardando aprovação"
+    AGUARDANDO_INICIO = "Aguardando início"
     EM_EXECUCAO = "Em execução"
     FINALIZADA = "Finalizada"
     ENTREGUE = "Entregue"
@@ -15,6 +16,7 @@ class BudgetStatus(StrEnum):
     SENT = "Enviado"
     APPROVED = "Aprovado"
     REJECTED = "Recusado"
+    SUPERSEDED = "Substituído"
 
 
 class PurchaseRequestStatus(StrEnum):

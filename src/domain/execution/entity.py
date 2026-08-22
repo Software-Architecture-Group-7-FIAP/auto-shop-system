@@ -79,28 +79,39 @@ def validate_withdrawal_quantity(
         )
 
 
-def enqueue_service_order(service_order: ServiceOrder) -> None:
-    if service_order.status != ServiceOrderStatus.AGUARDANDO_APROVACAO:
-        raise ValidationError("OS deve estar aguardando aprovação para entrar na fila")
-    service_order.status = ServiceOrderStatus.AGUARDANDO_APROVACAO
+def enqueue_service_order(
+    service_order: ServiceOrder,
+    *,
+    actor_id: int | None = None,
+    request_id: str | None = None,
+) -> None:
+    service_order.record_queue_entry(actor_id=actor_id, request_id=request_id)
 
 
-def start_service_order(service_order: ServiceOrder, started_at: datetime) -> None:
-    if not service_order.mechanic_name or not service_order.mechanic_name.strip():
-        raise ValidationError("Mecânico deve ser atribuído antes de iniciar a OS")
-    if service_order.status not in (
-        ServiceOrderStatus.AGUARDANDO_APROVACAO,
-        ServiceOrderStatus.EM_DIAGNOSTICO,
-    ):
-        raise ValidationError("OS não pode ser iniciada neste status")
-    service_order.status = ServiceOrderStatus.EM_EXECUCAO
-    service_order.started_at = started_at
+def start_service_order(
+    service_order: ServiceOrder,
+    started_at: datetime,
+    *,
+    actor_id: int | None = None,
+    request_id: str | None = None,
+) -> None:
+    try:
+        service_order.start_execution(started_at, actor_id=actor_id, request_id=request_id)
+    except ValidationError:
+        # Keep the public error used by the execution use case stable while the
+        # aggregate owns the transition matrix.
+        if service_order.status != ServiceOrderStatus.AGUARDANDO_INICIO:
+            raise ValidationError("OS não pode ser iniciada neste status")
+        raise
 
 
 def finish_service_order(
     service_order: ServiceOrder,
     finished_at: datetime,
     withdrawn_quantities: dict[int, int],
+    *,
+    actor_id: int | None = None,
+    request_id: str | None = None,
 ) -> None:
     if service_order.status != ServiceOrderStatus.EM_EXECUCAO:
         raise ValidationError("OS deve estar em execução para ser finalizada")
@@ -122,5 +133,4 @@ def finish_service_order(
             f"{pending_products}"
         )
 
-    service_order.status = ServiceOrderStatus.FINALIZADA
-    service_order.finished_at = finished_at
+    service_order.finish_execution(finished_at, actor_id=actor_id, request_id=request_id)

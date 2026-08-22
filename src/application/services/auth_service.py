@@ -24,11 +24,26 @@ class AuthService:
         self.token_decoder = token_decoder
         self.uow = uow
 
-    def login(self, username: str, password: str) -> str:
+    def authenticate(self, username: str, password: str) -> User:
         user = self.users.get_by_username(username)
         if not user or not self.passwords.verify(password, user.hashed_password):
             raise DomainError("Credenciais inválidas", "unauthorized")
-        return self.tokens.create_access_token(user.username)
+        if not user.is_active:
+            raise UnauthorizedError("Usuário inválido")
+        return user
+
+    def login(self, username: str, password: str, session_id: str) -> str:
+        """Authenticate and mint an access token bound to a refresh session.
+
+        ``session_id`` is mandatory: ``get_current_user`` rejects any token
+        without a live ``sid`` claim, so a session-less token could never
+        authenticate anything.
+        """
+        user = self.authenticate(username, password)
+        return self.issue_access_token(user, session_id)
+
+    def issue_access_token(self, user: User, session_id: str) -> str:
+        return self.tokens.create_access_token(user.username, session_id)
 
     def get_current_user(self, token: str) -> User:
         username = self.token_decoder.decode_token(token)

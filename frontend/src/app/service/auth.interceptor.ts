@@ -6,27 +6,35 @@ import {
   HttpRequest,
 } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { AuthService } from './auth.service';
 
 @Injectable()
 export class AuthInterceptor implements HttpInterceptor {
-  constructor(private authService: AuthService) {}
+  private readonly csrfCookie = 'oficina_csrf';
 
   private isApiRequest(url: string): boolean {
-    return (
-      url.startsWith('api/') ||
-      url.startsWith('/api/') ||
-      url.includes('/api/v1/')
-    );
+    const parsed = new URL(url, window.location.origin);
+    return parsed.origin === window.location.origin && parsed.pathname.startsWith('/api/v1/');
+  }
+
+  private csrfToken(): string | null {
+    const entry = document.cookie
+      .split('; ')
+      .find((value) => value.startsWith(`${this.csrfCookie}=`));
+    return entry ? decodeURIComponent(entry.substring(this.csrfCookie.length + 1)) : null;
   }
 
   intercept(req: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
-    const token = this.authService.getToken();
-    if (token && this.isApiRequest(req.url) && !req.url.includes('/auth/login')) {
-      req = req.clone({
-        setHeaders: { Authorization: `Bearer ${token}` },
-      });
+    if (!this.isApiRequest(req.url)) {
+      return next.handle(req);
     }
-    return next.handle(req);
+
+    const headers: Record<string, string> = {};
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+      const csrf = this.csrfToken();
+      if (csrf) {
+        headers['X-CSRF-Token'] = csrf;
+      }
+    }
+    return next.handle(req.clone({ withCredentials: true, setHeaders: headers }));
   }
 }

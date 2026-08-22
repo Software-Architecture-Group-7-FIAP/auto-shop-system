@@ -1,3 +1,6 @@
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from src.application.ports.service_order import ServiceOrderCustomer, ServiceOrderVehicle
@@ -7,14 +10,17 @@ from src.domain.service_order.entity import (
     ServiceOrder,
     ServiceOrderProductLine,
     ServiceOrderServiceLine,
+    ServiceOrderStatusTransition,
 )
 from src.infrastructure.database import (
     CustomerModel,
     ServiceOrderModel,
     ServiceOrderProductLineModel,
     ServiceOrderServiceLineModel,
+    ServiceOrderStatusHistoryModel,
     VehicleModel,
 )
+from src.config import settings
 
 
 class SqlAlchemyServiceOrderRepository:
@@ -31,10 +37,26 @@ class SqlAlchemyServiceOrderRepository:
             return None
         return self._to_domain(model)
 
-    def get_by_tracking_token_fingerprint(self, token_fingerprint: str) -> ServiceOrder | None:
+    def get_by_budget_id(self, budget_id: int) -> ServiceOrder | None:
         model = (
             self.db.query(ServiceOrderModel)
-            .filter(ServiceOrderModel.tracking_token_hash == token_fingerprint)
+            .filter(ServiceOrderModel.budget_id == budget_id)
+            .first()
+        )
+        return self._to_domain(model) if model else None
+
+    def get_by_tracking_token_fingerprint(self, token_fingerprint: str) -> ServiceOrder | None:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        model = (
+            self.db.query(ServiceOrderModel)
+            .filter(
+                ServiceOrderModel.tracking_token_hash == token_fingerprint,
+                ServiceOrderModel.tracking_token_revoked_at.is_(None),
+                or_(
+                    ServiceOrderModel.tracking_token_expires_at.is_(None),
+                    ServiceOrderModel.tracking_token_expires_at > now,
+                ),
+            )
             .first()
         )
         if not model:
@@ -45,6 +67,7 @@ class SqlAlchemyServiceOrderRepository:
         self,
         service_order_id: int,
         token_fingerprint: str,
+        expires_at: datetime | None = None,
     ) -> None:
         model = (
             self.db.query(ServiceOrderModel)
@@ -54,6 +77,8 @@ class SqlAlchemyServiceOrderRepository:
         if not model:
             raise NotFoundError("OS não encontrada")
         model.tracking_token_hash = token_fingerprint
+        model.tracking_token_expires_at = expires_at
+        model.tracking_token_revoked_at = None
         self.db.flush()
 
     def list_all(self, status: ServiceOrderStatus | None = None) -> list[ServiceOrder]:
@@ -108,6 +133,28 @@ class SqlAlchemyServiceOrderRepository:
         model.total_price = service_order.total_price
         model.started_at = service_order.started_at
         model.finished_at = service_order.finished_at
+        if service_order.status.value == "Entregue" and model.tracking_token_hash:
+            model.tracking_token_expires_at = (
+                datetime.now(timezone.utc).replace(tzinfo=None)
+                + timedelta(days=settings.tracking_token_expire_days)
+            )
+        self.db.flush()
+        existing_history = self.db.query(ServiceOrderStatusHistoryModel).filter(
+            ServiceOrderStatusHistoryModel.service_order_id == service_order.id
+        ).count()
+        for transition in service_order.status_history[existing_history:]:
+            self.db.add(
+                ServiceOrderStatusHistoryModel(
+                    service_order_id=service_order.id,
+                    from_status=transition.from_status,
+                    to_status=transition.to_status,
+                    transition_type=transition.transition_type,
+                    reason=transition.reason,
+                    actor_id=transition.actor_id,
+                    request_id=transition.request_id,
+                    occurred_at=transition.occurred_at.replace(tzinfo=None),
+                )
+            )
         self.db.flush()
         self.db.refresh(model)
         return self._to_domain(model)
@@ -126,6 +173,18 @@ class SqlAlchemyServiceOrderRepository:
             started_at=model.started_at,
             finished_at=model.finished_at,
             created_at=model.created_at,
+            status_history=[
+                ServiceOrderStatusTransition(
+                    from_status=item.from_status,
+                    to_status=item.to_status,
+                    transition_type=item.transition_type,
+                    reason=item.reason,
+                    actor_id=item.actor_id,
+                    request_id=item.request_id,
+                    occurred_at=item.occurred_at,
+                )
+                for item in model.status_history
+            ],
             service_lines=[
                 cls._service_line_to_domain(line) for line in model.service_lines
             ],

@@ -73,6 +73,14 @@ def test_settings_rejects_plaintext_smtp_in_production():
         )
 
 
+PRODUCTION_PURPOSE_SECRETS = {
+    "access_token_secret": "production-access-secret-with-32-chars",
+    "refresh_token_pepper": "production-refresh-pepper-with-32-chars",
+    "budget_approval_token_secret": "production-approval-secret-with-32-chars",
+    "tracking_token_secret": "production-tracking-secret-with-32-chars",
+}
+
+
 def test_settings_accepts_starttls_smtp_in_production():
     settings = Settings(
         secret_key="strong-test-secret-with-at-least-32-chars",
@@ -80,6 +88,7 @@ def test_settings_accepts_starttls_smtp_in_production():
         smtp_starttls=True,
         invertexto_api_token="test-token",
         _env_file=None,
+        **PRODUCTION_PURPOSE_SECRETS,
     )
 
     assert settings.smtp_starttls is True
