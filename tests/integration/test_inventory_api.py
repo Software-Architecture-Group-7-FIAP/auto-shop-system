@@ -16,6 +16,9 @@ def _create_os_with_product(client, auth_headers, stock_quantity: int, product_q
         json={
             "customer_id": customer["id"],
             "plate": "EST1A23",
+            "state": "SP",
+            "city": "São Paulo",
+            "color": "Prata",
             "brand": "Fiat",
             "model": "Uno",
             "year": 2020,

@@ -20,12 +20,6 @@ export interface NormalizedVehicleForm {
   customer_id?: number;
 }
 
-export function isValidPlate(plate: string): boolean {
-  return (
-    /^[A-Z]{3}[0-9]{4}$/.test(plate) || /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/.test(plate)
-  );
-}
-
 export function normalizePlate(raw: string): string {
   return raw.trim().toUpperCase().replace(/[-\s]/g, '');
 }
@@ -49,12 +43,6 @@ export function validateVehicleForm(
   if (requirePlate) {
     if (!plate) {
       return { error: 'A placa é obrigatória.' };
-    }
-    if (!isValidPlate(plate)) {
-      return {
-        error:
-          'Placa inválida. Use formato antigo (ABC1234) ou Mercosul (ABC1D23), sem hífen.',
-      };
     }
   }
 
