@@ -145,17 +145,24 @@ export class BudgetDetailComponent implements OnChanges {
   sendEmail(): void {
     this.isSendingEmail = true;
     this.actionMessage = '';
+    this.errorMessage = '';
     this.budgetService.sendEmail(this.budgetId).subscribe({
-      next: (updated) => {
-        this.budget = updated;
-        this.parent.updateBudgetInList(updated);
+      next: () => {
+        // Reload the aggregate after the command. This keeps the detail and
+        // list synchronized even if the command response contains a stale ORM
+        // snapshot after the transaction commits.
+        this.reloadBudget();
         this.actionMessage = 'E-mail do orçamento enviado com sucesso.';
       },
       complete: () => {
         this.isSendingEmail = false;
       },
-      error: () => {
+      error: (error) => {
         this.isSendingEmail = false;
+        const httpError = error as HttpErrorResponse;
+        this.errorMessage =
+          (typeof httpError?.error?.detail === 'string' && httpError.error.detail) ||
+          'Não foi possível enviar o e-mail do orçamento.';
       },
     });
   }
