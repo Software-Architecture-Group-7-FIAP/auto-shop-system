@@ -625,14 +625,43 @@ def test_full_flow(client, auth_headers):
         )
     assert send_os.status_code == 200
 
+    reservations = client.post(
+        f"/api/v1/admin/reservations/os/{os_id}",
+        headers=auth_headers,
+    )
+    assert reservations.status_code == 201
+
     client.patch(
         f"/api/v1/admin/service-orders/{os_id}/start",
         headers=auth_headers,
     )
-    client.patch(
+
+    withdrawal = client.post(
+        "/api/v1/admin/stock-withdrawals",
+        headers=auth_headers,
+        json={"service_order_id": os_id, "product_id": product["id"], "quantity": 2},
+    )
+    assert withdrawal.status_code == 201
+
+    blocked_finish = client.patch(
         f"/api/v1/admin/service-orders/{os_id}/finish",
         headers=auth_headers,
     )
+    assert blocked_finish.status_code == 422
+
+    fulfill = client.patch(
+        f"/api/v1/admin/stock-withdrawals/{withdrawal.json()['id']}/fulfill",
+        headers=auth_headers,
+    )
+    assert fulfill.status_code == 200
+    assert fulfill.json()["status"] == "Atendida"
+
+    finish = client.patch(
+        f"/api/v1/admin/service-orders/{os_id}/finish",
+        headers=auth_headers,
+    )
+    assert finish.status_code == 200
+    assert finish.json()["status"] == "Finalizada"
 
     invoice = client.post(
         f"/api/v1/admin/service-orders/{os_id}/invoice",
@@ -655,20 +684,82 @@ def test_full_flow(client, auth_headers):
     assert paid.status_code == 200
     assert paid.json()["status"] == "Paga"
 
+    old_track = client.get(f"/api/v1/public/service-orders/{os_id}?document=52998224725")
+    assert old_track.status_code in {404, 405}
+
     deliver = client.patch(
         f"/api/v1/admin/service-orders/{os_id}/deliver",
         headers=auth_headers,
     )
     assert deliver.status_code == 422
 
-    old_track = client.get(f"/api/v1/public/service-orders/{os_id}?document=52998224725")
-    assert old_track.status_code in {404, 405}
-
     track = client.get("/api/v1/public/service-orders/track/service-order-tracking-token")
     assert track.status_code == 200
     assert track.json()["status"] == "Entregue"
     assert "mechanic_name" not in track.json()
     assert "priority" not in track.json()
+
+
+def test_execution_queue_orders_pending_service_orders_by_priority(client, auth_headers):
+    customer = client.post(
+        "/api/v1/admin/customers",
+        headers=auth_headers,
+        json=_pf_customer_payload(name="Bruno", email="bruno@test.com", phone=None),
+    ).json()
+
+    service = client.post(
+        "/api/v1/admin/services",
+        headers=auth_headers,
+        json={"name": "Troca de óleo", "base_price": 100.0, "estimated_hours": 1.0},
+    ).json()
+
+    def _create_approved_os(plate: str) -> dict:
+        vehicle = client.post(
+            "/api/v1/admin/vehicles",
+            headers=auth_headers,
+            json=_vehicle_payload(
+                customer["id"],
+                plate=plate,
+                brand="Toyota",
+                model="Corolla",
+                year=2022,
+            ),
+        ).json()
+        budget = client.post(
+            "/api/v1/admin/budgets",
+            headers=auth_headers,
+            json={"customer_id": customer["id"], "vehicle_id": vehicle["id"]},
+        ).json()
+        client.post(
+            f"/api/v1/admin/budgets/{budget['id']}/service-lines",
+            headers=auth_headers,
+            json={"service_id": service["id"], "quantity": 1},
+        )
+        send = client.post(
+            f"/api/v1/admin/budgets/{budget['id']}/send-email",
+            headers=auth_headers,
+        )
+        token = send.json()["approval_token"]
+        client.post(f"/api/v1/public/budgets/{token}/approve")
+        orders = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()
+        return next(order for order in orders if order["vehicle_id"] == vehicle["id"])
+
+    low_priority_os = _create_approved_os("LOW1A23")
+    urgent_os = _create_approved_os("URG2B34")
+
+    set_priority = client.patch(
+        f"/api/v1/admin/service-orders/{urgent_os['id']}/priority",
+        headers=auth_headers,
+        json={"priority": "Urgente"},
+    )
+    assert set_priority.status_code == 200
+
+    queue = client.get("/api/v1/admin/service-orders/queue", headers=auth_headers)
+    assert queue.status_code == 200
+    queue_ids = [order["id"] for order in queue.json()]
+    assert urgent_os["id"] in queue_ids
+    assert low_priority_os["id"] in queue_ids
+    assert queue_ids.index(urgent_os["id"]) < queue_ids.index(low_priority_os["id"])
 
 
 @patch("src.infrastructure.external.brasil_api_cnpj.HttpBrasilApiCnpjValidator.validate")
@@ -705,6 +796,7 @@ def test_validate_and_create_pj_customer(mock_validate, client, auth_headers):
 @patch("src.infrastructure.external.invertexto_cpf.HttpInvertextoCpfValidator.validate")
 def test_validate_and_create_pf_customer(mock_validate, client, auth_headers, monkeypatch):
     monkeypatch.setattr(settings, "invertexto_api_token", "test-token")
+    monkeypatch.setattr(settings, "skip_cpf_external_validation", False)
     mock_validate.return_value = CpfValidationResult(
         valid=True,
         formatted="529.982.247-25",

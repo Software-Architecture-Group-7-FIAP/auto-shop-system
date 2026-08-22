@@ -67,3 +67,15 @@ def list_pending_withdrawals(
     _: UserModel = Depends(get_current_user),
 ):
     return compose_execution_service(db).list_pending_withdrawals()
+
+
+@withdrawals_router.patch("/{withdrawal_id}/fulfill", response_model=StockWithdrawalResponse)
+def fulfill_withdrawal(
+    withdrawal_id: int,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        return compose_execution_service(db).fulfill_withdrawal(withdrawal_id)
+    except DomainError as e:
+        raise domain_error_handler(e)

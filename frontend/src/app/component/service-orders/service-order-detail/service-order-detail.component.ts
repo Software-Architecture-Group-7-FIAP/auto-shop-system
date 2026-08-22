@@ -1,8 +1,6 @@
 import { Component, Input, OnChanges } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
-  Invoice,
-  InvoiceStatus,
   Priority,
   ServiceOrder,
   ServiceOrderStatus,
@@ -26,7 +24,6 @@ export class ServiceOrderDetailComponent implements OnChanges {
   statusOverrideReason = '';
   priorityValues = Object.values(Priority);
   statusValues = Object.values(ServiceOrderStatus);
-  invoice: Invoice | null = null;
   actionMessage = '';
   errorMessage = '';
   isSaving = false;
@@ -34,11 +31,7 @@ export class ServiceOrderDetailComponent implements OnChanges {
   isSendingEmail = false;
   isStarting = false;
   isFinishing = false;
-  isCreatingInvoice = false;
-  isPayingInvoice = false;
-  private invoiceKnownAbsent = false;
   readonly serviceOrderStatus = ServiceOrderStatus;
-  readonly invoiceStatus = InvoiceStatus;
 
   constructor(
     private serviceOrderService: ServiceOrderService,
@@ -49,8 +42,6 @@ export class ServiceOrderDetailComponent implements OnChanges {
     if (this.serviceOrderId) {
       this.actionMessage = '';
       this.errorMessage = '';
-      this.invoice = null;
-      this.invoiceKnownAbsent = false;
       this.loadServiceOrder();
     }
   }
@@ -61,29 +52,6 @@ export class ServiceOrderDetailComponent implements OnChanges {
       this.mechanicName = data.mechanic_name || '';
       this.selectedPriority = data.priority;
       this.selectedStatus = data.status;
-      this.loadInvoice();
-    });
-  }
-
-  loadInvoice(): void {
-    if (!this.shouldShowBillingSection()) {
-      this.invoice = null;
-      return;
-    }
-    if (this.invoiceKnownAbsent && !this.invoice) {
-      return;
-    }
-    this.serviceOrderService.getInvoice(this.serviceOrderId).subscribe({
-      next: (invoice) => {
-        this.invoice = invoice;
-        this.invoiceKnownAbsent = false;
-      },
-      error: (error: HttpErrorResponse) => {
-        this.invoice = null;
-        if (error.status === 404) {
-          this.invoiceKnownAbsent = true;
-        }
-      },
     });
   }
 
@@ -133,13 +101,6 @@ export class ServiceOrderDetailComponent implements OnChanges {
           this.statusOverrideReason = '';
           this.parent.updateServiceOrderInList(updated);
           this.actionMessage = 'Status da OS alterado por override administrativo.';
-          if (!this.shouldShowBillingSection()) {
-            this.invoice = null;
-            this.invoiceKnownAbsent = false;
-          } else {
-            this.invoiceKnownAbsent = false;
-            this.loadInvoice();
-          }
         },
         complete: () => {
           this.isOverridingStatus = false;
@@ -235,16 +196,6 @@ export class ServiceOrderDetailComponent implements OnChanges {
     });
   }
 
-  shouldShowBillingSection(): boolean {
-    return Boolean(
-      this.serviceOrder &&
-      [
-        ServiceOrderStatus.FINALIZADA,
-        ServiceOrderStatus.ENTREGUE,
-      ].includes(this.serviceOrder.status)
-    );
-  }
-
   private setErrorMessage(error: unknown, fallback: string): void {
     const httpError = error as HttpErrorResponse;
     this.errorMessage =
@@ -252,58 +203,13 @@ export class ServiceOrderDetailComponent implements OnChanges {
       fallback;
   }
 
-  canCreateInvoice(): boolean {
-    return this.serviceOrder?.status === ServiceOrderStatus.FINALIZADA && !this.invoice;
+  onBillingServiceOrderChanged(updated: ServiceOrder): void {
+    this.serviceOrder = updated;
+    this.selectedStatus = updated.status;
+    this.parent.updateServiceOrderInList(updated);
   }
 
-  canPayInvoice(): boolean {
-    return (
-      this.serviceOrder?.status === ServiceOrderStatus.FINALIZADA &&
-      this.invoice?.status === InvoiceStatus.PENDING
-    );
-  }
-
-  createInvoice(): void {
-    if (!this.canCreateInvoice()) {
-      return;
-    }
-    this.isCreatingInvoice = true;
-    this.errorMessage = '';
-    this.serviceOrderService.createInvoice(this.serviceOrderId).subscribe({
-      next: (invoice) => {
-        this.invoice = invoice;
-        this.invoiceKnownAbsent = false;
-        this.actionMessage = `Fatura #${invoice.id} criada — R$ ${invoice.amount.toFixed(2)}`;
-      },
-      complete: () => {
-        this.isCreatingInvoice = false;
-      },
-      error: (error) => {
-        this.isCreatingInvoice = false;
-        this.setErrorMessage(error, 'Não foi possível gerar a fatura.');
-      },
-    });
-  }
-
-  payInvoice(): void {
-    if (!this.invoice || !this.canPayInvoice()) {
-      return;
-    }
-    this.isPayingInvoice = true;
-    this.errorMessage = '';
-    this.serviceOrderService.payInvoice(this.invoice.id).subscribe({
-      next: (invoice) => {
-        this.invoice = invoice;
-        this.loadServiceOrder();
-        this.actionMessage = 'Pagamento registrado. OS entregue.';
-      },
-      complete: () => {
-        this.isPayingInvoice = false;
-      },
-      error: (error) => {
-        this.isPayingInvoice = false;
-        this.setErrorMessage(error, 'Não foi possível registrar o pagamento.');
-      },
-    });
+  onBillingActionMessage(message: string): void {
+    this.actionMessage = message;
   }
 }

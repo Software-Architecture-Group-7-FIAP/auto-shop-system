@@ -2,15 +2,17 @@ from datetime import datetime
 
 import pytest
 
-from src.domain.enums import ServiceOrderStatus, StockWithdrawalStatus
+from src.domain.enums import Priority, ServiceOrderStatus, StockWithdrawalStatus
 from src.domain.exceptions import ValidationError
 from src.domain.execution.entity import (
     StockWithdrawal,
     enqueue_service_order,
     finish_service_order,
+    order_execution_queue,
     start_service_order,
+    validate_withdrawal_quantity,
 )
-from src.domain.service_order.entity import ServiceOrder
+from src.domain.service_order.entity import ServiceOrder, ServiceOrderProductLine
 
 
 def test_stock_withdrawal_create_defaults_to_pending_status():
@@ -29,6 +31,108 @@ def test_stock_withdrawal_create_defaults_to_pending_status():
 def test_stock_withdrawal_rejects_non_positive_quantity():
     with pytest.raises(ValidationError, match="Quantidade deve ser maior que zero"):
         StockWithdrawal.create(service_order_id=1, product_id=2, quantity=0)
+
+
+def test_stock_withdrawal_fulfill_sets_status_and_timestamp():
+    withdrawal = StockWithdrawal.create(service_order_id=1, product_id=2, quantity=3)
+    fulfilled_at = datetime(2026, 1, 1, 9, 0, 0)
+
+    withdrawal.fulfill(fulfilled_at)
+
+    assert withdrawal.status == StockWithdrawalStatus.FULFILLED
+    assert withdrawal.fulfilled_at == fulfilled_at
+
+
+def test_stock_withdrawal_fulfill_rejects_non_pending_status():
+    withdrawal = StockWithdrawal.create(service_order_id=1, product_id=2, quantity=3)
+    withdrawal.fulfill(datetime(2026, 1, 1, 9, 0, 0))
+
+    with pytest.raises(
+        ValidationError,
+        match="Solicitação de retirada já foi atendida ou cancelada",
+    ):
+        withdrawal.fulfill(datetime(2026, 1, 1, 10, 0, 0))
+
+
+def test_order_execution_queue_sorts_by_priority_then_created_at():
+    low = ServiceOrder(
+        id=1,
+        budget_id=None,
+        customer_id=1,
+        vehicle_id=1,
+        priority=Priority.LOW,
+        created_at=datetime(2026, 1, 1),
+    )
+    urgent_later = ServiceOrder(
+        id=2,
+        budget_id=None,
+        customer_id=1,
+        vehicle_id=1,
+        priority=Priority.URGENT,
+        created_at=datetime(2026, 1, 2),
+    )
+    urgent_earlier = ServiceOrder(
+        id=3,
+        budget_id=None,
+        customer_id=1,
+        vehicle_id=1,
+        priority=Priority.URGENT,
+        created_at=datetime(2026, 1, 1),
+    )
+    normal = ServiceOrder(
+        id=4,
+        budget_id=None,
+        customer_id=1,
+        vehicle_id=1,
+        priority=Priority.NORMAL,
+        created_at=datetime(2026, 1, 1),
+    )
+
+    ordered = order_execution_queue([low, urgent_later, urgent_earlier, normal])
+
+    assert [so.id for so in ordered] == [3, 2, 4, 1]
+
+
+def _os_in_execution_with_line(product_id: int, quantity: int) -> ServiceOrder:
+    return ServiceOrder(
+        id=1,
+        budget_id=2,
+        customer_id=3,
+        vehicle_id=4,
+        status=ServiceOrderStatus.EM_EXECUCAO,
+        product_lines=[
+            ServiceOrderProductLine(
+                id=1, service_order_id=1, product_id=product_id, quantity=quantity, unit_price=5.0
+            )
+        ],
+    )
+
+
+def test_validate_withdrawal_quantity_passes_for_valid_partial_request():
+    validate_withdrawal_quantity(_os_in_execution_with_line(10, 5), 10, 3, already_requested=0)
+
+
+def test_validate_withdrawal_quantity_passes_for_second_partial_request():
+    validate_withdrawal_quantity(_os_in_execution_with_line(10, 5), 10, 2, already_requested=3)
+
+
+def test_validate_withdrawal_quantity_rejects_os_not_in_execution():
+    service_order = ServiceOrder(
+        id=1, budget_id=2, customer_id=3, vehicle_id=4,
+        status=ServiceOrderStatus.AGUARDANDO_APROVACAO,
+    )
+    with pytest.raises(ValidationError, match="em execução"):
+        validate_withdrawal_quantity(service_order, 10, 1, already_requested=0)
+
+
+def test_validate_withdrawal_quantity_rejects_product_not_in_scope():
+    with pytest.raises(ValidationError, match="não está no escopo"):
+        validate_withdrawal_quantity(_os_in_execution_with_line(10, 5), 99, 1, already_requested=0)
+
+
+def test_validate_withdrawal_quantity_rejects_over_withdrawal():
+    with pytest.raises(ValidationError, match="excede o total necessário"):
+        validate_withdrawal_quantity(_os_in_execution_with_line(10, 5), 10, 3, already_requested=3)
 
 
 def test_enqueue_service_order_requires_waiting_approval_status():
@@ -77,4 +181,88 @@ def test_finish_service_order_requires_in_progress_status():
         ValidationError,
         match="OS deve estar em execução para ser finalizada",
     ):
-        finish_service_order(service_order, datetime(2026, 1, 1, 10, 0, 0))
+        finish_service_order(service_order, datetime(2026, 1, 1, 10, 0, 0), {})
+
+
+def test_finish_service_order_blocks_when_withdrawal_pending():
+    service_order = ServiceOrder(
+        id=1,
+        budget_id=2,
+        customer_id=3,
+        vehicle_id=4,
+        status=ServiceOrderStatus.EM_EXECUCAO,
+        product_lines=[
+            ServiceOrderProductLine(
+                id=1, service_order_id=1, product_id=10, quantity=2, unit_price=5.0
+            )
+        ],
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="itens reservados sem retirada de estoque confirmada",
+    ):
+        finish_service_order(service_order, datetime(2026, 1, 1, 10, 0, 0), {10: 1})
+
+
+def test_finish_service_order_blocks_when_duplicate_product_lines_not_fully_withdrawn():
+    service_order = ServiceOrder(
+        id=1,
+        budget_id=2,
+        customer_id=3,
+        vehicle_id=4,
+        status=ServiceOrderStatus.EM_EXECUCAO,
+        product_lines=[
+            ServiceOrderProductLine(id=1, service_order_id=1, product_id=1, quantity=100, unit_price=5.0),
+            ServiceOrderProductLine(id=2, service_order_id=1, product_id=1, quantity=12, unit_price=5.0),
+            ServiceOrderProductLine(id=3, service_order_id=1, product_id=1, quantity=122, unit_price=5.0),
+        ],
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="itens reservados sem retirada de estoque confirmada",
+    ):
+        finish_service_order(service_order, datetime(2026, 1, 1, 10, 0, 0), {1: 150})
+
+
+def test_finish_service_order_allows_when_duplicate_product_lines_fully_withdrawn():
+    service_order = ServiceOrder(
+        id=1,
+        budget_id=2,
+        customer_id=3,
+        vehicle_id=4,
+        status=ServiceOrderStatus.EM_EXECUCAO,
+        product_lines=[
+            ServiceOrderProductLine(id=1, service_order_id=1, product_id=1, quantity=100, unit_price=5.0),
+            ServiceOrderProductLine(id=2, service_order_id=1, product_id=1, quantity=12, unit_price=5.0),
+            ServiceOrderProductLine(id=3, service_order_id=1, product_id=1, quantity=122, unit_price=5.0),
+        ],
+    )
+    finished_at = datetime(2026, 1, 1, 10, 0, 0)
+
+    finish_service_order(service_order, finished_at, {1: 234})
+
+    assert service_order.status == ServiceOrderStatus.FINALIZADA
+    assert service_order.finished_at == finished_at
+
+
+def test_finish_service_order_succeeds_when_withdrawals_cover_quantities():
+    service_order = ServiceOrder(
+        id=1,
+        budget_id=2,
+        customer_id=3,
+        vehicle_id=4,
+        status=ServiceOrderStatus.EM_EXECUCAO,
+        product_lines=[
+            ServiceOrderProductLine(
+                id=1, service_order_id=1, product_id=10, quantity=2, unit_price=5.0
+            )
+        ],
+    )
+    finished_at = datetime(2026, 1, 1, 10, 0, 0)
+
+    finish_service_order(service_order, finished_at, {10: 2})
+
+    assert service_order.status == ServiceOrderStatus.FINALIZADA
+    assert service_order.finished_at == finished_at

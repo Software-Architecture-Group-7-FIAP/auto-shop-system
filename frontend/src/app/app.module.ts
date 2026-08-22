@@ -35,6 +35,7 @@ import { BudgetDetailComponent } from './component/budgets/budget-detail/budget-
 import { NewBudgetComponent } from './component/budgets/new-budget/new-budget.component';
 
 import { ServiceOrdersComponent } from './component/service-orders/service-orders.component';
+import { ServiceOrderBillingPanelComponent } from './component/service-orders/service-order-billing-panel/service-order-billing-panel.component';
 import { ServiceOrderDetailComponent } from './component/service-orders/service-order-detail/service-order-detail.component';
 import { ServiceOrderTrackingComponent } from './component/service-order-tracking/service-order-tracking.component';
 import { BudgetApprovalComponent } from './component/budget-approval/budget-approval.component';
@@ -68,6 +69,7 @@ import { HttpErrorInterceptor } from './service/http-error.interceptor';
     BudgetDetailComponent,
     NewBudgetComponent,
     ServiceOrdersComponent,
+    ServiceOrderBillingPanelComponent,
     ServiceOrderDetailComponent,
     ServiceOrderTrackingComponent,
     BudgetApprovalComponent,
