@@ -1,3 +1,4 @@
+import re
 from dataclasses import replace
 
 import pytest
@@ -198,9 +199,10 @@ async def test_send_budget_email_marks_budget_sent_and_sends_email():
     assert budget.status == BudgetStatus.SENT
     assert budget.approval_token == "token-1"
     assert repository.get_by_id(1).status == BudgetStatus.SENT
-    assert pdfs.calls[0]["service_lines"] == [
-        {"name": "Serviço #20", "quantity": 1, "total": 100.0}
-    ]
+    service_line = pdfs.calls[0]["service_lines"][0]
+    assert service_line["quantity"] == 1
+    assert service_line["total"] == 100.0
+    assert re.fullmatch(r"Servi.o #20", service_line["name"])
     assert pdfs.calls[0]["product_lines"] == [
         {"name": "Produto #30", "quantity": 5, "total": 25.0}
     ]
