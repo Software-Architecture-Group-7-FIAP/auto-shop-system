@@ -1,7 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auto-shop-backend
+  namespace: auto-shop
+  labels:
+    app: auto-shop-backend
 spec:
-  containers:
-  - name: auto-shop-api
-    image: auto-shop-system:latest
-    envFrom:
-    - configMapRef:
-        name: auto-shop-config
+  replicas: 2
+  selector:
+    matchLabels:
+      app: auto-shop-backend
+  template:
+    metadata:
+      labels:
+        app: auto-shop-backend
+    spec:
+      containers:
+      - name: backend-api
+        image: auto-shop-system:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: auto-shop-config
+        - secretRef:
+            name: auto-shop-secrets
+        # --- BLOCO OBRIGATÓRIO PARA O HPA ---
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"

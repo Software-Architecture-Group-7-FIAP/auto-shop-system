@@ -12,3 +12,8 @@ pdf-extract.txt
 .cursor/
 debug-*.log
 .claude
+
+# Kubernetes Secrets
+k8s/secrets.yaml
+k8s/secret.yaml
+!k8s/secrets.example.yaml
