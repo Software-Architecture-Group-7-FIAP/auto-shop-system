@@ -78,6 +78,7 @@ PRODUCTION_PURPOSE_SECRETS = {
     "refresh_token_pepper": "production-refresh-pepper-with-32-chars",
     "budget_approval_token_secret": "production-approval-secret-with-32-chars",
     "tracking_token_secret": "production-tracking-secret-with-32-chars",
+    "redis_url": "redis://localhost:6379/0",
 }
 
 

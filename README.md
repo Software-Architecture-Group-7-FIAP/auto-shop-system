@@ -30,7 +30,7 @@ src/
 ```bash
 cp .env.example .env
 # Edite .env e defina SECRET_KEY (>= 32 caracteres aleatórios) e POSTGRES_PASSWORD
-docker compose up db mailhog -d
+docker compose up db mailhog redis -d
 docker compose run --rm api alembic upgrade head
 docker compose run --rm -e DEV_ADMIN_PASSWORD=<senha-forte> api python -m src.scripts.seed_dev_admin
 docker compose up --build
@@ -94,7 +94,7 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
   -d '{"username":"admin","password":"<senha-forte>"}'
 ```
 
-O login nao devolve tokens no JSON. A API define cookies `oficina_access`, `oficina_refresh` e `oficina_csrf`; clientes enviam `X-CSRF-Token` em operacoes mutaveis. Use `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout` e `GET /api/v1/auth/me` para renovar, encerrar e consultar a sessao.
+O login nao devolve tokens no JSON. A API define cookies `oficina_access`, `oficina_refresh` e `oficina_csrf`; clientes enviam `X-CSRF-Token` em operacoes mutaveis. Use `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout` e `GET /api/v1/admin/me` para renovar, encerrar e consultar a sessao.
 
 Se receber `Credenciais inválidas` em banco novo, verifique:
 
@@ -248,7 +248,7 @@ Interface vanilla servida pelo FastAPI em `/app/`:
 - OS segue `Recebida -> Em diagnostico -> Aguardando aprovacao -> Aguardando inicio -> Em execucao -> Finalizada -> Entregue`.
 - A primeira atribuicao de mecanico move a OS para diagnostico; trocas posteriores exigem motivo e nao regridem o status.
 - Revisoes de orcamento enviadas sao imutaveis. A decisao publica usa `POST /api/v1/public/budgets/decisions` com `{token, decision}` e e idempotente.
-- Tracking usa `POST /api/v1/public/service-orders/track` com token no corpo, fingerprint HMAC no banco, revogacao no reenvio e expiracao sete dias apos a entrega.
+- Tracking usa `POST /api/v1/public/service-orders/track` com token no corpo, fingerprint HMAC no banco, revogacao no reenvio e expiracao contada desde a emissao.
 - Tokens de aprovacao, refresh e tracking possuem segredos separados. O token bruto nao aparece em respostas administrativas nem em colunas do banco.
 - O override de status exige papel `ADMIN`, motivo e so permite os tres estados iniciais; cada transicao e registrada em historico append-only.
 

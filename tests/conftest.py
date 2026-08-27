@@ -11,7 +11,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.api.rate_limit import login_rate_limiter
+from src.api.rate_limit import login_rate_limiter, public_rate_limiter
 from src.domain.auth.entity import UserRole
 from src.infrastructure import database as db_module
 from src.infrastructure.auth.jwt import BcryptPasswordHasher
@@ -64,10 +64,12 @@ def setup_db():
 
 @pytest.fixture(autouse=True)
 def reset_login_rate_limiter():
-    """The limiter is process-global; failed-login tests must not leak."""
+    """Process-global limiters must not leak state between tests."""
     login_rate_limiter.reset()
+    public_rate_limiter.reset()
     yield
     login_rate_limiter.reset()
+    public_rate_limiter.reset()
 
 
 @pytest.fixture
@@ -117,7 +119,11 @@ def login(client, credentials=None) -> dict[str, str]:
 
 def csrf_headers(client) -> dict[str, str]:
     token = client.cookies.get(CSRF_COOKIE)
-    return {"X-CSRF-Token": token} if token else {}
+    return (
+        {"X-CSRF-Token": token, "Origin": "http://testserver"}
+        if token
+        else {"Origin": "http://testserver"}
+    )
 
 
 @pytest.fixture

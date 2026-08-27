@@ -1,10 +1,13 @@
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
 
 from src.config import settings
 from src.domain.exceptions import UnauthorizedError
+
+JWT_ALGORITHM = "HS256"
 
 
 class BcryptPasswordHasher:
@@ -29,11 +32,11 @@ class JwtAccessTokenService:
         payload = {"sub": subject, "exp": expire}
         if session_id:
             payload["sid"] = session_id
-        return jwt.encode(payload, self._secret(), algorithm=settings.algorithm)
+        return jwt.encode(payload, self._secret(), algorithm=JWT_ALGORITHM)
 
     def decode_token(self, token: str) -> str:
         try:
-            payload = jwt.decode(token, self._secret(), algorithms=[settings.algorithm])
+            payload = jwt.decode(token, self._secret(), algorithms=[JWT_ALGORITHM])
             username: str | None = payload.get("sub")
             if username is None:
                 raise UnauthorizedError("Token inválido")
@@ -43,6 +46,6 @@ class JwtAccessTokenService:
 
     def decode_claims(self, token: str) -> dict:
         try:
-            return jwt.decode(token, self._secret(), algorithms=[settings.algorithm])
+            return jwt.decode(token, self._secret(), algorithms=[JWT_ALGORITHM])
         except JWTError as exc:
             raise UnauthorizedError("Token inválido") from exc

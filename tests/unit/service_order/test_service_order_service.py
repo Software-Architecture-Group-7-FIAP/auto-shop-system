@@ -21,6 +21,7 @@ class InMemoryServiceOrderRepository:
             if service_order.id is not None
         }
         self.tracking_token_fingerprints: dict[int, str] = {}
+        self.tracking_token_expirations: dict[int, datetime | None] = {}
 
     def get_by_id(self, service_order_id: int) -> ServiceOrder | None:
         return self.service_orders.get(service_order_id)
@@ -41,6 +42,7 @@ class InMemoryServiceOrderRepository:
         expires_at=None,
     ) -> None:
         self.tracking_token_fingerprints[service_order_id] = token_fingerprint
+        self.tracking_token_expirations[service_order_id] = expires_at
 
     def list_all(
         self,
@@ -324,21 +326,6 @@ def test_service_order_service_sets_priority_and_commits():
     assert uow.commits == 1
 
 
-def test_service_order_service_tracks_by_customer_document():
-    service = make_service()
-
-    service_order = service.get_by_customer_document(1, "529.982.247-25")
-
-    assert service_order.id == 1
-
-
-def test_service_order_service_rejects_wrong_customer_document():
-    service = make_service(contacts=FakeContactLookup(document="11144477735"))
-
-    with pytest.raises(NotFoundError, match="OS não encontrada para este documento"):
-        service.get_by_customer_document(1, "529.982.247-25")
-
-
 def test_service_order_service_tracks_by_opaque_token():
     repository = InMemoryServiceOrderRepository([make_service_order()])
     token = "tracking-token"
@@ -408,6 +395,8 @@ async def test_service_order_email_service_uses_ports():
         "http://localhost:4200/track-service-order#"
     )
     assert repository.tracking_token_fingerprints[1] == "fingerprint:tracking-token"
+    assert repository.tracking_token_expirations[1] is not None
+    assert repository.tracking_token_expirations[1] > datetime.now()
     message = emails.messages[0]
     assert message["to"] == "ana@test.com"
     assert message["subject"] == "Ordem de Serviço #1"

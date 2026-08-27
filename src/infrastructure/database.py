@@ -279,6 +279,13 @@ class ServiceOrderStatusHistoryModel(Base):
     """Append-only audit trail for every OS status transition."""
 
     __tablename__ = "service_order_status_history"
+    __table_args__ = (
+        UniqueConstraint(
+            "service_order_id",
+            "request_id",
+            name="uq_service_order_status_history_request",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     service_order_id: Mapped[int] = mapped_column(

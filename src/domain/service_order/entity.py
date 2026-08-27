@@ -62,7 +62,10 @@ class ServiceOrder:
             {ServiceOrderStatus.AGUARDANDO_APROVACAO}
         ),
         ServiceOrderStatus.AGUARDANDO_APROVACAO: frozenset(
-            {ServiceOrderStatus.AGUARDANDO_INICIO}
+            {
+                ServiceOrderStatus.AGUARDANDO_INICIO,
+                ServiceOrderStatus.EM_DIAGNOSTICO,
+            }
         ),
         ServiceOrderStatus.AGUARDANDO_INICIO: frozenset(
             {ServiceOrderStatus.EM_EXECUCAO}
@@ -246,16 +249,11 @@ class ServiceOrder:
         """Allow the customer to reject a revision without a break-glass override."""
         if self.status != ServiceOrderStatus.AGUARDANDO_APROVACAO:
             raise ValidationError("A OS não está aguardando aprovação")
-        previous = self.status
-        self.status = ServiceOrderStatus.EM_DIAGNOSTICO
-        self.status_history.append(
-            ServiceOrderStatusTransition(
-                from_status=previous,
-                to_status=ServiceOrderStatus.EM_DIAGNOSTICO,
-                transition_type="budget_rejected",
-                actor_id=actor_id,
-                request_id=request_id,
-            )
+        self.transition_to(
+            ServiceOrderStatus.EM_DIAGNOSTICO,
+            transition_type="budget_rejected",
+            actor_id=actor_id,
+            request_id=request_id,
         )
 
     def start_execution(

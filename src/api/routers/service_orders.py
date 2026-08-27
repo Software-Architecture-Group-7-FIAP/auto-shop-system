@@ -9,6 +9,7 @@ from src.api.composition.service_orders import (
 )
 from src.api.composition.execution import compose_execution_service
 from src.api.dependencies import domain_error_handler, get_current_user, require_admin
+from src.api.rate_limit import enforce_public_rate_limit
 from src.api.mappers.service_orders import service_order_with_withdrawals_to_response
 from src.api.schemas import (
     AssignMechanicRequest,
@@ -24,6 +25,7 @@ from src.api.schemas import (
 )
 from src.domain.enums import ServiceOrderStatus
 from src.domain.exceptions import DomainError
+from src.infrastructure.auth.service_order_tracking import HmacServiceOrderTrackingTokenService
 from src.infrastructure.database import UserModel, get_db
 
 admin_router = APIRouter(prefix="/admin/service-orders", tags=["Service Orders"])
@@ -171,9 +173,15 @@ async def send_os_email(
 def track_service_order(
     data: ServiceOrderTrackingRequest,
     response: Response,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     response.headers["Cache-Control"] = "no-store"
+    enforce_public_rate_limit(
+        request,
+        HmacServiceOrderTrackingTokenService().fingerprint(data.token),
+        "service_order_tracking",
+    )
     try:
         return compose_service_order_service(db).get_by_tracking_token(data.token)
     except DomainError as e:

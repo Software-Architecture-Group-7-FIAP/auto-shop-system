@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from src.api.composition.budget_approval import compose_budget_approval_service
 from src.api.composition.budgets import compose_budget_service
 from src.api.dependencies import domain_error_handler, get_current_user
+from src.api.rate_limit import enforce_public_rate_limit
 from src.api.schemas import (
     AvailabilityItem,
     BudgetCreate,
@@ -21,6 +22,7 @@ from src.api.schemas import (
     MessageResponse,
 )
 from src.domain.exceptions import DomainError
+from src.infrastructure.auth.tokens import approval_token_fingerprint
 from src.infrastructure.database import UserModel, get_db
 
 admin_router = APIRouter(prefix="/admin/budgets", tags=["Budgets"])
@@ -249,6 +251,9 @@ def decide_budget(
     db: Session = Depends(get_db),
 ):
     response.headers["Cache-Control"] = "no-store"
+    enforce_public_rate_limit(
+        request, approval_token_fingerprint(data.token), "budget_decision"
+    )
     try:
         result = compose_budget_approval_service(db).decide_budget(
             data.token,

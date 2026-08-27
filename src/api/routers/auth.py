@@ -18,6 +18,7 @@ from src.domain.exceptions import DomainError, UnauthorizedError
 from src.infrastructure.database import get_db
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+admin_router = APIRouter(prefix="/admin", tags=["Auth"])
 
 
 @router.post("/login", response_model=SessionResponse)
@@ -99,6 +100,6 @@ def logout(
     return SessionResponse(username="", role=UserRole.OPERATOR)
 
 
-@router.get("/me", response_model=SessionResponse)
+@admin_router.get("/me", response_model=SessionResponse)
 def me(current_user=Depends(get_current_user)):
     return SessionResponse(username=current_user.username, role=current_user.role)

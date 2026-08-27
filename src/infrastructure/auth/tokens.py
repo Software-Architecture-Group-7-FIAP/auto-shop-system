@@ -2,9 +2,11 @@ import hashlib
 import hmac
 from datetime import datetime, timedelta, timezone
 
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
 
 from src.config import settings
+from src.infrastructure.auth.jwt import JWT_ALGORITHM
 
 
 def create_signed_approval_token(budget_id: int) -> str:
@@ -12,7 +14,7 @@ def create_signed_approval_token(budget_id: int) -> str:
         hours=settings.budget_approval_token_expire_hours
     )
     payload = {"budget_id": budget_id, "type": "budget_approval", "exp": expire}
-    return jwt.encode(payload, settings.budget_approval_secret(), algorithm=settings.algorithm)
+    return jwt.encode(payload, settings.budget_approval_secret(), algorithm=JWT_ALGORITHM)
 
 
 def approval_token_fingerprint(token: str) -> str:
@@ -31,7 +33,7 @@ def approval_token_expires_at(token: str) -> datetime:
         payload = jwt.decode(
             token,
             settings.budget_approval_secret(),
-            algorithms=[settings.algorithm],
+            algorithms=[JWT_ALGORITHM],
         )
         expires = payload.get("exp")
         if not isinstance(expires, (int, float)):
@@ -46,7 +48,7 @@ def validate_approval_token(token: str) -> int:
         payload = jwt.decode(
             token,
             settings.budget_approval_secret(),
-            algorithms=[settings.algorithm],
+            algorithms=[JWT_ALGORITHM],
         )
         if payload.get("type") != "budget_approval":
             raise ValueError("Invalid token type")

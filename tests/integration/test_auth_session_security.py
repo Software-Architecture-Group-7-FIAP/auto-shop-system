@@ -2,7 +2,11 @@
 security hardening pass. These paths carry the whole authentication story, so
 they are exercised end to end rather than through the services alone."""
 
-from src.api.rate_limit import login_rate_limiter
+import pytest
+
+from src.api import rate_limit
+from src.api.auth_cookies import ACCESS_COOKIE_PATH
+from src.api.rate_limit import RateLimitPolicy, login_rate_limiter
 from src.config import settings
 from tests.conftest import (
     ACCESS_COOKIE,
@@ -23,7 +27,7 @@ CUSTOMER_PAYLOAD = {
 
 
 def _cookie_header(response, name: str) -> str:
-    for header in response.headers.get_list("set-cookie"):
+    for header in reversed(response.headers.get_list("set-cookie")):
         if header.startswith(f"{name}="):
             return header
     raise AssertionError(f"{name} was not set")
@@ -44,6 +48,7 @@ def test_login_sets_httponly_session_cookies_and_a_readable_csrf_cookie(client):
     # The double-submit token has to be readable by the frontend.
     assert "HttpOnly" not in csrf
     assert "samesite=lax" in access.lower()
+    assert "Path=/api/v1/admin" in access
     # The refresh cookie is only ever sent to the auth endpoints.
     assert "Path=/api/v1/auth" in refresh
     assert response.headers["cache-control"] == "no-store"
@@ -73,7 +78,7 @@ def test_state_changing_request_without_csrf_header_is_rejected(client, auth_hea
     response = client.post("/api/v1/admin/customers", json=CUSTOMER_PAYLOAD)
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Token CSRF inválido"
+    assert response.json()["detail"] == "Origem não permitida"
 
 
 def test_state_changing_request_with_a_mismatched_csrf_header_is_rejected(
@@ -81,7 +86,7 @@ def test_state_changing_request_with_a_mismatched_csrf_header_is_rejected(
 ):
     response = client.post(
         "/api/v1/admin/customers",
-        headers={"X-CSRF-Token": "not-the-cookie"},
+        headers={"X-CSRF-Token": "not-the-cookie", "Origin": "http://testserver"},
         json=CUSTOMER_PAYLOAD,
     )
 
@@ -96,6 +101,65 @@ def test_request_from_a_foreign_origin_is_rejected(client, auth_headers):
     response = client.post(
         "/api/v1/admin/customers",
         headers={**auth_headers, "Origin": "https://evil.example"},
+        json=CUSTOMER_PAYLOAD,
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Origem não permitida"
+
+
+def test_request_with_a_malformed_origin_is_rejected(client, auth_headers):
+    response = client.post(
+        "/api/v1/admin/customers",
+        headers={**auth_headers, "Origin": "not-a-url"},
+        json=CUSTOMER_PAYLOAD,
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Origem não permitida"
+
+
+def test_state_changing_request_without_origin_or_referer_is_rejected(
+    client, auth_headers
+):
+    headers = {key: value for key, value in auth_headers.items() if key != "Origin"}
+
+    response = client.post(
+        "/api/v1/admin/customers",
+        headers=headers,
+        json=CUSTOMER_PAYLOAD,
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Origem não permitida"
+
+
+def test_state_changing_request_accepts_a_configured_referer(
+    client, auth_headers
+):
+    headers = {
+        key: value for key, value in auth_headers.items() if key != "Origin"
+    }
+    headers["Referer"] = "http://testserver/admin/customers"
+
+    response = client.post(
+        "/api/v1/admin/customers",
+        headers=headers,
+        json=CUSTOMER_PAYLOAD,
+    )
+
+    assert response.status_code == 201
+
+
+def test_state_changing_request_rejects_a_malformed_referer(client, auth_headers):
+    headers = {
+        key: value for key, value in auth_headers.items() if key != "Origin"
+    }
+    headers["Referer"] = "not-a-url"
+
+    response = client.post(
+        "/api/v1/admin/customers",
+        headers=headers,
         json=CUSTOMER_PAYLOAD,
     )
 
@@ -153,7 +217,7 @@ def test_refresh_rotates_the_session_and_keeps_the_caller_logged_in(client):
     assert refreshed.status_code == 200
     assert refreshed.json()["username"] == "admin"
     assert client.cookies.get(REFRESH_COOKIE) != first_refresh
-    assert client.get("/api/v1/auth/me").status_code == 200
+    assert client.get("/api/v1/admin/me").status_code == 200
 
 
 def test_replaying_a_rotated_refresh_token_revokes_the_family(client):
@@ -168,7 +232,7 @@ def test_replaying_a_rotated_refresh_token_revokes_the_family(client):
     replay = client.post("/api/v1/auth/refresh", headers=csrf_headers(client))
 
     assert replay.status_code == 401
-    assert client.get("/api/v1/auth/me").status_code == 401
+    assert client.get("/api/v1/admin/me").status_code == 401
 
 
 def test_replaying_an_old_refresh_token_kills_the_family(client):
@@ -199,8 +263,8 @@ def test_logout_revokes_the_access_token_not_just_the_cookie(client):
     assert client.post("/api/v1/auth/logout", headers=headers).status_code == 200
 
     # Put the captured access token back: the session behind it is gone.
-    client.cookies.set(ACCESS_COOKIE, access, path="/")
-    assert client.get("/api/v1/auth/me").status_code == 401
+    client.cookies.set(ACCESS_COOKIE, access, path=ACCESS_COOKIE_PATH)
+    assert client.get("/api/v1/admin/me").status_code == 401
 
 
 def test_refresh_after_logout_is_rejected(client):
@@ -212,7 +276,8 @@ def test_refresh_after_logout_is_rejected(client):
     client.cookies.set(REFRESH_COOKIE, refresh_token, path="/api/v1/auth")
     client.cookies.set(CSRF_COOKIE, "csrf-value", path="/")
     response = client.post(
-        "/api/v1/auth/refresh", headers={"X-CSRF-Token": "csrf-value"}
+        "/api/v1/auth/refresh",
+        headers={"X-CSRF-Token": "csrf-value", "Origin": "http://testserver"},
     )
     assert response.status_code == 401
 
@@ -320,6 +385,45 @@ def test_repeated_failed_logins_are_throttled(client, monkeypatch):
     locked = client.post("/api/v1/auth/login", json=ADMIN_CREDENTIALS)
     assert locked.status_code == 429
     assert locked.headers["retry-after"]
+
+
+@pytest.mark.parametrize(
+    ("route", "path", "payload"),
+    [
+        (
+            "service_order_tracking",
+            "/api/v1/public/service-orders/track",
+            {"token": "unknown-tracking-token"},
+        ),
+        (
+            "budget_decision",
+            "/api/v1/public/budgets/decisions",
+            {"token": "unknown-approval-token", "decision": "approve"},
+        ),
+        (
+            "customer_lookup",
+            "/api/v1/customers/lookup",
+            {"document": "52998224725", "email": "unknown@test.com"},
+        ),
+    ],
+)
+def test_public_routes_return_retry_after_when_rate_limit_is_exceeded(
+    client, monkeypatch, route, path, payload
+):
+    monkeypatch.setattr(
+        rate_limit,
+        "PUBLIC_RATE_LIMIT_POLICIES",
+        {route: RateLimitPolicy(max_requests=2, window_seconds=60)},
+    )
+
+    first = client.post(path, json=payload)
+    second = client.post(path, json=payload)
+    limited = client.post(path, json=payload)
+
+    assert first.status_code != 429
+    assert second.status_code != 429
+    assert limited.status_code == 429
+    assert int(limited.headers["retry-after"]) >= 1
 
 
 def test_a_successful_login_clears_the_failure_counter(client, monkeypatch):

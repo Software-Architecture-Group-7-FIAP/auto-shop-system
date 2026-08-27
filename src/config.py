@@ -10,7 +10,6 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://oficina:replace-with-local-password@localhost:5432/oficina"
     app_env: str = "development"
     secret_key: SecretStr = Field(..., min_length=32)
-    algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
     access_token_secret: SecretStr | None = None
     refresh_token_pepper: SecretStr | None = None
@@ -19,6 +18,10 @@ class Settings(BaseSettings):
     login_attempt_window_seconds: int = 300
     login_lockout_seconds: int = 900
     login_rate_limit_max_buckets: int = 10_000
+    public_rate_limit_max_requests: int = 30
+    public_rate_limit_window_seconds: int = 60
+    public_rate_limit_max_buckets: int = 10_000
+    redis_url: str | None = None
     budget_approval_token_expire_hours: int = 72
     budget_approval_token_secret: SecretStr | None = None
     tracking_token_secret: SecretStr | None = None
@@ -40,7 +43,6 @@ class Settings(BaseSettings):
     skip_cpf_external_validation: bool = False
     dev_admin_password: str | None = None
     dev_admin_email: str = "admin@oficina.local"
-    skip_cpf_external_validation: bool = False
 
     @field_validator("secret_key", mode="before")
     @classmethod
@@ -107,6 +109,8 @@ class Settings(BaseSettings):
                 )
             if not self.tracking_token_secret:
                 raise ValueError("TRACKING_TOKEN_SECRET is required in production-like environments")
+            if not self.redis_url:
+                raise ValueError("REDIS_URL is required in production-like environments")
         if self.smtp_use_tls and self.smtp_starttls:
             raise ValueError("SMTP_USE_TLS and SMTP_STARTTLS are mutually exclusive")
         return self

@@ -6,6 +6,7 @@ import { LoginRequest, SessionResponse } from '../model/models';
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private authUrl = 'api/v1/auth';
+  private adminUrl = 'api/v1/admin';
   private currentUser: SessionResponse | null = null;
   private refreshInFlight: Observable<SessionResponse> | null = null;
 
@@ -46,7 +47,7 @@ export class AuthService {
 
   me(): Observable<SessionResponse> {
     return this.http
-      .get<SessionResponse>(`${this.authUrl}/me`, { withCredentials: true })
+      .get<SessionResponse>(`${this.adminUrl}/me`, { withCredentials: true })
       .pipe(tap((response) => (this.currentUser = response)));
   }
 
