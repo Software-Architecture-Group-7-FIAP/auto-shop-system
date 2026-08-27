@@ -684,6 +684,12 @@ def test_full_flow(client, auth_headers):
     assert paid.status_code == 200
     assert paid.json()["status"] == "Paga"
 
+    deliver = client.patch(
+        f"/api/v1/admin/service-orders/{os_id}/deliver",
+        headers=auth_headers,
+    )
+    assert deliver.status_code == 422
+
     old_track = client.get(f"/api/v1/public/service-orders/{os_id}?document=52998224725")
     assert old_track.status_code in {404, 405}
 
