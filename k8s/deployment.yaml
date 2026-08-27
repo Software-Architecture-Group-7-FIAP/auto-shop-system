@@ -1,7 +1,0 @@
-spec:
-  containers:
-  - name: auto-shop-api
-    image: auto-shop-system:latest
-    envFrom:
-    - configMapRef:
-        name: auto-shop-config
