@@ -39,7 +39,7 @@ poetry run pytest
 | `SECRET_KEY` | ✅ Corrigido | `SecretStr` obrigatório (≥ 32 chars), blocklist de placeholders |
 | Aprovação de orçamento | ✅ Corrigido | `POST /public/budgets/decisions`, fingerprint HMAC, expiração, uso idempotente e link em fragmento |
 | Lookup público de clientes | ✅ Corrigido | `POST /customers/lookup` com segundo fator |
-| Rastreio de OS | ✅ Corrigido | `POST /public/service-orders/track`, fingerprint HMAC, revogação no reenvio e expiração pós-entrega |
+| Rastreio de OS | ✅ Corrigido | `POST /public/service-orders/track`, fingerprint HMAC, revogação no reenvio e expiração desde a emissão |
 | SMTP | ✅ Corrigido | TLS configurável; obrigatório em `production`/`staging` |
 | CORS / headers | ✅ Corrigido | Origens via env; middleware de security headers |
 | Rate limiting | ✅ Corrigido | Throttle por IP e por usuário em `POST /auth/login` (`src/api/rate_limit.py`) |

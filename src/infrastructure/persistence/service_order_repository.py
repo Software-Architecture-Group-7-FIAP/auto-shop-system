@@ -1,6 +1,5 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from src.application.ports.service_order import ServiceOrderCustomer, ServiceOrderVehicle
@@ -20,7 +19,6 @@ from src.infrastructure.database import (
     ServiceOrderStatusHistoryModel,
     VehicleModel,
 )
-from src.config import settings
 
 
 class SqlAlchemyServiceOrderRepository:
@@ -52,10 +50,7 @@ class SqlAlchemyServiceOrderRepository:
             .filter(
                 ServiceOrderModel.tracking_token_hash == token_fingerprint,
                 ServiceOrderModel.tracking_token_revoked_at.is_(None),
-                or_(
-                    ServiceOrderModel.tracking_token_expires_at.is_(None),
-                    ServiceOrderModel.tracking_token_expires_at > now,
-                ),
+                ServiceOrderModel.tracking_token_expires_at > now,
             )
             .first()
         )
@@ -122,6 +117,7 @@ class SqlAlchemyServiceOrderRepository:
         model = (
             self.db.query(ServiceOrderModel)
             .filter(ServiceOrderModel.id == service_order.id)
+            .with_for_update()
             .first()
         )
         if not model:
@@ -133,16 +129,31 @@ class SqlAlchemyServiceOrderRepository:
         model.total_price = service_order.total_price
         model.started_at = service_order.started_at
         model.finished_at = service_order.finished_at
-        if service_order.status.value == "Entregue" and model.tracking_token_hash:
-            model.tracking_token_expires_at = (
-                datetime.now(timezone.utc).replace(tzinfo=None)
-                + timedelta(days=settings.tracking_token_expire_days)
-            )
         self.db.flush()
-        existing_history = self.db.query(ServiceOrderStatusHistoryModel).filter(
+        persisted_history = self.db.query(ServiceOrderStatusHistoryModel).filter(
             ServiceOrderStatusHistoryModel.service_order_id == service_order.id
-        ).count()
-        for transition in service_order.status_history[existing_history:]:
+        ).all()
+        existing_request_ids = {
+            item.request_id for item in persisted_history if item.request_id is not None
+        }
+        existing_legacy_events = {
+            self._history_event_key(item)
+            for item in persisted_history
+            if item.request_id is None
+        }
+        for transition in service_order.status_history:
+            if (
+                transition.request_id is not None
+                and transition.request_id in existing_request_ids
+            ):
+                continue
+            occurred_at = transition.occurred_at.replace(tzinfo=None)
+            if (
+                transition.request_id is None
+                and self._history_event_key(transition, occurred_at)
+                in existing_legacy_events
+            ):
+                continue
             self.db.add(
                 ServiceOrderStatusHistoryModel(
                     service_order_id=service_order.id,
@@ -152,12 +163,29 @@ class SqlAlchemyServiceOrderRepository:
                     reason=transition.reason,
                     actor_id=transition.actor_id,
                     request_id=transition.request_id,
-                    occurred_at=transition.occurred_at.replace(tzinfo=None),
+                    occurred_at=occurred_at,
                 )
             )
+            if transition.request_id is not None:
+                existing_request_ids.add(transition.request_id)
+            else:
+                existing_legacy_events.add(
+                    self._history_event_key(transition, occurred_at)
+                )
         self.db.flush()
         self.db.refresh(model)
         return self._to_domain(model)
+
+    @staticmethod
+    def _history_event_key(event, occurred_at: datetime | None = None) -> tuple:
+        return (
+            event.from_status,
+            event.to_status,
+            event.transition_type,
+            event.reason,
+            event.actor_id,
+            occurred_at if occurred_at is not None else event.occurred_at,
+        )
 
     @classmethod
     def _to_domain(cls, model: ServiceOrderModel) -> ServiceOrder:

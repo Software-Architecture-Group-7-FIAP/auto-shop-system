@@ -87,6 +87,18 @@ def test_break_glass_override_cannot_touch_execution_states() -> None:
         order.override_status(ServiceOrderStatus.EM_EXECUCAO, "correção")
 
 
+def test_rejected_budget_returns_order_to_diagnosis_through_workflow_transition() -> None:
+    order = make_order(status=ServiceOrderStatus.AGUARDANDO_APROVACAO)
+
+    order.return_to_diagnosis_after_rejection(actor_id=7, request_id="reject-1")
+
+    assert order.status == ServiceOrderStatus.EM_DIAGNOSTICO
+    event = order.status_history[-1]
+    assert event.transition_type == "budget_rejected"
+    assert event.actor_id == 7
+    assert event.request_id == "reject-1"
+
+
 def test_break_glass_override_records_reason_and_actor() -> None:
     order = make_order(status=ServiceOrderStatus.AGUARDANDO_APROVACAO)
 

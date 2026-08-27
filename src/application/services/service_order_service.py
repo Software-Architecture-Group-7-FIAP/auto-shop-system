@@ -7,7 +7,6 @@ from src.domain.auth.entity import UserRole
 from src.domain.exceptions import ForbiddenError, NotFoundError
 from src.domain.service_order.entity import ServiceOrder
 from src.domain.service_order.repository import ServiceOrderRepository
-from src.domain.value_objects.validators import DocumentValidator
 
 
 class ServiceOrderService:
@@ -33,14 +32,6 @@ class ServiceOrderService:
 
     def list_all(self, status: ServiceOrderStatus | None = None) -> list[ServiceOrder]:
         return self.service_orders.list_all(status)
-
-    def get_by_customer_document(self, service_order_id: int, document: str) -> ServiceOrder:
-        cleaned = DocumentValidator.validate(document)
-        service_order = self.get_by_id(service_order_id)
-        customer = self.contacts.get_customer(service_order.customer_id)
-        if not customer or cleaned not in customer.documents:
-            raise NotFoundError("OS não encontrada para este documento")
-        return service_order
 
     def get_by_tracking_token(self, token: str) -> ServiceOrder:
         token_fingerprint = self.tracking_tokens.fingerprint(token)

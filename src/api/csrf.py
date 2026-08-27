@@ -1,6 +1,7 @@
 """Double-submit CSRF enforcement for cookie-authenticated requests."""
 
 import hmac
+from urllib.parse import urlparse
 
 from fastapi import HTTPException, Request, status
 
@@ -24,7 +25,26 @@ def request_origin(request: Request) -> str | None:
 
 
 def is_allowed_origin(request: Request, origin: str) -> bool:
+    parsed = urlparse(origin)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+    ):
+        return False
     return origin == request_origin(request) or origin in settings.request_origins()
+
+
+def referer_origin(referer: str) -> str | None:
+    parsed = urlparse(referer)
+    if not parsed.scheme or not parsed.netloc:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}"
 
 
 def enforce_csrf(request: Request, csrf_cookie: str | None) -> None:
@@ -33,7 +53,13 @@ def enforce_csrf(request: Request, csrf_cookie: str | None) -> None:
         return
 
     origin = request.headers.get("origin")
-    if origin and not is_allowed_origin(request, origin):
+    if origin:
+        allowed = is_allowed_origin(request, origin)
+    else:
+        referer = request.headers.get("referer")
+        referer_value = referer_origin(referer) if referer else None
+        allowed = referer_value is not None and is_allowed_origin(request, referer_value)
+    if not allowed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Origem não permitida",

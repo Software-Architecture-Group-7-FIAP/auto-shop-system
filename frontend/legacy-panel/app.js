@@ -256,7 +256,7 @@ $("refresh-list").addEventListener("click", loadCustomers);
 
 // Init
 updateDocumentLabel();
-api("/auth/me")
+api("/admin/me")
   .then((user) => {
     currentUser = user;
     setAuthenticated(true, user.username);

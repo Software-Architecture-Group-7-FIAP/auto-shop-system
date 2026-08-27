@@ -211,6 +211,7 @@ def health_check():
 api_prefix = "/api/v1"
 
 app.include_router(auth.router, prefix=api_prefix)
+app.include_router(auth.admin_router, prefix=api_prefix)
 app.include_router(customers.router, prefix=api_prefix)
 app.include_router(public_customers.router, prefix=api_prefix)
 app.include_router(vehicles.router, prefix=api_prefix)
