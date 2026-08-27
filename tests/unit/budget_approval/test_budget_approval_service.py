@@ -1,4 +1,3 @@
-import re
 from dataclasses import replace
 
 import pytest
@@ -199,10 +198,9 @@ async def test_send_budget_email_marks_budget_sent_and_sends_email():
     assert budget.status == BudgetStatus.SENT
     assert budget.approval_token == "token-1"
     assert repository.get_by_id(1).status == BudgetStatus.SENT
-    service_line = pdfs.calls[0]["service_lines"][0]
-    assert service_line["quantity"] == 1
-    assert service_line["total"] == 100.0
-    assert re.fullmatch(r"Servi.o #20", service_line["name"])
+    assert pdfs.calls[0]["service_lines"] == [
+        {"name": "Serviço #20", "quantity": 1, "total": 100.0}
+    ]
     assert pdfs.calls[0]["product_lines"] == [
         {"name": "Produto #30", "quantity": 5, "total": 25.0}
     ]
@@ -236,7 +234,7 @@ def test_approve_budget_marks_budget_approved_and_creates_service_order():
 def test_approve_budget_rejects_missing_token():
     service = make_service(repository=InMemoryBudgetRepository([make_budget()]))
 
-    with pytest.raises(NotFoundError, match=r"Or.amento inv.lido ou expirado"):
+    with pytest.raises(NotFoundError, match="Orçamento inválido ou expirado"):
         service.approve_budget("missing")
 
 
@@ -244,7 +242,7 @@ def test_approve_budget_rejects_token_for_different_budget():
     budget = replace(make_budget(), status=BudgetStatus.SENT, approval_token="token-1")
     service = make_service(repository=InMemoryBudgetRepository([budget]))
 
-    with pytest.raises(NotFoundError, match=r"Or.amento inv.lido ou expirado"):
+    with pytest.raises(NotFoundError, match="Orçamento inválido ou expirado"):
         service.approve_budget("token-2")
 
 
@@ -260,7 +258,7 @@ def test_approve_budget_rejects_budget_without_lines():
 
     with pytest.raises(
         ValidationError,
-        match=r"Or.amento deve ter linhas de servi.o ou produto para ser aprovado",
+        match="Orçamento deve ter linhas de serviço ou produto para ser aprovado",
     ):
         service.approve_budget("token-1")
 
@@ -273,7 +271,7 @@ def test_approve_budget_rejects_rejected_budget():
     )
     service = make_service(repository=InMemoryBudgetRepository([budget]))
 
-    with pytest.raises(ValidationError, match=r"Or.amento recusado n.o pode ser aprovado"):
+    with pytest.raises(ValidationError, match="Orçamento recusado não pode ser aprovado"):
         service.approve_budget("token-1")
 
 
@@ -288,7 +286,7 @@ def test_approve_budget_rejects_already_approved_budget_without_commit():
         uow=uow,
     )
 
-    with pytest.raises(ValidationError, match=r"Or.amento j. aprovado"):
+    with pytest.raises(ValidationError, match="Orçamento já aprovado"):
         service.approve_budget("token-1")
 
     assert service_orders.created_from == []
@@ -319,7 +317,7 @@ def test_approve_budget_by_id_rejects_budget_without_lines():
 
     with pytest.raises(
         ValidationError,
-        match=r"Or.amento deve ter linhas de servi.o ou produto para ser aprovado",
+        match="Orçamento deve ter linhas de serviço ou produto para ser aprovado",
     ):
         service.approve_budget_by_id(1)
 
@@ -328,7 +326,7 @@ def test_approve_budget_by_id_rejects_rejected_budget():
     budget = replace(make_budget(), status=BudgetStatus.REJECTED)
     service = make_service(repository=InMemoryBudgetRepository([budget]))
 
-    with pytest.raises(ValidationError, match=r"Or.amento recusado n.o pode ser aprovado"):
+    with pytest.raises(ValidationError, match="Orçamento recusado não pode ser aprovado"):
         service.approve_budget_by_id(1)
 
 

@@ -29,17 +29,18 @@ src/
 
 ```bash
 cp .env.example .env
-# Edite .env e defina SECRET_KEY com pelo menos 32 caracteres aleatórios
+# Edite .env e defina SECRET_KEY (>= 32 caracteres aleatórios) e POSTGRES_PASSWORD
 docker compose up db mailhog -d
-docker compose run --rm app poetry run alembic upgrade head
-docker compose run --rm -e DEV_ADMIN_PASSWORD=admin123 app poetry run python -m src.scripts.seed_dev_admin
+docker compose run --rm -e DEV_ADMIN_PASSWORD=admin123 api python -m src.scripts.seed_dev_admin
 docker compose up --build
 ```
 
-- API (Docker): http://localhost:8001
+- API (Docker): http://localhost:8000
 - API (local `poetry run uvicorn`): http://localhost:8000
-- Swagger: http://localhost:8000/docs (local) or http://localhost:8001/docs (Docker)
+- Swagger: http://localhost:8000/docs
 - MailHog UI: http://localhost:8025
+
+As migrations do Alembic rodam automaticamente na subida do container `api`. Para aplicar só as migrations, use `docker compose run --rm api alembic upgrade head`.
 
 Ao rodar a API localmente fora do Docker, use `SMTP_HOST=localhost`. O host `mailhog` funciona apenas dentro da rede do Docker Compose.
 
@@ -225,11 +226,11 @@ Rotas: clientes, veículos, serviços, produtos, fornecedores, orçamentos e ord
 Interface vanilla servida pelo FastAPI em `/app/`:
 
 - **URL (local):** http://localhost:8000/app/
-- **URL (Docker):** http://localhost:8001/app/
+- **URL (Docker):** http://localhost:8000/app/
 - Login com `admin` / senha definida em `DEV_ADMIN_PASSWORD`
 - Cadastro de clientes (CPF ou CNPJ), validação externa de CPF/CNPJ, busca por documento e listagem
 
-> **Nota:** Se o container Docker `app` estiver rodando na porta 8000, `http://localhost:8000` pode responder pelo Docker (sem o painel `/app/`). Pare o container com `docker compose stop app` ou use a API Docker em http://localhost:8001.
+> **Nota:** Se o container Docker `api` estiver rodando, `http://localhost:8000` responde pelo Docker. Pare o container com `docker compose stop api` para usar o uvicorn local.
 
 ## Fluxos principais
 
