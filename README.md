@@ -31,6 +31,7 @@ src/
 cp .env.example .env
 # Edite .env e defina SECRET_KEY (>= 32 caracteres aleatórios) e POSTGRES_PASSWORD
 docker compose up db mailhog -d
+docker compose run --rm api alembic upgrade head
 docker compose run --rm -e DEV_ADMIN_PASSWORD=admin123 api python -m src.scripts.seed_dev_admin
 docker compose up --build
 ```
@@ -40,7 +41,7 @@ docker compose up --build
 - Swagger: http://localhost:8000/docs
 - MailHog UI: http://localhost:8025
 
-As migrations do Alembic rodam automaticamente na subida do container `api`. Para aplicar só as migrations, use `docker compose run --rm api alembic upgrade head`.
+O `docker compose run` do seed substitui o `CMD` da imagem, então o Alembic precisa rodar **antes** do seed. Na subida normal (`docker compose up`), as migrations também rodam no start do container `api`.
 
 Ao rodar a API localmente fora do Docker, use `SMTP_HOST=localhost`. O host `mailhog` funciona apenas dentro da rede do Docker Compose.
 
