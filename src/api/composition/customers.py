@@ -14,14 +14,13 @@ from src.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 
 
 def compose_customer_service(db: Session) -> CustomerService:
+    use_local_cpf = settings.skip_cpf_external_validation
     cpf_validator = (
         LocalCpfValidator()
-        if settings.skip_cpf_external_validation
-        else (
-            HttpInvertextoCpfValidator(token=settings.invertexto_api_token)
-            if settings.invertexto_api_token
-            else None
-        )
+        if use_local_cpf
+        else HttpInvertextoCpfValidator(token=settings.invertexto_api_token)
+        if settings.invertexto_api_token
+        else None
     )
     return CustomerService(
         customers=SqlAlchemyCustomerRepository(db),

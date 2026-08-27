@@ -1,6 +1,10 @@
+version: '3.8'
+
 services:
   db:
     image: postgres:16-alpine
+    container_name: auto_shop_db
+    restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD to a strong local database password}
@@ -17,17 +21,24 @@ services:
 
   mailhog:
     image: mailhog/mailhog:latest
+    container_name: auto_shop_mailhog
     ports:
       - "1025:1025"
       - "8025:8025"
 
-  app:
-    build: .
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auto_shop_api
+    restart: always
     ports:
-      - "8001:8000"
+      - "8000:8000"
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD to a strong local database password}@db:5432/${POSTGRES_DB:?Set POSTGRES_DB}
-      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY to a strong secret}
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY to a strong random value}
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
       SMTP_FROM: noreply@oficina.local
