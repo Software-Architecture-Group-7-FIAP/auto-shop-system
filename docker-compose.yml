@@ -1,42 +1,40 @@
+version: '3.8'
+
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:15-alpine
+    container_name: auto_shop_db
+    restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD to a strong local database password}
-      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-oficina}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-oficina}
+      POSTGRES_DB: ${POSTGRES_DB:-oficina}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-oficina} -d ${POSTGRES_DB:-oficina}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  mailhog:
-    image: mailhog/mailhog:latest
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auto_shop_api
+    restart: always
     ports:
-      - "1025:1025"
-      - "8025:8025"
-
-  app:
-    build: .
-    ports:
-      - "8001:8000"
+      - "8000:8000"
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD to a strong local database password}@db:5432/${POSTGRES_DB:?Set POSTGRES_DB}
-      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY to a strong secret}
-      SMTP_HOST: mailhog
-      SMTP_PORT: 1025
-      SMTP_FROM: noreply@oficina.local
-      APP_BASE_URL: http://localhost:8000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-oficina}:${POSTGRES_PASSWORD:-oficina}@db:5432/${POSTGRES_DB:-oficina}
+      SECRET_KEY: ${SECRET_KEY:-minha_chave_super_secreta_e_segura_para_desenvolvimento_2026}
     depends_on:
       db:
         condition: service_healthy
-      mailhog:
-        condition: service_started
 
 volumes:
   postgres_data:
