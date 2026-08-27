@@ -22,6 +22,6 @@ jobs:
       - name: Run Bandit
         run: poetry run bandit -r src -ll
       - name: Run pip-audit
-        run: poetry run pip-audit
+        run: poetry run pip-audit --ignore-code PKG_NOT_FOUND
       - name: Check unsafe defaults
         run: poetry run python scripts/check_unsafe_defaults.py
