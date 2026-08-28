@@ -43,6 +43,8 @@ docker compose up --build
 
 O `docker compose run` do seed substitui o `CMD` da imagem, então o Alembic precisa rodar **antes** do seed. Na subida normal (`docker compose up`), as migrations também rodam no start do container `api`.
 
+As migrations do Alembic rodam automaticamente na subida do container `api`. Para aplicar só as migrations, use `docker compose run --rm api alembic upgrade head`.
+
 Ao rodar a API localmente fora do Docker, use `SMTP_HOST=localhost`. O host `mailhog` funciona apenas dentro da rede do Docker Compose.
 
 ## Executar localmente
