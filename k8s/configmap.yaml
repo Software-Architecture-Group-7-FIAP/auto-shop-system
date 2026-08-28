@@ -1,3 +1,5 @@
+# Non-sensitive settings only. Credentials live in k8s/secrets.yaml (gitignored).
+# Keys match src/config.py / pydantic Settings (env names).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -7,21 +9,21 @@ metadata:
     app.kubernetes.io/name: auto-shop-system
     app.kubernetes.io/component: backend
     app.kubernetes.io/part-of: auto-shop-platform
+    app.kubernetes.io/managed-by: kubectl
 data:
-  # Ambiente e Servidor
-  ENVIRONMENT: "production"
-  LOG_LEVEL: "INFO"
-  PORT: "8000"
-  ALLOWED_ORIGINS: "https://autoshop.local"
-
-  # Hostnames e Portas de Infraestrutura (Sem credenciais)
-  DB_HOST: "postgres-service"
-  DB_PORT: "5432"
-  DB_NAME: "autoshop_db"
-  REDIS_HOST: "redis-service"
-  REDIS_PORT: "6379"
-
-  # Configurações do SMTP (Hosts e portas públicas/internas)
+  APP_ENV: "production"
+  APP_BASE_URL: "http://auto-shop-backend-svc:8000"
+  FRONTEND_PUBLIC_URL: "https://autoshop.local"
+  CORS_ALLOWED_ORIGINS: "https://autoshop.local"
+  CORS_ALLOW_CREDENTIALS: "true"
+  SECURITY_HSTS_ENABLED: "true"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+  BUDGET_APPROVAL_TOKEN_EXPIRE_HOURS: "72"
   SMTP_HOST: "smtp.sendgrid.net"
   SMTP_PORT: "587"
-  EMAIL_FROM_ADDRESS: "no-reply@autoshop.com"
+  SMTP_FROM: "noreply@autoshop.local"
+  SMTP_USER: ""
+  SMTP_USE_TLS: "false"
+  SMTP_STARTTLS: "true"
+  SMTP_REQUIRE_TLS: "false"
+  SKIP_CPF_EXTERNAL_VALIDATION: "false"

@@ -1,0 +1,36 @@
+# T39 — Service do backend Auto Shop System
+# In-cluster DNS: http://auto-shop-backend-svc:8000
+#
+# type LoadBalancer: cloud providers (EKS/GKE/AKS) allocate an external IP
+# on port 80 → container 8000 (issue #39 cenário 4). Minikube/Kind map this
+# to NodePort automatically (cenário 5). Pin nodePort 30080 for local access:
+#   http://<node-ip>:30080
+#
+# Production: prefer an Ingress with TLS in front of this Service instead of
+# exposing NodePort directly.
+apiVersion: v1
+kind: Service
+metadata:
+  name: auto-shop-backend-svc
+  namespace: auto-shop
+  labels:
+    app: auto-shop-backend
+    app.kubernetes.io/name: auto-shop-system
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: auto-shop-platform
+spec:
+  type: LoadBalancer
+  selector:
+    app: auto-shop-backend
+  sessionAffinity: None
+  ports:
+  - name: http
+    protocol: TCP
+    port: 8000
+    targetPort: http
+    nodePort: 30080
+  - name: http-external
+    protocol: TCP
+    port: 80
+    targetPort: http
+    nodePort: 30081
