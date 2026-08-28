@@ -1,9 +1,19 @@
-from src.application.ports.service_order import ServiceOrderContactLookup
+from src.application.ports.service_order import (
+    RequestedPart,
+    RequestedService,
+    ServiceOrderContactLookup,
+    ServiceOrderOpeningLookup,
+    ServiceOrderStockReserver,
+)
 from src.application.ports.service_order_tracking import ServiceOrderTrackingTokenService
 from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.enums import Priority, ServiceOrderStatus
 from src.domain.exceptions import NotFoundError
-from src.domain.service_order.entity import ServiceOrder
+from src.domain.service_order.entity import (
+    ServiceOrder,
+    ServiceOrderProductLine,
+    ServiceOrderServiceLine,
+)
 from src.domain.service_order.repository import ServiceOrderRepository
 from src.domain.value_objects.validators import DocumentValidator
 
@@ -13,13 +23,63 @@ class ServiceOrderService:
         self,
         service_orders: ServiceOrderRepository,
         contacts: ServiceOrderContactLookup,
+        openings: ServiceOrderOpeningLookup,
+        stock_reserver: ServiceOrderStockReserver,
         tracking_tokens: ServiceOrderTrackingTokenService,
         uow: UnitOfWork,
     ):
         self.service_orders = service_orders
         self.contacts = contacts
+        self.openings = openings
+        self.stock_reserver = stock_reserver
         self.tracking_tokens = tracking_tokens
         self.uow = uow
+
+    def open(
+        self,
+        customer_id: int,
+        vehicle_id: int,
+        services: list[RequestedService],
+        parts: list[RequestedPart],
+    ) -> ServiceOrder:
+        if not self.openings.customer_exists(customer_id):
+            raise NotFoundError("Customer not found")
+        if not self.openings.vehicle_belongs_to_customer(vehicle_id, customer_id):
+            raise NotFoundError("Vehicle not found or does not belong to the customer")
+
+        service_lines = [self._build_service_line(item) for item in services]
+        product_lines = [self._build_product_line(item) for item in parts]
+
+        created = self.service_orders.create(
+            ServiceOrder.open(customer_id, vehicle_id, service_lines, product_lines)
+        )
+        self.stock_reserver.create_reservations_for_os(created.id)
+        self.uow.commit()
+        return created
+
+    def _build_service_line(self, item: RequestedService) -> ServiceOrderServiceLine:
+        service = self.openings.get_service(item.service_id)
+        if not service:
+            raise NotFoundError("Service not found")
+        return ServiceOrderServiceLine(
+            id=None,
+            service_order_id=None,
+            service_id=service.id,
+            quantity=item.quantity,
+            unit_price=service.base_price,
+        )
+
+    def _build_product_line(self, item: RequestedPart) -> ServiceOrderProductLine:
+        product = self.openings.get_product(item.product_id)
+        if not product:
+            raise NotFoundError("Part not found")
+        return ServiceOrderProductLine(
+            id=None,
+            service_order_id=None,
+            product_id=product.id,
+            quantity=item.quantity,
+            unit_price=product.unit_price,
+        )
 
     def get_by_id(self, service_order_id: int) -> ServiceOrder:
         service_order = self.service_orders.get_by_id(service_order_id)

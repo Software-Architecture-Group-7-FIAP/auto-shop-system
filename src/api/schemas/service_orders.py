@@ -1,8 +1,29 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, StrictInt, model_validator
 
 from src.domain.enums import Priority, ServiceOrderStatus
+
+
+class ServiceOrderServiceItem(BaseModel):
+    service_id: StrictInt = Field(gt=0)
+    quantity: StrictInt = Field(default=1, gt=0)
+
+
+class ServiceOrderPartItem(BaseModel):
+    product_id: StrictInt = Field(gt=0)
+    quantity: StrictInt = Field(default=1, gt=0)
+
+
+class ServiceOrderCreate(BaseModel):
+    customer_id: StrictInt = Field(gt=0)
+    vehicle_id: StrictInt = Field(gt=0)
+    services: list[ServiceOrderServiceItem] = Field(min_length=1)
+    parts: list[ServiceOrderPartItem] = Field(default_factory=list)
+
+
+class ServiceOrderCreatedResponse(BaseModel):
+    service_order_id: int
 
 
 class ServiceOrderProductLineResponse(BaseModel):

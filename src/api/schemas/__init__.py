@@ -6,9 +6,13 @@ from pydantic import BaseModel, EmailStr, Field, StrictInt, model_validator
 from src.api.schemas.service_orders import (
     AssignMechanicRequest,
     OverrideStatusRequest,
+    ServiceOrderCreate,
+    ServiceOrderCreatedResponse,
+    ServiceOrderPartItem,
     ServiceOrderProductLineResponse,
     ServiceOrderPublicResponse,
     ServiceOrderResponse,
+    ServiceOrderServiceItem,
     ServiceOrderUpdate,
     SetPriorityRequest,
 )

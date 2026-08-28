@@ -77,6 +77,27 @@ class FakeContactLookup:
         return ServiceOrderVehicle(plate="ABC1234")
 
 
+class FakeOpeningLookup:
+    def __init__(self, customer_ids=(1,), vehicle_ownership=((1, 1),)):
+        self.customer_ids = set(customer_ids)
+        self.vehicle_ownership = set(vehicle_ownership)
+
+    def customer_exists(self, customer_id: int) -> bool:
+        return customer_id in self.customer_ids
+
+    def vehicle_belongs_to_customer(self, vehicle_id: int, customer_id: int) -> bool:
+        return (vehicle_id, customer_id) in self.vehicle_ownership
+
+
+class FakeStockReserver:
+    def __init__(self):
+        self.calls = []
+
+    def create_reservations_for_os(self, service_order_id: int) -> list:
+        self.calls.append(service_order_id)
+        return []
+
+
 class FakeUnitOfWork:
     def __init__(self):
         self.commits = 0
@@ -177,11 +198,15 @@ def make_service_order(**overrides) -> ServiceOrder:
 def make_service(
     repository: InMemoryServiceOrderRepository | None = None,
     contacts: FakeContactLookup | None = None,
+    openings: FakeOpeningLookup | None = None,
+    stock_reserver: FakeStockReserver | None = None,
     uow: FakeUnitOfWork | None = None,
 ) -> ServiceOrderService:
     return ServiceOrderService(
         service_orders=repository or InMemoryServiceOrderRepository([make_service_order()]),
         contacts=contacts or FakeContactLookup(),
+        openings=openings or FakeOpeningLookup(),
+        stock_reserver=stock_reserver or FakeStockReserver(),
         tracking_tokens=FakeTrackingTokenService(),
         uow=uow or FakeUnitOfWork(),
     )
