@@ -1,5 +1,5 @@
 from src.config import settings
-from src.domain.auth.entity import User
+from src.domain.auth.entity import User, UserRole
 from src.infrastructure.auth.jwt import BcryptPasswordHasher
 from src.infrastructure.database import SessionLocal
 from src.infrastructure.persistence.auth_repository import SqlAlchemyUserRepository
@@ -22,6 +22,7 @@ def seed_dev_admin() -> None:
                 username="admin",
                 email=settings.dev_admin_email,
                 hashed_password=BcryptPasswordHasher().hash(settings.dev_admin_password),
+                role=UserRole.ADMIN,
             )
         )
         SqlAlchemyUnitOfWork(db).commit()

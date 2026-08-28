@@ -11,7 +11,7 @@ class HmacServiceOrderTrackingTokenService:
 
     def fingerprint(self, token: str) -> str:
         return hmac.new(
-            settings.jwt_secret().encode(),
+            settings.tracking_secret().encode(),
             token.encode(),
             hashlib.sha256,
         ).hexdigest()

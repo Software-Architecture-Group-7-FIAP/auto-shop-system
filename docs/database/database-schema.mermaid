@@ -1,5 +1,5 @@
 %% Sistema Auto Shop - Esquema do Banco de Dados
-%% Fonte: src/infrastructure/database.py | alembic/versions/001_initial_schema.py
+%% Fonte: src/infrastructure/database.py | alembic/versions/010_public_token_hardening.py | alembic/versions/011_auth_sessions_and_audit.py
 
 erDiagram
     users {
@@ -8,7 +8,20 @@ erDiagram
         string email UK
         string hashed_password "senha criptografada"
         bool is_active "ativo"
+        string role "ADMIN ou OPERATOR"
         datetime created_at "criado em"
+    }
+
+    refresh_sessions {
+        string id PK
+        int user_id FK
+        string token_hash UK "fingerprint HMAC"
+        string family_id
+        datetime expires_at
+        datetime revoked_at
+        string replaced_by_id
+        datetime created_at
+        datetime last_used_at
     }
 
     customers {
@@ -71,10 +84,14 @@ erDiagram
         int id PK
         int customer_id FK "cliente"
         int vehicle_id FK "veiculo"
-        string status "Rascunho, Enviado, Aprovado, Recusado"
+        string status "Rascunho, Enviado, Aprovado, Recusado, Substituido"
         float total_price "preco total"
         datetime estimated_delivery "previsao de entrega"
-        string approval_token UK "token de aprovacao"
+        string approval_token_hash UK "fingerprint HMAC"
+        datetime approval_expires_at
+        datetime approval_used_at
+        int revision_number
+        int supersedes_budget_id FK
         datetime created_at "criado em"
         datetime updated_at "atualizado em"
     }
@@ -101,14 +118,29 @@ erDiagram
         int budget_id FK "orcamento opcional"
         int customer_id FK "cliente"
         int vehicle_id FK "veiculo"
-        string status "Recebida, Em diagnostico, Aguardando aprovacao, Em execucao, Finalizada, Entregue"
+        string status "Recebida, Em diagnostico, Aguardando aprovacao, Aguardando inicio, Em execucao, Finalizada, Entregue"
         string priority "Baixa, Normal, Alta, Urgente"
         string mechanic_name "nome do mecanico"
         float total_price "preco total"
         datetime started_at "iniciado em"
         datetime finished_at "finalizado em"
+        string tracking_token_hash UK "fingerprint HMAC"
+        datetime tracking_token_expires_at
+        datetime tracking_token_revoked_at
         datetime created_at "criado em"
         datetime updated_at "atualizado em"
+    }
+
+    service_order_status_history {
+        int id PK
+        int service_order_id FK
+        string from_status
+        string to_status
+        string transition_type
+        string reason
+        int actor_id FK
+        string request_id
+        datetime occurred_at
     }
 
     service_order_service_lines {
@@ -175,6 +207,8 @@ erDiagram
     customers ||--o{ vehicles : possui
     customers ||--o{ budgets : solicita
     customers ||--o{ service_orders : possui
+    users ||--o{ refresh_sessions : possui
+    users ||--o{ service_order_status_history : atua
     vehicles ||--o{ budgets : referente_a
     vehicles ||--o{ service_orders : referente_a
 
@@ -195,6 +229,7 @@ erDiagram
     service_orders ||--o{ reservations : reserva
     service_orders ||--o{ stock_withdrawals : retira
     service_orders ||--o{ purchase_requests : dispara
+    service_orders ||--o{ service_order_status_history : audita
     services ||--o{ service_order_service_lines : realizado
     products ||--o{ service_order_product_lines : consumido
     products ||--o{ reservations : reservado

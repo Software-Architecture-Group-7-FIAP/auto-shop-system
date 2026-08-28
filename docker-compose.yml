@@ -26,6 +26,13 @@ services:
       - "1025:1025"
       - "8025:8025"
 
+  redis:
+    image: redis:7-alpine
+    container_name: auto_shop_redis
+    restart: always
+    ports:
+      - "6379:6379"
+
   api:
     build:
       context: .
@@ -38,15 +45,27 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD to a strong local database password}@db:5432/${POSTGRES_DB:?Set POSTGRES_DB}
+      APP_ENV: ${APP_ENV:-development}
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY to a strong random value}
+      ACCESS_TOKEN_SECRET: ${ACCESS_TOKEN_SECRET:-}
+      REFRESH_TOKEN_PEPPER: ${REFRESH_TOKEN_PEPPER:-}
+      BUDGET_APPROVAL_TOKEN_SECRET: ${BUDGET_APPROVAL_TOKEN_SECRET:-}
+      TRACKING_TOKEN_SECRET: ${TRACKING_TOKEN_SECRET:-}
+      REDIS_URL: redis://redis:6379/0
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
       SMTP_FROM: noreply@oficina.local
-      APP_BASE_URL: http://localhost:8000
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8000}
+      FRONTEND_PUBLIC_URL: ${FRONTEND_PUBLIC_URL:-http://localhost:4200}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:4200}
+      CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS:-true}
+      SECURITY_HSTS_ENABLED: ${SECURITY_HSTS_ENABLED:-false}
     depends_on:
       db:
         condition: service_healthy
       mailhog:
+        condition: service_started
+      redis:
         condition: service_started
 
 volumes:
