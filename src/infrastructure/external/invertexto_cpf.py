@@ -8,7 +8,6 @@ from src.domain.exceptions import ValidationError
 logger = logging.getLogger(__name__)
 
 INVERTEXTO_VALIDATOR_URL = "https://api.invertexto.com/v1/validator"
-INVERTEXTO_API_DOCS_URL = "https://api.invertexto.com/v1/validator"
 
 
 class HttpInvertextoCpfValidator:
@@ -21,11 +20,7 @@ class HttpInvertextoCpfValidator:
             raise ValidationError("Serviço de validação de CPF indisponível")
 
         params = {"token": self._token, "value": cpf}
-        logger.info(
-            "Enviando informação para Invertexto API (%s) — consultando CPF %s",
-            INVERTEXTO_API_DOCS_URL,
-            cpf,
-        )
+        logger.info("Enviando solicitação de validação para Invertexto API")
         try:
             if self._client is not None:
                 response = self._client.get(INVERTEXTO_VALIDATOR_URL, params=params)
@@ -48,7 +43,7 @@ class HttpInvertextoCpfValidator:
         if not data.get("valid"):
             raise ValidationError("CPF inválido")
 
-        logger.info("Invertexto API respondeu com sucesso para CPF %s", cpf)
+        logger.info("Invertexto API respondeu com sucesso")
         return CpfValidationResult(
             valid=True,
             formatted=data.get("formatted"),

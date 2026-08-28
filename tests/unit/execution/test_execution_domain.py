@@ -135,7 +135,7 @@ def test_validate_withdrawal_quantity_rejects_over_withdrawal():
         validate_withdrawal_quantity(_os_in_execution_with_line(10, 5), 10, 3, already_requested=3)
 
 
-def test_enqueue_service_order_requires_waiting_approval_status():
+def test_enqueue_service_order_requires_waiting_start_status():
     service_order = ServiceOrder(
         id=1,
         budget_id=2,
@@ -146,9 +146,27 @@ def test_enqueue_service_order_requires_waiting_approval_status():
 
     with pytest.raises(
         ValidationError,
-        match="OS deve estar aguardando aprovação para entrar na fila",
+        match="OS deve estar aguardando início para entrar na fila",
     ):
         enqueue_service_order(service_order)
+
+
+def test_enqueue_service_order_records_who_queued_it():
+    service_order = ServiceOrder(
+        id=1,
+        budget_id=2,
+        customer_id=3,
+        vehicle_id=4,
+        status=ServiceOrderStatus.AGUARDANDO_INICIO,
+    )
+
+    enqueue_service_order(service_order, actor_id=7, request_id="req-1")
+
+    entry = service_order.status_history[-1]
+    assert entry.transition_type == "execution_queued"
+    assert entry.actor_id == 7
+    assert entry.request_id == "req-1"
+    assert entry.from_status == entry.to_status == ServiceOrderStatus.AGUARDANDO_INICIO
 
 
 def test_start_service_order_sets_status_and_started_at():
@@ -158,7 +176,7 @@ def test_start_service_order_sets_status_and_started_at():
         budget_id=2,
         customer_id=3,
         vehicle_id=4,
-        status=ServiceOrderStatus.EM_DIAGNOSTICO,
+        status=ServiceOrderStatus.AGUARDANDO_INICIO,
         mechanic_name="João",
     )
 

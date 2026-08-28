@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from src.api.composition.execution import compose_execution_service
@@ -14,11 +16,12 @@ withdrawals_router = APIRouter(prefix="/admin/stock-withdrawals", tags=["Executi
 @execution_router.post("/{service_order_id}/enqueue", response_model=ServiceOrderResponse)
 def enqueue_service_order(
     service_order_id: int,
+    request: Request,
     db: Session = Depends(get_db),
-    _: UserModel = Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     try:
-        return compose_execution_service(db).enqueue(service_order_id)
+        return compose_execution_service(db).enqueue(service_order_id, actor_id=current_user.id, request_id=request.headers.get("x-request-id") or str(uuid4()))
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -26,11 +29,12 @@ def enqueue_service_order(
 @execution_router.patch("/{service_order_id}/start", response_model=ServiceOrderResponse)
 def start_service(
     service_order_id: int,
+    request: Request,
     db: Session = Depends(get_db),
-    _: UserModel = Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     try:
-        return compose_execution_service(db).start_service(service_order_id)
+        return compose_execution_service(db).start_service(service_order_id, actor_id=current_user.id, request_id=request.headers.get("x-request-id") or str(uuid4()))
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -38,11 +42,12 @@ def start_service(
 @execution_router.patch("/{service_order_id}/finish", response_model=ServiceOrderResponse)
 def finish_service(
     service_order_id: int,
+    request: Request,
     db: Session = Depends(get_db),
-    _: UserModel = Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     try:
-        return compose_execution_service(db).finish_service(service_order_id)
+        return compose_execution_service(db).finish_service(service_order_id, actor_id=current_user.id, request_id=request.headers.get("x-request-id") or str(uuid4()))
     except DomainError as e:
         raise domain_error_handler(e)
 

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from src.application.ports.email import EmailAttachment
+from src.domain.service_order.entity import ServiceOrderStatusTransition
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,17 @@ class ServiceOrderContactLookup(Protocol):
         ...
 
     def get_vehicle(self, vehicle_id: int) -> ServiceOrderVehicle | None:
+        ...
+
+
+class ServiceOrderStatusHistoryRepository(Protocol):
+    """Append-only sink for workflow audit entries.
+
+    The aggregate also keeps entries in memory for unit-of-work consumers; a
+    persistence adapter can project them into a dedicated history table.
+    """
+
+    def append(self, service_order_id: int, transition: ServiceOrderStatusTransition) -> None:
         ...
 
 

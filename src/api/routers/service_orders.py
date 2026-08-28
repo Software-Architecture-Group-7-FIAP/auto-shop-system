@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from src.api.composition.service_orders import (
@@ -6,7 +8,8 @@ from src.api.composition.service_orders import (
     compose_service_order_service,
 )
 from src.api.composition.execution import compose_execution_service
-from src.api.dependencies import domain_error_handler, get_current_user
+from src.api.dependencies import domain_error_handler, get_current_user, require_admin
+from src.api.rate_limit import enforce_public_rate_limit
 from src.api.mappers.service_orders import service_order_with_withdrawals_to_response
 from src.api.schemas import (
     AssignMechanicRequest,
@@ -14,6 +17,7 @@ from src.api.schemas import (
     MessageResponse,
     OverrideStatusRequest,
     ServiceOrderPublicResponse,
+    ServiceOrderTrackingRequest,
     ServiceOrderResponse,
     ServiceOrderUpdate,
     ServiceOrderWithWithdrawalsResponse,
@@ -21,6 +25,7 @@ from src.api.schemas import (
 )
 from src.domain.enums import ServiceOrderStatus
 from src.domain.exceptions import DomainError
+from src.infrastructure.auth.service_order_tracking import HmacServiceOrderTrackingTokenService
 from src.infrastructure.database import UserModel, get_db
 
 admin_router = APIRouter(prefix="/admin/service-orders", tags=["Service Orders"])
@@ -80,14 +85,18 @@ def get_service_order(
 def update_service_order(
     service_order_id: int,
     data: ServiceOrderUpdate,
+    request: Request,
     db: Session = Depends(get_db),
-    _: UserModel = Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     try:
         return compose_service_order_service(db).update(
             service_order_id=service_order_id,
             mechanic_name=data.mechanic_name,
             priority=data.priority,
+            mechanic_reason=data.reason,
+            actor_id=current_user.id,
+            request_id=request.headers.get("x-request-id") or str(uuid4()),
         )
     except DomainError as e:
         raise domain_error_handler(e)
@@ -97,14 +106,18 @@ def update_service_order(
 def override_status(
     service_order_id: int,
     data: OverrideStatusRequest,
+    request: Request,
     db: Session = Depends(get_db),
-    _: UserModel = Depends(get_current_user),
+    current_user=Depends(require_admin),
 ):
     try:
         return compose_service_order_service(db).override_status(
             service_order_id,
             data.status,
             data.reason,
+            actor_role=current_user.role,
+            actor_id=current_user.id,
+            request_id=request.headers.get("x-request-id") or str(uuid4()),
         )
     except DomainError as e:
         raise domain_error_handler(e)
@@ -114,13 +127,17 @@ def override_status(
 def assign_mechanic(
     service_order_id: int,
     data: AssignMechanicRequest,
+    request: Request,
     db: Session = Depends(get_db),
-    _: UserModel = Depends(get_current_user),
+    current_user=Depends(get_current_user),
 ):
     try:
         return compose_service_order_service(db).assign_mechanic(
             service_order_id,
             data.mechanic_name,
+            data.reason,
+            actor_id=current_user.id,
+            request_id=request.headers.get("x-request-id") or str(uuid4()),
         )
     except DomainError as e:
         raise domain_error_handler(e)
@@ -152,15 +169,20 @@ async def send_os_email(
         raise domain_error_handler(e)
 
 
-@public_router.get(
-    "/track/{token}",
-    response_model=ServiceOrderPublicResponse,
-)
+@public_router.post("/track", response_model=ServiceOrderPublicResponse)
 def track_service_order(
-    token: str,
+    data: ServiceOrderTrackingRequest,
+    response: Response,
+    request: Request,
     db: Session = Depends(get_db),
 ):
+    response.headers["Cache-Control"] = "no-store"
+    enforce_public_rate_limit(
+        request,
+        HmacServiceOrderTrackingTokenService().fingerprint(data.token),
+        "service_order_tracking",
+    )
     try:
-        return compose_service_order_service(db).get_by_tracking_token(token)
+        return compose_service_order_service(db).get_by_tracking_token(data.token)
     except DomainError as e:
         raise domain_error_handler(e)
