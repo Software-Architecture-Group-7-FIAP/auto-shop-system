@@ -22,7 +22,10 @@ export class BudgetApprovalComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.token = this.route.snapshot.queryParamMap.get('token') || '';
+    this.token = this.route.snapshot.fragment || '';
+    if (this.token) {
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+    }
     const action = this.route.snapshot.queryParamMap.get('action');
     if (action === 'approve' || action === 'reject') {
       this.selectedAction = action;

@@ -1,4 +1,6 @@
-def _create_os_with_product(client, auth_headers, stock_quantity: int, product_quantity: int):
+def _create_os_with_product(
+    client, auth_headers, captured_emails, stock_quantity: int, product_quantity: int
+):
     customer = client.post(
         "/api/v1/admin/customers",
         headers=auth_headers,
@@ -59,12 +61,15 @@ def _create_os_with_product(client, auth_headers, stock_quantity: int, product_q
         json={"product_id": product["id"], "quantity": product_quantity},
     )
 
-    send = client.post(
+    client.post(
         f"/api/v1/admin/budgets/{budget['id']}/send-email",
         headers=auth_headers,
     )
-    token = send.json()["approval_token"]
-    approve = client.post(f"/api/v1/public/budgets/{token}/approve")
+    token = captured_emails.approval_token()
+    approve = client.post(
+        "/api/v1/public/budgets/decisions",
+        json={"token": token, "decision": "approve"},
+    )
     assert approve.status_code == 200
 
     service_orders = client.get(
@@ -81,10 +86,11 @@ def _create_os_with_product(client, auth_headers, stock_quantity: int, product_q
     }
 
 
-def test_inventory_reservations_and_purchase_requests_flow(client, auth_headers):
+def test_inventory_reservations_and_purchase_requests_flow(client, auth_headers, captured_emails):
     context = _create_os_with_product(
         client,
         auth_headers,
+        captured_emails,
         stock_quantity=1,
         product_quantity=5,
     )

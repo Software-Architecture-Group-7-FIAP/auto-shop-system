@@ -177,7 +177,7 @@ def make_service_order(**overrides) -> ServiceOrder:
         budget_id=2,
         customer_id=3,
         vehicle_id=4,
-        status=ServiceOrderStatus.AGUARDANDO_APROVACAO,
+        status=ServiceOrderStatus.AGUARDANDO_INICIO,
         product_lines=[
             ServiceOrderProductLine(
                 id=1,
@@ -341,12 +341,12 @@ def test_execution_service_lists_execution_queue_ordered_by_priority():
             [
                 make_service_order(
                     id=1,
-                    status=ServiceOrderStatus.AGUARDANDO_APROVACAO,
+                    status=ServiceOrderStatus.AGUARDANDO_INICIO,
                     priority=Priority.LOW,
                 ),
                 make_service_order(
                     id=2,
-                    status=ServiceOrderStatus.AGUARDANDO_APROVACAO,
+                    status=ServiceOrderStatus.AGUARDANDO_INICIO,
                     priority=Priority.URGENT,
                 ),
                 make_service_order(id=3, status=ServiceOrderStatus.EM_EXECUCAO),

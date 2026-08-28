@@ -31,10 +31,13 @@ export class ServiceOrderService {
     return this.http.get<ServiceOrder>(`${this.url}/${id}`);
   }
 
-  assignMechanic(id: number, mechanicName: string): Observable<ServiceOrder> {
+  assignMechanic(id: number, mechanicName: string, reason?: string): Observable<ServiceOrder> {
     return this.http.patch<ServiceOrder>(
       `${this.url}/${id}/assign-mechanic`,
-      { mechanic_name: mechanicName },
+      {
+        mechanic_name: mechanicName,
+        ...(reason?.trim() ? { reason: reason.trim() } : {}),
+      },
       this.httpOptions
     );
   }
@@ -64,11 +67,10 @@ export class ServiceOrderService {
   }
 
   trackPublic(token: string): Observable<ServiceOrderPublic> {
-    return this.http.get<ServiceOrderPublic>(
-      `api/v1/public/service-orders/track/${encodeURIComponent(token)}`,
-      {
-        context: new HttpContext().set(SKIP_GLOBAL_ERROR_ALERT, true),
-      }
+    return this.http.post<ServiceOrderPublic>(
+      'api/v1/public/service-orders/track',
+      { token },
+      { context: new HttpContext().set(SKIP_GLOBAL_ERROR_ALERT, true) }
     );
   }
 

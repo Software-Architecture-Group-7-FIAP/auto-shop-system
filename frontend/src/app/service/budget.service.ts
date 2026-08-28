@@ -136,8 +136,8 @@ export class BudgetService {
 
   approvePublicBudget(token: string): Observable<MessageResponse> {
     return this.http.post<MessageResponse>(
-      `api/v1/public/budgets/${encodeURIComponent(token)}/approve`,
-      {},
+      'api/v1/public/budgets/decisions',
+      { token, decision: 'approve' },
       {
         ...this.httpOptions,
         context: new HttpContext().set(SKIP_GLOBAL_ERROR_ALERT, true),
@@ -147,8 +147,8 @@ export class BudgetService {
 
   rejectPublicBudget(token: string): Observable<MessageResponse> {
     return this.http.post<MessageResponse>(
-      `api/v1/public/budgets/${encodeURIComponent(token)}/reject`,
-      {},
+      'api/v1/public/budgets/decisions',
+      { token, decision: 'reject' },
       {
         ...this.httpOptions,
         context: new HttpContext().set(SKIP_GLOBAL_ERROR_ALERT, true),
