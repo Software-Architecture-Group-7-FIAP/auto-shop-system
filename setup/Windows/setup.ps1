@@ -1,5 +1,6 @@
 Write-Host "Iniciando Auto Shop..."
 
+docker-compose up -d db | Out-Null
 docker build -q -t auto-shop-system:latest . | Out-Null
 
 kubectl apply -f k8s/ | Out-Null
