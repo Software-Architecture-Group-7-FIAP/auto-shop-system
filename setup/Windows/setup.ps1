@@ -1,14 +1,17 @@
-Write-Host "Iniciando Auto Shop..."
+Write-Host "Iniciando Auto Shop..." -ForegroundColor Yellow
 
-docker-compose up -d db | Out-Null
-docker build -q -t auto-shop-system:latest . | Out-Null
+docker compose --progress=quiet up -d db --quiet-pull 2>&1 > $null
+docker build -q -t auto-shop-system:latest . 2>&1 > $null
 
-kubectl apply -f k8s/ | Out-Null
-kubectl apply -f k8s/services | Out-Null
+kubectl apply -f k8s/ 2>&1 > $null
+kubectl apply -f k8s/services 2>&1 > $null
 
 Start-Process powershell -WindowStyle Hidden -ArgumentList "kubectl port-forward -n ingress-nginx service/ingress-nginx-controller 8080:80"
 
-Write-Host "Sistema rodando em http://api.autoshop.com:8080"
-Write-Host "Para a documentacao das APIs, acesse: http://api.autoshop.com:8080/docs"
+Write-Host "Sistema rodando em " -ForegroundColor Yellow -NoNewline
+Write-Host "http://api.autoshop.com:8080" -ForegroundColor Green
+
+Write-Host "Para a documentacao das APIs, acesse: " -ForegroundColor Yellow -NoNewline
+Write-Host "http://api.autoshop.com:8080/docs" -ForegroundColor Green
 
 [void][System.Console]::ReadKey($true)
