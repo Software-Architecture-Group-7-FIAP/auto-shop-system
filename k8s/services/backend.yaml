@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: auto-shop-backend-service
+  namespace: auto-shop
+  labels:
+    app: auto-shop-backend
+spec:
+  type: ClusterIP
+  selector:
+    app: auto-shop-backend
+  ports:
+  - port: 80
+    targetPort: 8000
