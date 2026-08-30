@@ -3,8 +3,10 @@ from src.application.ports.service_order_tracking import ServiceOrderTrackingTok
 from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.enums import Priority, ServiceOrderStatus
 from src.domain.exceptions import NotFoundError
+from src.domain.pagination import Page
 from src.domain.service_order.entity import ServiceOrder
 from src.domain.service_order.repository import ServiceOrderRepository
+from src.domain.service_order.rules import ServiceOrderListQuery
 from src.domain.value_objects.validators import DocumentValidator
 
 
@@ -29,6 +31,9 @@ class ServiceOrderService:
 
     def list_all(self, status: ServiceOrderStatus | None = None) -> list[ServiceOrder]:
         return self.service_orders.list_all(status)
+
+    def list_operational(self, query: ServiceOrderListQuery) -> Page[ServiceOrder]:
+        return self.service_orders.list_operational(query)
 
     def get_by_customer_document(self, service_order_id: int, document: str) -> ServiceOrder:
         cleaned = DocumentValidator.validate(document)

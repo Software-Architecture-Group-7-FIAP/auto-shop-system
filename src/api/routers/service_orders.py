@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from src.api.composition.service_orders import (
@@ -13,6 +13,7 @@ from src.api.schemas import (
     AverageExecutionTimeResponse,
     MessageResponse,
     OverrideStatusRequest,
+    PaginatedResponse,
     ServiceOrderPublicResponse,
     ServiceOrderResponse,
     ServiceOrderUpdate,
@@ -21,19 +22,44 @@ from src.api.schemas import (
 )
 from src.domain.enums import ServiceOrderStatus
 from src.domain.exceptions import DomainError
+from src.domain.service_order.rules import (
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGE_SIZE,
+    ServiceOrderListQuery,
+    ServiceOrderOrdering,
+)
 from src.infrastructure.database import UserModel, get_db
 
 admin_router = APIRouter(prefix="/admin/service-orders", tags=["Service Orders"])
 public_router = APIRouter(prefix="/public/service-orders", tags=["Public Service Orders"])
 
 
-@admin_router.get("", response_model=list[ServiceOrderResponse])
+@admin_router.get("", response_model=PaginatedResponse[ServiceOrderResponse])
 def list_service_orders(
     status: ServiceOrderStatus | None = None,
+    include_closed: bool = False,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
+    order_by: ServiceOrderOrdering = ServiceOrderOrdering.STATUS_CREATED_AT_ASC,
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    return compose_service_order_service(db).list_all(status)
+    result = compose_service_order_service(db).list_operational(
+        ServiceOrderListQuery(
+            status=status,
+            include_closed=include_closed,
+            page=page,
+            page_size=page_size,
+            order_by=order_by,
+        )
+    )
+    return PaginatedResponse[ServiceOrderResponse](
+        items=[ServiceOrderResponse.model_validate(item) for item in result.items],
+        total=result.total,
+        page=result.page,
+        page_size=result.page_size,
+        total_pages=result.total_pages,
+    )
 
 
 @admin_router.get("/metrics/average-execution-time", response_model=AverageExecutionTimeResponse)

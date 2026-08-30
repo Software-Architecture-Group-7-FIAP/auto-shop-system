@@ -1,12 +1,19 @@
-from sqlalchemy.orm import Session
+from sqlalchemy import case
+from sqlalchemy.orm import Query, Session
 
 from src.application.ports.service_order import ServiceOrderCustomer, ServiceOrderVehicle
 from src.domain.enums import ServiceOrderStatus
 from src.domain.exceptions import NotFoundError
+from src.domain.pagination import Page
 from src.domain.service_order.entity import (
     ServiceOrder,
     ServiceOrderProductLine,
     ServiceOrderServiceLine,
+)
+from src.domain.service_order.rules import (
+    STATUS_RANKING,
+    ServiceOrderListQuery,
+    ServiceOrderOrdering,
 )
 from src.infrastructure.database import (
     CustomerModel,
@@ -61,6 +68,48 @@ class SqlAlchemyServiceOrderRepository:
         if status:
             query = query.filter(ServiceOrderModel.status == status)
         return [self._to_domain(model) for model in query.all()]
+
+    def list_operational(self, query: ServiceOrderListQuery) -> Page[ServiceOrder]:
+        visible_statuses = query.visible_statuses()
+        if not visible_statuses:
+            return Page(items=(), total=0, page=query.page, page_size=query.page_size)
+
+        base = self.db.query(ServiceOrderModel).filter(
+            ServiceOrderModel.status.in_(tuple(visible_statuses))
+        )
+        total = base.order_by(None).count()
+        models = (
+            self._apply_ordering(base, query.order_by)
+            .offset(query.offset)
+            .limit(query.page_size)
+            .all()
+        )
+        return Page(
+            items=tuple(self._to_domain(model) for model in models),
+            total=total,
+            page=query.page,
+            page_size=query.page_size,
+        )
+
+    @staticmethod
+    def _apply_ordering(
+        query: Query[ServiceOrderModel],
+        ordering: ServiceOrderOrdering,
+    ) -> Query[ServiceOrderModel]:
+        if ordering is ServiceOrderOrdering.CREATED_AT_DESC:
+            return query.order_by(ServiceOrderModel.created_at.desc(), ServiceOrderModel.id.desc())
+        if ordering is ServiceOrderOrdering.CREATED_AT_ASC:
+            return query.order_by(ServiceOrderModel.created_at.asc(), ServiceOrderModel.id.asc())
+        status_rank = case(
+            {status: rank for rank, status in enumerate(STATUS_RANKING)},
+            value=ServiceOrderModel.status,
+            else_=len(STATUS_RANKING),
+        )
+        return query.order_by(
+            status_rank,
+            ServiceOrderModel.created_at.asc(),
+            ServiceOrderModel.id.asc(),
+        )
 
     def list_with_execution_times(self) -> list[ServiceOrder]:
         models = (
