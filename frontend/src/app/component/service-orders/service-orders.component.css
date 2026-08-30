@@ -53,3 +53,22 @@
   padding: 1rem;
   color: var(--color-text-muted);
 }
+
+.filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.pagination-info {
+  font-size: 0.85rem;
+}

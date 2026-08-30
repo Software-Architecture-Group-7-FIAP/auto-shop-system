@@ -15,7 +15,15 @@
           <option *ngFor="let status of statusValues" [ngValue]="status">{{ status }}</option>
         </select>
       </label>
-      <button class="btn btn-secondary" type="button" (click)="applyStatusFilter()" [disabled]="isLoading">
+      <label class="filter-toggle">
+        <input
+          type="checkbox"
+          [(ngModel)]="includeClosed"
+          [ngModelOptions]="{ standalone: true }"
+        />
+        Incluir finalizadas e entregues
+      </label>
+      <button class="btn btn-secondary" type="button" (click)="applyFilters()" [disabled]="isLoading">
         Filtrar
       </button>
       <button class="btn btn-secondary" type="button" (click)="loadServiceOrders()" [disabled]="isLoading">
@@ -44,6 +52,25 @@
     <span *ngIf="!isLoading && serviceOrders.length === 0" class="empty-list-message">
       Nenhuma ordem de serviço encontrada.
     </span>
+    <div class="pagination-bar" *ngIf="total > 0">
+      <button
+        class="btn btn-secondary"
+        type="button"
+        (click)="goToPage(page - 1)"
+        [disabled]="isLoading || page <= 1"
+      >
+        Anterior
+      </button>
+      <span class="pagination-info">Página {{ page }} de {{ totalPages }} — {{ total }} OS</span>
+      <button
+        class="btn btn-secondary"
+        type="button"
+        (click)="goToPage(page + 1)"
+        [disabled]="isLoading || page >= totalPages"
+      >
+        Próxima
+      </button>
+    </div>
   </div>
   <div class="model-detail-block scrollbar">
     <span *ngIf="!selectedServiceOrderId" class="model-detail-message">

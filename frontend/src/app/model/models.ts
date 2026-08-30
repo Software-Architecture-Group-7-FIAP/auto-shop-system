@@ -137,6 +137,21 @@ export interface ServiceOrder {
   created_at: string;
 }
 
+export interface Paginated<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface ServiceOrderListParams {
+  status?: string;
+  includeClosed?: boolean;
+  page?: number;
+  pageSize?: number;
+}
+
 export interface ServiceOrderPublic {
   id: number;
   status: ServiceOrderStatus;

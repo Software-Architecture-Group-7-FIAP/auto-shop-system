@@ -1,12 +1,14 @@
 import { Injectable } from '@angular/core';
-import { HttpClient, HttpContext, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import {
   AverageExecutionTime,
   Invoice,
   MessageResponse,
+  Paginated,
   Priority,
   ServiceOrder,
+  ServiceOrderListParams,
   ServiceOrderPublic,
   ServiceOrderStatusOverride,
   ServiceOrderUpdate,
@@ -22,9 +24,15 @@ export class ServiceOrderService {
 
   constructor(private http: HttpClient) {}
 
-  getAll(status?: string): Observable<ServiceOrder[]> {
-    const params = status ? `?status=${encodeURIComponent(status)}` : '';
-    return this.http.get<ServiceOrder[]>(`${this.url}${params}`);
+  getAll(query: ServiceOrderListParams = {}): Observable<Paginated<ServiceOrder>> {
+    let params = new HttpParams()
+      .set('page', query.page ?? 1)
+      .set('page_size', query.pageSize ?? 20)
+      .set('include_closed', query.includeClosed ?? false);
+    if (query.status) {
+      params = params.set('status', query.status);
+    }
+    return this.http.get<Paginated<ServiceOrder>>(this.url, { params });
   }
 
   getById(id: number): Observable<ServiceOrder> {
