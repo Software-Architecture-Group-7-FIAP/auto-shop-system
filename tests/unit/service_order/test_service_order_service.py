@@ -9,7 +9,9 @@ from src.application.services.service_order_service import ServiceOrderService
 from src.application.services.service_order_tracking import build_service_order_tracking_url
 from src.domain.enums import Priority, ServiceOrderStatus
 from src.domain.exceptions import NotFoundError, ValidationError
+from src.domain.pagination import Page
 from src.domain.service_order.entity import ServiceOrder
+from src.domain.service_order.rules import STATUS_RANKING, ServiceOrderListQuery
 
 
 class InMemoryServiceOrderRepository:
@@ -48,6 +50,20 @@ class InMemoryServiceOrderRepository:
         if status:
             return [order for order in orders if order.status == status]
         return orders
+
+    def list_operational(self, query: ServiceOrderListQuery) -> Page[ServiceOrder]:
+        visible_statuses = query.visible_statuses()
+        matching = [
+            order for order in self.service_orders.values() if order.status in visible_statuses
+        ]
+        matching.sort(key=lambda order: (STATUS_RANKING.index(order.status), order.id or 0))
+        window = matching[query.offset : query.offset + query.page_size]
+        return Page(
+            items=tuple(window),
+            total=len(matching),
+            page=query.page,
+            page_size=query.page_size,
+        )
 
     def list_with_execution_times(self) -> list[ServiceOrder]:
         return [
@@ -200,6 +216,52 @@ def test_service_order_service_lists_and_filters_orders_without_sqlalchemy():
     orders = service.list_all(ServiceOrderStatus.EM_DIAGNOSTICO)
 
     assert [order.id for order in orders] == [2]
+
+
+def test_service_order_service_operational_listing_hides_closed_orders():
+    service = make_service(
+        repository=InMemoryServiceOrderRepository(
+            [
+                make_service_order(id=1, status=ServiceOrderStatus.RECEBIDA),
+                make_service_order(id=2, status=ServiceOrderStatus.FINALIZADA),
+                make_service_order(id=3, status=ServiceOrderStatus.ENTREGUE),
+            ]
+        )
+    )
+
+    result = service.list_operational(ServiceOrderListQuery())
+
+    assert [order.id for order in result.items] == [1]
+    assert result.total == 1
+
+
+def test_service_order_service_operational_listing_includes_closed_on_demand():
+    service = make_service(
+        repository=InMemoryServiceOrderRepository(
+            [
+                make_service_order(id=1, status=ServiceOrderStatus.RECEBIDA),
+                make_service_order(id=2, status=ServiceOrderStatus.FINALIZADA),
+            ]
+        )
+    )
+
+    result = service.list_operational(ServiceOrderListQuery(include_closed=True))
+
+    assert [order.id for order in result.items] == [1, 2]
+    assert result.total == 2
+
+
+def test_service_order_service_operational_listing_paginates():
+    service = make_service(
+        repository=InMemoryServiceOrderRepository(
+            [make_service_order(id=index) for index in range(1, 6)]
+        )
+    )
+
+    result = service.list_operational(ServiceOrderListQuery(page=2, page_size=2))
+
+    assert [order.id for order in result.items] == [3, 4]
+    assert (result.total, result.page, result.page_size, result.total_pages) == (5, 2, 2, 3)
 
 
 def test_service_order_service_assigns_mechanic_and_commits():

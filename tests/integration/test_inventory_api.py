@@ -72,8 +72,8 @@ def _create_os_with_product(client, auth_headers, stock_quantity: int, product_q
         headers=auth_headers,
     )
     assert service_orders.status_code == 200
-    assert len(service_orders.json()) == 1
-    service_order_id = service_orders.json()[0]["id"]
+    assert service_orders.json()["total"] == 1
+    service_order_id = service_orders.json()["items"][0]["id"]
 
     return {
         "product_id": product["id"],

@@ -555,14 +555,15 @@ def test_full_flow(client, auth_headers):
     assert budget_after_get["status"] == "Enviado"
 
     orders_after_get = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()
-    assert orders_after_get == []
+    assert orders_after_get["items"] == []
+    assert orders_after_get["total"] == 0
 
     approve = client.post(f"/api/v1/public/budgets/{token}/approve")
     assert approve.status_code == 200
 
     orders = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()
-    assert len(orders) == 1
-    os_id = orders[0]["id"]
+    assert orders["total"] == 1
+    os_id = orders["items"][0]["id"]
 
     assign = client.patch(
         f"/api/v1/admin/service-orders/{os_id}/assign-mechanic",
@@ -741,7 +742,7 @@ def test_execution_queue_orders_pending_service_orders_by_priority(client, auth_
         )
         token = send.json()["approval_token"]
         client.post(f"/api/v1/public/budgets/{token}/approve")
-        orders = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()
+        orders = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()["items"]
         return next(order for order in orders if order["vehicle_id"] == vehicle["id"])
 
     low_priority_os = _create_approved_os("LOW1A23")
