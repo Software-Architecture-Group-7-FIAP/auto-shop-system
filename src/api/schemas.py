@@ -306,6 +306,12 @@ class ServiceOrderResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PaginatedResponse(BaseModel, Generic[T]):
+    items: list[T]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class ServiceOrderPublicResponse(BaseModel):
