@@ -83,6 +83,7 @@ jobs:
       - uses: helm/kind-action@v1.12.0
         with:
           node_image: kindest/node:v1.34.0
+          cluster_name: kind
       - name: Build and load local image
         run: |
           docker build --load --provenance=false --tag auto-shop-system:local .
