@@ -39,8 +39,9 @@ spec:
           type: RuntimeDefault
       containers:
       - name: backend-api
-        image: auto-shop-system-app:latest
+        image: auto-shop-system:1.0.0
         imagePullPolicy: IfNotPresent
+        command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: false

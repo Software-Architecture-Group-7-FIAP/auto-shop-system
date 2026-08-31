@@ -1,8 +1,12 @@
+# Local/demo: HTTP via `kubectl port-forward ... 8080:80` and /etc/hosts.
+# Production must terminate TLS (cert-manager) and set ssl-redirect to "true".
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: auto-shop-ingress
   namespace: auto-shop
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
 spec:
   ingressClassName: nginx
   rules:
