@@ -31,8 +31,12 @@ src/
 cp .env.example .env
 # Edite .env e defina SECRET_KEY (>= 32 caracteres aleatórios) e POSTGRES_PASSWORD
 docker compose up db mailhog -d
-docker compose run --rm -e DEV_ADMIN_PASSWORD=admin123 api python -m src.scripts.seed_dev_admin
-docker compose up --build
+docker compose build api
+docker compose run --rm api alembic upgrade head
+read -r -s DEV_ADMIN_PASSWORD
+export DEV_ADMIN_PASSWORD
+docker compose run --rm -e DEV_ADMIN_PASSWORD api python -m src.scripts.seed_dev_admin
+docker compose up api
 ```
 
 - API (Docker): http://localhost:8000
@@ -40,7 +44,7 @@ docker compose up --build
 - Swagger: http://localhost:8000/docs
 - MailHog UI: http://localhost:8025
 
-As migrations do Alembic rodam automaticamente na subida do container `api`. Para aplicar só as migrations, use `docker compose run --rm api alembic upgrade head`.
+O container `api` inicia apenas o Uvicorn; migrations são uma etapa explícita e única. Para aplicar só as migrations, use `docker compose run --rm api alembic upgrade head` antes de iniciar a API.
 
 Ao rodar a API localmente fora do Docker, use `SMTP_HOST=localhost`. O host `mailhog` funciona apenas dentro da rede do Docker Compose.
 
@@ -55,14 +59,16 @@ cp .env.example .env
 # Subir o banco: docker compose up db -d  (ou PostgreSQL local)
 # DATABASE_URL usa localhost fora do Docker; dentro do Compose use host db
 poetry run alembic upgrade head   # aplica todas as migrations pendentes
-DEV_ADMIN_PASSWORD=admin123 poetry run python -m src.scripts.seed_dev_admin
+read -r -s DEV_ADMIN_PASSWORD
+export DEV_ADMIN_PASSWORD
+poetry run python -m src.scripts.seed_dev_admin
 poetry run uvicorn src.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 No PowerShell, use:
 
 ```powershell
-$env:DEV_ADMIN_PASSWORD="admin123"
+$env:DEV_ADMIN_PASSWORD = Read-Host "Senha forte para o admin local"
 poetry run python -m src.scripts.seed_dev_admin
 ```
 
@@ -71,13 +77,15 @@ poetry run python -m src.scripts.seed_dev_admin
 O usuário admin não é criado automaticamente. Em um banco novo, rode o seed após as migrations:
 
 ```bash
-DEV_ADMIN_PASSWORD=admin123 poetry run python -m src.scripts.seed_dev_admin
+read -r -s DEV_ADMIN_PASSWORD
+export DEV_ADMIN_PASSWORD
+poetry run python -m src.scripts.seed_dev_admin
 ```
 
 No PowerShell:
 
 ```powershell
-$env:DEV_ADMIN_PASSWORD="admin123"
+$env:DEV_ADMIN_PASSWORD = Read-Host "Senha forte para o admin local"
 poetry run python -m src.scripts.seed_dev_admin
 ```
 
@@ -89,7 +97,7 @@ Credenciais após o seed:
 ```bash
 curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}'
+  -d '{"username":"admin","password":"<senha-definida-em-DEV_ADMIN_PASSWORD>"}'
 ```
 
 Use o token JWT retornado no header `Authorization: Bearer <token>` para rotas `/api/v1/admin/*`.
@@ -240,6 +248,10 @@ Interface vanilla servida pelo FastAPI em `/app/`:
 4. OS gerada automaticamente na aprovação
 5. Atribuir mecânico, reservar peças, executar serviço
 6. Gerar fatura e registrar pagamento → OS entregue
+
+## Deploy por ambiente
+
+O fluxo operacional seguro está documentado em [docs/deployment.md](docs/deployment.md). O deploy Kubernetes usa as fases independentes `foundation -> migration -> app -> ingress`; a API só recebe tráfego depois que a migration termina e o readiness check confirma o PostgreSQL.
 
 ## Testes
 
