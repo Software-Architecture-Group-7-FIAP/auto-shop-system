@@ -5,10 +5,13 @@ metadata:
   namespace: auto-shop
   labels:
     app: auto-shop-backend
+    app.kubernetes.io/name: auto-shop-system
+    app.kubernetes.io/component: backend
 spec:
   type: ClusterIP
   selector:
     app: auto-shop-backend
   ports:
-  - port: 80
-    targetPort: 8000
+    - name: http
+      port: 80
+      targetPort: 8000

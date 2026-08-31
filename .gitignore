@@ -2,6 +2,8 @@ __pycache__/
 *.py[cod]
 .venv/
 .env
+*.env.local
+.env.*.local
 *.egg-info/
 .pytest_cache/
 .coverage
@@ -16,4 +18,5 @@ debug-*.log
 # Kubernetes Secrets
 k8s/secrets.yaml
 k8s/secret.yaml
-!k8s/secrets.example.yaml
+k8s/overlays/**/secrets.env
+k8s/overlays/**/.env

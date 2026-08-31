@@ -4,4 +4,3 @@ metadata:
   name: auto-shop
   labels:
     app.kubernetes.io/part-of: auto-shop-platform
-

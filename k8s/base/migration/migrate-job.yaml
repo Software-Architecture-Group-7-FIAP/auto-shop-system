@@ -1,0 +1,74 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: auto-shop-migrate
+  namespace: auto-shop
+  labels:
+    app.kubernetes.io/name: auto-shop-system
+    app.kubernetes.io/component: migrate
+    app.kubernetes.io/part-of: auto-shop-platform
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app: auto-shop-migrate
+        app.kubernetes.io/name: auto-shop-system
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: OnFailure
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: alembic
+          image: auto-shop-system:__IMAGE_TAG__
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - >-
+              set -eu;
+              attempt=1;
+              until python -c 'import os, psycopg2; connection=psycopg2.connect(os.environ["DATABASE_URL"], connect_timeout=2); connection.close()'; do
+                if [ "$attempt" -ge 5 ]; then
+                  echo "migration preflight failed: database unavailable";
+                  exit 10;
+                fi;
+                echo "migration preflight: database unavailable, retry $attempt/4";
+                attempt=$((attempt + 1));
+                sleep 5;
+              done;
+              echo "migration preflight complete";
+              migration_status=0;
+              python -m src.scripts.run_migrations || migration_status=$?;
+              if [ "$migration_status" -eq 10 ]; then
+                echo "migration failed: database unavailable while acquiring lock";
+                exit 10;
+              fi;
+              if [ "$migration_status" -ne 0 ]; then
+                echo "migration failed";
+                exit 20;
+              fi
+          envFrom:
+            - configMapRef:
+                name: auto-shop-config
+            - secretRef:
+                name: auto-shop-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

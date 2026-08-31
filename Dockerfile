@@ -37,22 +37,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Criação do usuário não-root (Princípio do Menor Privilégio - Cenário 5)
-RUN adduser --disabled-password --gecos "" appuser
+RUN groupadd --gid 10001 appgroup \
+    && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin appuser
 
 # Copia o ambiente virtual e arquivos estritamente necessários
 COPY --from=builder /app/.venv /app/.venv
-COPY --chown=appuser:appuser src/ ./src
-COPY --chown=appuser:appuser alembic/ ./alembic
-COPY --chown=appuser:appuser alembic.ini ./
-COPY --chown=appuser:appuser pyproject.toml ./
+COPY --chown=10001:10001 src/ ./src
+COPY --chown=10001:10001 alembic/ ./alembic
+COPY --chown=10001:10001 alembic.ini ./
+COPY --chown=10001:10001 pyproject.toml ./
 
 # Muda para o usuário sem privilégios
-USER appuser
+USER 10001:10001
 
 EXPOSE 8000
 
 # Healthcheck da API (Cenário de Resiliência)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:8000/docs || exit 1
+  CMD curl -f http://localhost:8000/health/live || exit 1
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn src.main:app --host 0.0.0.0 --port 8000"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
