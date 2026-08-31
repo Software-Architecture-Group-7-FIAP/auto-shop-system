@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from src.application.ports.email import EmailAttachment
+from src.domain.inventory.entity import Reservation
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,61 @@ class ServiceOrderContactLookup(Protocol):
         ...
 
     def get_vehicle(self, vehicle_id: int) -> ServiceOrderVehicle | None:
+        ...
+
+
+@dataclass(frozen=True)
+class ServiceOrderProductRequirement:
+    product_id: int
+    quantity: int
+
+
+@dataclass(frozen=True)
+class ServiceOrderCatalogService:
+    id: int
+    base_price: float
+    product_requirements: tuple[ServiceOrderProductRequirement, ...] = ()
+
+
+@dataclass(frozen=True)
+class ServiceOrderProduct:
+    id: int
+    unit_price: float
+
+
+@dataclass(frozen=True)
+class RequestedService:
+    service_id: int
+    quantity: int
+
+
+@dataclass(frozen=True)
+class RequestedPart:
+    product_id: int
+    quantity: int
+
+
+class ServiceOrderOpeningLookup(Protocol):
+    def customer_exists(self, customer_id: int) -> bool:
+        ...
+
+    def vehicle_belongs_to_customer(self, vehicle_id: int, customer_id: int) -> bool:
+        ...
+
+    def get_service(self, service_id: int) -> ServiceOrderCatalogService | None:
+        ...
+
+    def get_product(self, product_id: int) -> ServiceOrderProduct | None:
+        ...
+
+
+class ServiceOrderStockReserver(Protocol):
+    def create_reservations_for_os(
+        self,
+        service_order_id: int,
+        *,
+        commit: bool = True,
+    ) -> list[Reservation]:
         ...
 
 

@@ -19,6 +19,9 @@ class InventoryProductGateway(Protocol):
     def get_product(self, product_id: int) -> InventoryProduct | None:
         ...
 
+    def get_product_for_update(self, product_id: int) -> InventoryProduct | None:
+        ...
+
     def add_stock(self, product_id: int, quantity: int) -> None:
         ...
 

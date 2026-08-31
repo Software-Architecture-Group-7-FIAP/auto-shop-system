@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from src.api.composition.service_orders import (
@@ -14,11 +14,14 @@ from src.api.schemas import (
     MessageResponse,
     OverrideStatusRequest,
     ServiceOrderPublicResponse,
+    ServiceOrderCreate,
+    ServiceOrderCreatedResponse,
     ServiceOrderResponse,
     ServiceOrderUpdate,
     ServiceOrderWithWithdrawalsResponse,
     SetPriorityRequest,
 )
+from src.application.ports.service_order import RequestedPart, RequestedService
 from src.domain.enums import ServiceOrderStatus
 from src.domain.exceptions import DomainError
 from src.infrastructure.database import UserModel, get_db
@@ -34,6 +37,36 @@ def list_service_orders(
     _: UserModel = Depends(get_current_user),
 ):
     return compose_service_order_service(db).list_all(status)
+
+
+@admin_router.post(
+    "",
+    response_model=ServiceOrderCreatedResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def open_service_order(
+    data: ServiceOrderCreate,
+    response: Response,
+    db: Session = Depends(get_db),
+    _: UserModel = Depends(get_current_user),
+):
+    try:
+        service_order = compose_service_order_service(db).open(
+            customer_id=data.customer_id,
+            vehicle_id=data.vehicle_id,
+            services=[
+                RequestedService(service_id=item.service_id, quantity=item.quantity)
+                for item in data.services
+            ],
+            parts=[
+                RequestedPart(product_id=item.product_id, quantity=item.quantity)
+                for item in data.parts
+            ],
+        )
+    except DomainError as e:
+        raise domain_error_handler(e)
+    response.headers["Location"] = f"/api/v1/admin/service-orders/{service_order.id}"
+    return ServiceOrderCreatedResponse(service_order_id=service_order.id)
 
 
 @admin_router.get("/metrics/average-execution-time", response_model=AverageExecutionTimeResponse)

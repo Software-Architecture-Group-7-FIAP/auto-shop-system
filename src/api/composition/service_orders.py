@@ -1,11 +1,13 @@
 from sqlalchemy.orm import Session
 
 from src.config import settings
+from src.api.composition.inventory import compose_inventory_service
 from src.application.services.service_order_email_service import ServiceOrderEmailService
 from src.application.services.service_order_service import ServiceOrderService
 from src.infrastructure.auth.service_order_tracking import HmacServiceOrderTrackingTokenService
 from src.infrastructure.persistence.service_order_repository import (
     SqlAlchemyServiceOrderContactLookup,
+    SqlAlchemyServiceOrderOpeningLookup,
     SqlAlchemyServiceOrderRepository,
 )
 from src.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
@@ -19,6 +21,8 @@ def compose_service_order_service(db: Session) -> ServiceOrderService:
     return ServiceOrderService(
         service_orders=SqlAlchemyServiceOrderRepository(db),
         contacts=SqlAlchemyServiceOrderContactLookup(db),
+        openings=SqlAlchemyServiceOrderOpeningLookup(db),
+        stock_reserver=compose_inventory_service(db),
         tracking_tokens=HmacServiceOrderTrackingTokenService(),
         uow=SqlAlchemyUnitOfWork(db),
     )
