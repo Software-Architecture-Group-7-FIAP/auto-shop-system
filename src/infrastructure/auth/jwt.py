@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError
 
 from src.config import settings
 from src.domain.exceptions import UnauthorizedError
@@ -25,10 +26,15 @@ class JwtAccessTokenService:
 
     def decode_token(self, token: str) -> str:
         try:
-            payload = jwt.decode(token, settings.jwt_secret(), algorithms=[settings.algorithm])
+            payload = jwt.decode(
+                token,
+                settings.jwt_secret(),
+                algorithms=[settings.algorithm],
+                options={"require": ["sub", "exp"]},
+            )
             username: str | None = payload.get("sub")
             if username is None:
                 raise UnauthorizedError("Token inválido")
             return username
-        except JWTError as exc:
+        except InvalidTokenError as exc:
             raise UnauthorizedError("Token inválido") from exc

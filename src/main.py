@@ -22,6 +22,7 @@ from src.api.routers import (
 )
 from src.domain.exceptions import DomainError
 from src.config import settings
+from src.infrastructure import database
 
 
 def _configure_app_logging() -> None:
@@ -53,8 +54,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins(),
     allow_credentials=settings.cors_allow_credentials,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=settings.cors_methods(),
+    allow_headers=settings.cors_headers(),
 )
 
 
@@ -179,9 +180,21 @@ def home(request: Request):
 </html>"""
 
 
-@app.get("/health", tags=["Health"])
-def health_check():
+@app.get("/health/live", tags=["Health"])
+def liveness_check():
     return {"status": "ok"}
+
+
+@app.get("/health/ready", tags=["Health"])
+def readiness_check():
+    if not database.check_database_connection():
+        return JSONResponse(status_code=503, content={"status": "unavailable"})
+    return {"status": "ok"}
+
+
+@app.get("/health", tags=["Health"], include_in_schema=False)
+def health_check():
+    return liveness_check()
 
 
 api_prefix = "/api/v1"

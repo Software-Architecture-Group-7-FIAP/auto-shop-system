@@ -1,7 +1,8 @@
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError
 
 from src.config import settings
 
@@ -30,5 +31,5 @@ def validate_approval_token(token: str) -> int:
         if not isinstance(budget_id, int):
             raise ValueError("Invalid budget id")
         return budget_id
-    except JWTError as exc:
+    except InvalidTokenError as exc:
         raise ValueError("Invalid approval token") from exc

@@ -1,4 +1,5 @@
 from datetime import datetime
+from urllib.parse import urlparse
 
 from sqlalchemy import (
     Boolean,
@@ -11,7 +12,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     create_engine,
+    text,
 )
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 from src.config import settings
@@ -322,8 +325,27 @@ class InvoiceModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
-engine = create_engine(settings.database_url, pool_pre_ping=True)
+def _engine_connect_args() -> dict[str, int]:
+    if urlparse(settings.database_url).scheme.startswith("postgres"):
+        return {"connect_timeout": settings.database_health_check_timeout_seconds}
+    return {}
+
+
+engine = create_engine(
+    settings.database_url,
+    connect_args=_engine_connect_args(),
+    pool_pre_ping=True,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def check_database_connection() -> bool:
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except (SQLAlchemyError, OSError, TimeoutError):
+        return False
+    return True
 
 
 def get_db():
