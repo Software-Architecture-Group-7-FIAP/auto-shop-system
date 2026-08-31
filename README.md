@@ -31,9 +31,10 @@ src/
 cp .env.example .env
 # Edite .env e defina SECRET_KEY (>= 32 caracteres aleatórios) e POSTGRES_PASSWORD
 docker compose up db mailhog redis -d
+docker compose build api
 docker compose run --rm api alembic upgrade head
 docker compose run --rm -e DEV_ADMIN_PASSWORD=<senha-forte> api python -m src.scripts.seed_dev_admin
-docker compose up --build
+docker compose up api
 ```
 
 - API (Docker): http://localhost:8000
@@ -41,7 +42,7 @@ docker compose up --build
 - Swagger: http://localhost:8000/docs
 - MailHog UI: http://localhost:8025
 
-O `docker compose run` do seed substitui o `CMD` da imagem, então o Alembic precisa rodar **antes** do seed. Na subida normal (`docker compose up`), as migrations também rodam no start do container `api`.
+O container `api` inicia apenas o Uvicorn; migrations são uma etapa explícita e única. Rode `docker compose run --rm api alembic upgrade head` **antes** do seed e da API.
 
 Ao rodar a API localmente fora do Docker, use `SMTP_HOST=localhost`. O host `mailhog` funciona apenas dentro da rede do Docker Compose.
 
@@ -242,6 +243,10 @@ Interface vanilla servida pelo FastAPI em `/app/`:
 4. OS gerada automaticamente na aprovação
 5. Atribuir mecânico, reservar peças, executar serviço
 6. Gerar fatura e registrar pagamento → OS entregue
+
+## Deploy por ambiente
+
+O fluxo operacional seguro está documentado em [docs/deployment.md](docs/deployment.md). O deploy Kubernetes usa as fases independentes `foundation -> migration -> app -> ingress`; a API só recebe tráfego depois que a migration termina e o readiness check confirma o PostgreSQL.
 
 ## Hardening de OS e links publicos
 

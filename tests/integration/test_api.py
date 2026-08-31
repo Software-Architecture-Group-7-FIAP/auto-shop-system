@@ -13,6 +13,31 @@ def test_health(client):
     assert response.headers["x-frame-options"] == "DENY"
 
 
+def test_liveness_does_not_require_database(client, monkeypatch):
+    monkeypatch.setattr("src.main.database.check_database_connection", lambda: False)
+
+    response = client.get("/health/live")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_readiness_requires_database(client):
+    response = client.get("/health/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_readiness_hides_database_failure_details(client, monkeypatch):
+    monkeypatch.setattr("src.main.database.check_database_connection", lambda: False)
+
+    response = client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {"status": "unavailable"}
+
+
 def _pf_customer_payload(**overrides):
     payload = {
         "name": "Maria Silva",
