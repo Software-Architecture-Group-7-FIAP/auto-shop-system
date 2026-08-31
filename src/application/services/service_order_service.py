@@ -2,6 +2,7 @@ from src.application.ports.service_order import (
     RequestedPart,
     RequestedService,
     ServiceOrderContactLookup,
+    ServiceOrderCatalogService,
     ServiceOrderOpeningLookup,
     ServiceOrderStockReserver,
 )
@@ -47,20 +48,31 @@ class ServiceOrderService:
         if not self.openings.vehicle_belongs_to_customer(vehicle_id, customer_id):
             raise NotFoundError("Vehicle not found or does not belong to the customer")
 
-        service_lines = [self._build_service_line(item) for item in services]
+        service_lines: list[ServiceOrderServiceLine] = []
         product_lines = [self._build_product_line(item) for item in parts]
+        for item in services:
+            service = self.openings.get_service(item.service_id)
+            if not service:
+                raise NotFoundError("Service not found")
+            service_lines.append(self._service_line_from_catalog(item, service))
+            product_lines.extend(
+                self._build_catalog_product_lines(service, item.quantity)
+            )
 
         created = self.service_orders.create(
             ServiceOrder.open(customer_id, vehicle_id, service_lines, product_lines)
         )
-        self.stock_reserver.create_reservations_for_os(created.id)
+        if created.id is None:
+            raise NotFoundError("OS não encontrada após criação")
+        self.stock_reserver.create_reservations_for_os(created.id, commit=False)
         self.uow.commit()
         return created
 
-    def _build_service_line(self, item: RequestedService) -> ServiceOrderServiceLine:
-        service = self.openings.get_service(item.service_id)
-        if not service:
-            raise NotFoundError("Service not found")
+    @staticmethod
+    def _service_line_from_catalog(
+        item: RequestedService,
+        service: ServiceOrderCatalogService,
+    ) -> ServiceOrderServiceLine:
         return ServiceOrderServiceLine(
             id=None,
             service_order_id=None,
@@ -68,6 +80,21 @@ class ServiceOrderService:
             quantity=item.quantity,
             unit_price=service.base_price,
         )
+
+    def _build_catalog_product_lines(
+        self,
+        service: ServiceOrderCatalogService,
+        service_quantity: int,
+    ) -> list[ServiceOrderProductLine]:
+        return [
+            self._build_product_line(
+                RequestedPart(
+                    product_id=requirement.product_id,
+                    quantity=requirement.quantity * service_quantity,
+                )
+            )
+            for requirement in service.product_requirements
+        ]
 
     def _build_product_line(self, item: RequestedPart) -> ServiceOrderProductLine:
         product = self.openings.get_product(item.product_id)

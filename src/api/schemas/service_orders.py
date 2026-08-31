@@ -18,8 +18,14 @@ class ServiceOrderPartItem(BaseModel):
 class ServiceOrderCreate(BaseModel):
     customer_id: StrictInt = Field(gt=0)
     vehicle_id: StrictInt = Field(gt=0)
-    services: list[ServiceOrderServiceItem] = Field(min_length=1)
+    services: list[ServiceOrderServiceItem] = Field(default_factory=list)
     parts: list[ServiceOrderPartItem] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def require_scope(self):
+        if not self.services and not self.parts:
+            raise ValueError("Informe ao menos um serviço ou produto")
+        return self
 
 
 class ServiceOrderCreatedResponse(BaseModel):

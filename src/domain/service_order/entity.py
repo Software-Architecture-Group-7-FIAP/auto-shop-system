@@ -49,8 +49,8 @@ class ServiceOrder:
     ) -> "ServiceOrder":
         merged_service_lines = cls._merge_service_lines(service_lines)
         merged_product_lines = cls._merge_product_lines(product_lines)
-        if not merged_service_lines:
-            raise ValidationError("Ao menos um serviço deve ser informado")
+        if not merged_service_lines and not merged_product_lines:
+            raise ValidationError("Ao menos um serviço ou produto deve ser informado")
         return cls(
             id=None,
             budget_id=None,

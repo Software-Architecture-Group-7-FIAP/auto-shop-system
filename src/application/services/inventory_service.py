@@ -33,28 +33,55 @@ class InventoryService:
         self.uow.commit()
         return reservation
 
-    def create_reservations_for_os(self, service_order_id: int) -> list[Reservation]:
+    def create_reservations_for_os(
+        self,
+        service_order_id: int,
+        *,
+        commit: bool = True,
+    ) -> list[Reservation]:
         product_lines = self.service_orders.get_product_lines(service_order_id)
         if product_lines is None:
             raise NotFoundError("OS não encontrada")
 
-        reservations = []
+        reservations = self.inventory.list_active_reservations_for_service_order(
+            service_order_id
+        )
+        reserved_by_product: dict[int, int] = {}
+        for reservation in reservations:
+            reserved_by_product[reservation.product_id] = (
+                reserved_by_product.get(reservation.product_id, 0) + reservation.quantity
+            )
+
+        required_by_product: dict[int, int] = {}
         for line in product_lines:
-            product = self.products.get_product(line.product_id)
+            required_by_product[line.product_id] = (
+                required_by_product.get(line.product_id, 0) + line.quantity
+            )
+
+        for product_id, quantity in sorted(required_by_product.items()):
+            quantity_to_reserve = quantity - reserved_by_product.get(product_id, 0)
+            if quantity_to_reserve <= 0:
+                continue
+
+            product = self.products.get_product_for_update(product_id)
             if not product:
                 continue
             available = self._available_stock(product.id, product.stock_quantity)
-            if available < line.quantity and not self.check_pending_receipt(product.id):
+            if (
+                available < quantity_to_reserve
+                and not self.check_pending_receipt(product.id)
+            ):
                 self._create_purchase_request(
                     product.id,
-                    line.quantity - available,
+                    quantity_to_reserve - available,
                     service_order_id,
                 )
             reservation = self.inventory.add_reservation(
-                Reservation.create(service_order_id, line.product_id, line.quantity)
+                Reservation.create(service_order_id, product.id, quantity_to_reserve)
             )
             reservations.append(reservation)
-        self.uow.commit()
+        if commit:
+            self.uow.commit()
         return reservations
 
     def _available_stock(self, product_id: int, stock_quantity: int) -> int:

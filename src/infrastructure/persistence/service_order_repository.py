@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from src.application.ports.service_order import (
     ServiceOrderCatalogService,
     ServiceOrderCustomer,
+    ServiceOrderProductRequirement,
     ServiceOrderProduct,
     ServiceOrderVehicle,
 )
@@ -19,6 +20,7 @@ from src.infrastructure.database import (
     ServiceModel,
     ServiceOrderModel,
     ServiceOrderProductLineModel,
+    ServiceProductLineModel,
     ServiceOrderServiceLineModel,
     VehicleModel,
 )
@@ -250,7 +252,20 @@ class SqlAlchemyServiceOrderOpeningLookup:
         model = self.db.query(ServiceModel).filter(ServiceModel.id == service_id).first()
         if not model:
             return None
-        return ServiceOrderCatalogService(id=model.id, base_price=model.base_price)
+        requirements = self.db.query(ServiceProductLineModel).filter(
+            ServiceProductLineModel.service_id == service_id
+        ).all()
+        return ServiceOrderCatalogService(
+            id=model.id,
+            base_price=model.base_price,
+            product_requirements=tuple(
+                ServiceOrderProductRequirement(
+                    product_id=requirement.product_id,
+                    quantity=requirement.quantity,
+                )
+                for requirement in requirements
+            ),
+        )
 
     def get_product(self, product_id: int) -> ServiceOrderProduct | None:
         model = self.db.query(ProductModel).filter(ProductModel.id == product_id).first()

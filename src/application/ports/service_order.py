@@ -26,9 +26,16 @@ class ServiceOrderContactLookup(Protocol):
 
 
 @dataclass(frozen=True)
+class ServiceOrderProductRequirement:
+    product_id: int
+    quantity: int
+
+
+@dataclass(frozen=True)
 class ServiceOrderCatalogService:
     id: int
     base_price: float
+    product_requirements: tuple[ServiceOrderProductRequirement, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -64,7 +71,12 @@ class ServiceOrderOpeningLookup(Protocol):
 
 
 class ServiceOrderStockReserver(Protocol):
-    def create_reservations_for_os(self, service_order_id: int) -> list[Reservation]:
+    def create_reservations_for_os(
+        self,
+        service_order_id: int,
+        *,
+        commit: bool = True,
+    ) -> list[Reservation]:
         ...
 
 

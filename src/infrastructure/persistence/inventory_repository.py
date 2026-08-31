@@ -33,6 +33,20 @@ class SqlAlchemyInventoryRepository:
         self.db.refresh(model)
         return self._reservation_to_domain(model)
 
+    def list_active_reservations_for_service_order(
+        self,
+        service_order_id: int,
+    ) -> list[Reservation]:
+        models = (
+            self.db.query(ReservationModel)
+            .filter(
+                ReservationModel.service_order_id == service_order_id,
+                ReservationModel.status == ReservationStatus.ACTIVE,
+            )
+            .all()
+        )
+        return [self._reservation_to_domain(model) for model in models]
+
     def list_reservations(self) -> list[Reservation]:
         return [
             self._reservation_to_domain(model)
@@ -179,6 +193,21 @@ class SqlAlchemyInventoryProductGateway:
 
     def get_product(self, product_id: int) -> InventoryProduct | None:
         model = self.db.query(ProductModel).filter(ProductModel.id == product_id).first()
+        if not model:
+            return None
+        return InventoryProduct(
+            id=model.id,
+            stock_quantity=model.stock_quantity,
+            supplier_id=model.supplier_id,
+        )
+
+    def get_product_for_update(self, product_id: int) -> InventoryProduct | None:
+        model = (
+            self.db.query(ProductModel)
+            .filter(ProductModel.id == product_id)
+            .with_for_update()
+            .first()
+        )
         if not model:
             return None
         return InventoryProduct(
