@@ -36,7 +36,12 @@ class JwtAccessTokenService:
 
     def decode_token(self, token: str) -> str:
         try:
-            payload = jwt.decode(token, self._secret(), algorithms=[JWT_ALGORITHM])
+            payload = jwt.decode(
+                token,
+                self._secret(),
+                algorithms=[JWT_ALGORITHM],
+                options={"require": ["exp"]},
+            )
             username: str | None = payload.get("sub")
             if username is None:
                 raise UnauthorizedError("Token inválido")
@@ -46,6 +51,11 @@ class JwtAccessTokenService:
 
     def decode_claims(self, token: str) -> dict:
         try:
-            return jwt.decode(token, self._secret(), algorithms=[JWT_ALGORITHM])
+            return jwt.decode(
+                token,
+                self._secret(),
+                algorithms=[JWT_ALGORITHM],
+                options={"require": ["exp"]},
+            )
         except JWTError as exc:
             raise UnauthorizedError("Token inválido") from exc

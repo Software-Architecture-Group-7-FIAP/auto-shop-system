@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://oficina:replace-with-local-password@localhost:5432/oficina"
     app_env: EnvironmentName = "production"
     secret_key: SecretStr = Field(..., min_length=32)
+    algorithm: Literal["HS256"] = "HS256"
     access_token_expire_minutes: int = 15
     access_token_secret: SecretStr | None = None
     refresh_token_pepper: SecretStr | None = None
