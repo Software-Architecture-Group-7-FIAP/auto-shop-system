@@ -25,6 +25,7 @@ python-multipart = ">=0.0.17"
 httpx = ">=0.28.0"
 tzdata = "^2026.2"
 msgpack = "1.2.1"
+redis = ">=5.0.0"
 anyio = ">=4.3.0"
 
 [tool.poetry.group.dev.dependencies]

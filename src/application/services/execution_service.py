@@ -50,28 +50,28 @@ class ExecutionService:
         self.emails = emails
         self.uow = uow
 
-    def enqueue(self, service_order_id: int) -> ServiceOrder:
+    def enqueue(self, service_order_id: int, *, actor_id: int | None = None, request_id: str | None = None) -> ServiceOrder:
         service_order = self._get_os(service_order_id)
-        enqueue_service_order(service_order)
+        enqueue_service_order(service_order, actor_id=actor_id, request_id=request_id)
         updated = self.service_orders.save(service_order)
         self.uow.commit()
         return updated
 
-    def start_service(self, service_order_id: int) -> ServiceOrder:
+    def start_service(self, service_order_id: int, *, actor_id: int | None = None, request_id: str | None = None) -> ServiceOrder:
         service_order = self._get_os(service_order_id)
-        start_service_order(service_order, self.clock.now())
+        start_service_order(service_order, self.clock.now(), actor_id=actor_id, request_id=request_id)
         updated = self.service_orders.save(service_order)
         self.uow.commit()
         return updated
 
     def list_execution_queue(self) -> list[ServiceOrder]:
-        waiting = self.service_orders.list_all(ServiceOrderStatus.AGUARDANDO_APROVACAO)
+        waiting = self.service_orders.list_all(ServiceOrderStatus.AGUARDANDO_INICIO)
         return order_execution_queue(waiting)
 
-    def finish_service(self, service_order_id: int) -> ServiceOrder:
+    def finish_service(self, service_order_id: int, *, actor_id: int | None = None, request_id: str | None = None) -> ServiceOrder:
         service_order = self._get_os(service_order_id)
         withdrawn = self.withdrawals.fulfilled_quantity_by_product(service_order_id)
-        finish_service_order(service_order, self.clock.now(), withdrawn)
+        finish_service_order(service_order, self.clock.now(), withdrawn, actor_id=actor_id, request_id=request_id)
 
         for line in service_order.product_lines:
             self.reservations.consume_active_for_product(

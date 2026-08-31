@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Generic, TypeVar
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, EmailStr, Field, StrictInt, model_validator
 
@@ -12,6 +12,7 @@ from src.domain.enums import (
     ServiceOrderStatus,
     StockWithdrawalStatus,
 )
+from src.domain.auth.entity import UserRole
 
 T = TypeVar("T")
 
@@ -20,9 +21,9 @@ class MessageResponse(BaseModel):
     message: str
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
+class SessionResponse(BaseModel):
+    username: str
+    role: UserRole
 
 
 class LoginRequest(BaseModel):
@@ -75,6 +76,16 @@ class CustomerPublicLookupRequest(BaseModel):
         if self.email is None and self.phone is None and self.plate is None:
             raise ValueError("Informe email, phone ou plate")
         return self
+
+
+class CustomerDocumentLookupRequest(BaseModel):
+    """Request body for document lookups; documents must never be URL data."""
+
+    document: str = Field(..., min_length=1, max_length=18)
+
+
+class DocumentValidationRequest(BaseModel):
+    document: str = Field(..., min_length=1, max_length=18)
 
 
 class CnpjValidationResponse(BaseModel):
@@ -267,10 +278,27 @@ class BudgetResponse(BaseModel):
     status: BudgetStatus
     total_price: float
     estimated_delivery: datetime | None
-    approval_token: str | None = None
     created_at: datetime
+    revision_number: int = 1
+    supersedes_budget_id: int | None = None
 
     model_config = {"from_attributes": True}
+
+
+class BudgetDecisionRequest(BaseModel):
+    token: str = Field(..., min_length=1, max_length=4096)
+    decision: Literal["approve", "reject"]
+
+
+class BudgetDecisionResponse(BaseModel):
+    message: str
+    status: BudgetStatus
+    already_processed: bool = False
+    service_order_id: int | None = None
+
+
+class ServiceOrderTrackingRequest(BaseModel):
+    token: str = Field(..., min_length=1, max_length=512)
 
 
 class AvailabilityItem(BaseModel):
@@ -320,6 +348,7 @@ class ServiceOrderPublicResponse(BaseModel):
 
 class ServiceOrderUpdate(BaseModel):
     mechanic_name: str | None = Field(default=None, min_length=1)
+    reason: str | None = Field(default=None, min_length=1, max_length=1000)
     priority: Priority | None = None
 
     @model_validator(mode="after")
@@ -331,6 +360,7 @@ class ServiceOrderUpdate(BaseModel):
 
 class AssignMechanicRequest(BaseModel):
     mechanic_name: str = Field(min_length=1)
+    reason: str | None = Field(default=None, min_length=1, max_length=1000)
 
 
 class SetPriorityRequest(BaseModel):

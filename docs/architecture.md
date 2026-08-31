@@ -10,7 +10,7 @@ Sistema integrado de gestão para uma oficina mecânica (Tech Challenge Fase 1 �
 
 - **Backend:** Python 3.12 + FastAPI, monolito em camadas, REST + OpenAPI/Swagger
 - **Banco:** PostgreSQL (escolhido por ACID, integridade referencial, escalabilidade de filas de OS) + SQLAlchemy + Alembic
-- **Auth:** JWT (`PyJWT`, HS256) nas rotas `/api/v1/admin/*`
+- **Auth:** access JWT de 15 minutos em cookie `HttpOnly`, refresh opaco rotativo em cookie `HttpOnly`, CSRF double-submit e papeis `ADMIN`/`OPERATOR`
 - **PDF:** ReportLab (orçamentos e OS)
 - **E-mail:** SMTP (MailHog em dev)
 - **Frontend:** Angular 15 (painel admin completo) + um painel legado "vanilla JS" servido em `/app/` pelo próprio FastAPI (remanescente da T02)
@@ -36,10 +36,10 @@ Cada contexto de domínio (`customer`, `vehicle`, `product`, `supplier`, `servic
 - **Ports & Adapters:** `application/ports/*.py` define interfaces (`email.py`, `pdf_generator.py`, `cpf_validator.py`, `cnpj_validator.py`, `unit_of_work.py`, etc.); `infrastructure/` implementa os adapters concretos. Permite trocar provedor de validação de CPF/CNPJ, e-mail ou PDF sem tocar nos casos de uso.
 - **Aggregate Root:** OS (`service_order`) é o agregado raiz que centraliza cliente, veículo, diagnóstico e linhas de serviço/produto (RF07). Orçamento (`budget`) segue padrão similar para suas linhas.
 - **Unit of Work:** `application/ports/unit_of_work.py` + `infrastructure/persistence/unit_of_work.py` coordenam transações multi-repositório (ex.: aprovação de orçamento → criação de OS).
-- **Máquina de estados:** OS e Orçamento têm status como string controlada por enum (`domain/enums.py`), com transições validadas nos métodos da entidade (ex.: `Budget.approve()`, `mark_sent()`). O hardening review (item 7) aponta que essas transições ainda não bloqueiam todos os caminhos inválidos (ex.: orçamento aprovado pode ser recusado depois).
+- **Máquina de estados:** OS e Orçamento têm matrizes canônicas de transição no domínio. Revisões enviadas são imutáveis; estados terminais não têm saída. Cada transição de OS é persistida em histórico append-only.
 - **Reserva lógica de estoque:** Estoque Disponível = Estoque Físico − Reservas Ativas (RF13/RF20/RF25), nunca decrementando o estoque físico até a retirada real — evita ruptura por concorrência entre OS.
 - **Geração automática orientada a eventos/transição de estado:** aprovação de orçamento → cria OS (RF18); falta de estoque → gera Solicitação de Compra automaticamente (RF23); aprovação de Pedido de Compra → gera Recebimento (RF24). Implementado como orquestração síncrona dentro dos services de aplicação, não como barramento de eventos real.
-- **Tokens de aprovação pública:** orçamentos têm `approval_token` único, usado em links de e-mail (`GET /public/budgets/{token}/approve|reject`) para aprovação sem autenticação — mas atualmente como token bruto em texto puro no banco e exposto via GET mutável (ver Débitos técnicos).
+- **Tokens de aprovação pública:** o e-mail usa fragmento de URL; a decisão chega por `POST /public/budgets/decisions`. O banco guarda somente fingerprint HMAC, expiração e uso; respostas administrativas nunca retornam o bearer.
 
 ## Modelo de dados
 
@@ -47,7 +47,7 @@ Ver `docs/database/database-schema.mermaid`. Principais agregados e relações:
 
 - `customers` 1—N `vehicles`, `budgets`, `service_orders`
 - `budgets` (Rascunho/Enviado/Aprovado/Recusado) 1—N `budget_service_lines`, `budget_product_lines`; pode gerar 0..1 `service_orders`
-- `service_orders` (Recebida → Em diagnóstico → Aguardando aprovação → Em execução → Finalizada → Entregue) referencia linhas de serviço/produto próprias, `reservations`, `stock_withdrawals`, `purchase_requests` e 1 `invoice`
+- `service_orders` (Recebida → Em diagnóstico → Aguardando aprovação → Aguardando início → Em execução → Finalizada → Entregue) referencia linhas de serviço/produto próprias, `reservations`, `stock_withdrawals`, `purchase_requests` e 1 `invoice`
 - `products` ligados a `suppliers`, com `service_product_lines` (BOM: produtos associados a um serviço de catálogo)
 - `purchase_requests` → `goods_receipts` (recebimento de compras)
 
@@ -56,7 +56,7 @@ Particularidade de modelagem: **cliente não tem campo `person_type`**; o tipo d
 ## Fluxo de status da OS
 
 ```
-Recebida → Em Diagnóstico → Aguardando Aprovação → Em Execução → Finalizada → Entregue
+Recebida → Em Diagnóstico → Aguardando Aprovação → Aguardando Início → Em Execução → Finalizada → Entregue
 ```
 
 Transições automáticas disparadas por ações: atribuir mecânico (RF26/RF27), aprovação vinculada de orçamento (RF18/RF31), finalização de atendimento + reconciliação de estoque (RF33/RF37), pagamento de fatura (RF39/RF40).
@@ -71,7 +71,9 @@ Transições automáticas disparadas por ações: atribuir mecânico (RF26/RF27)
 
 `docs/security/security-report.md` resume o scan (Bandit: 0 issues em 5902 linhas; pip-audit). Pontos mitigados: SQL injection (ORM parametrizado), CORS restrito (parcialmente), input validation de CPF/CNPJ/placa no domínio.
 
-`docs/contexts/others/hardening-review.md` (28/06/2026) lista um backlog de hardening ainda não resolvido — útil para saber **o que ainda não está pronto para produção**:
+`docs/contexts/others/hardening-review.md` (28/06/2026) preserva os achados
+históricos da auditoria. Os itens abaixo são mantidos para rastreabilidade; o
+estado vigente está resumido na seção "Estado do hardening" logo adiante.
 
 **Bloqueadores:**
 1. Admin padrão (`admin/admin123`) criado automaticamente no startup/login; `SECRET_KEY` com fallback fraco (`dev-secret-key`)
@@ -86,14 +88,22 @@ Transições automáticas disparadas por ações: atribuir mecânico (RF26/RF27)
 8. `api/schemas.py` é um arquivo monolítico com DTOs de todos os contextos
 
 **Frontend:**
-9. JWT em `localStorage` (risco de XSS)
+9. JWT em `localStorage` (resolvido: cookies HttpOnly e refresh rotativo)
 10. UX de erro global via `alert()` do navegador
 11. Componente de detalhe de OS mistura responsabilidades de gestão (T08) e faturamento (T11)
 
 **Infra:**
 12. CORS hardcoded em `src/main.py`
 13. `Base.metadata.create_all()` roda no startup da app (deveria ser só Alembic fora de dev/teste)
-14. `get-pip.py` versionado na raiz do repositório
+14. `get-pip.py` versionado na raiz do repositório (resolvido: arquivo removido)
+
+## Estado do hardening (migrations 010/011)
+
+Os bloqueadores históricos acima foram encerrados: seed explícito e segredos
+obrigatórios, endpoints públicos somente POST, fingerprints HMAC com expiração
+e uso único, redaction de PII, cookies HttpOnly com refresh rotativo/CSRF,
+revisões imutáveis e máquina de estados com auditoria. O override é exclusivo
+do papel `ADMIN` e não alcança estados de execução, finalização ou entrega.
 
 ## Convenções de projeto observadas
 

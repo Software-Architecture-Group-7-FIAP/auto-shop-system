@@ -90,7 +90,12 @@ def test_login(client):
         json={"username": "admin", "password": "admin123"},
     )
     assert response.status_code == 200
-    assert "access_token" in response.json()
+    assert response.json() == {"username": "admin", "role": "ADMIN"}
+    # The session lives in cookies now; no token is handed to JavaScript.
+    assert "access_token" not in response.text
+    assert client.cookies.get("oficina_access")
+    assert client.cookies.get("oficina_refresh")
+    assert client.cookies.get("oficina_csrf")
 
 
 def test_customer_crud(client, auth_headers):
@@ -120,9 +125,16 @@ def test_customer_crud(client, auth_headers):
     old_public_lookup = client.get("/api/v1/customers/by-document/52998224725")
     assert old_public_lookup.status_code == 404
 
-    get_admin_doc = client.get(
+    old_admin_lookup = client.get(
         "/api/v1/admin/customers/by-document/52998224725",
         headers=auth_headers,
+    )
+    assert old_admin_lookup.status_code in {404, 405}
+
+    get_admin_doc = client.post(
+        "/api/v1/admin/customers/by-document",
+        headers=auth_headers,
+        json={"document": "52998224725"},
     )
     assert get_admin_doc.status_code == 200
 
@@ -270,14 +282,14 @@ def test_vehicle_rejects_duplicate_plate_for_same_customer(client, auth_headers)
     assert duplicate.status_code == 409
 
 
-def test_customer_vehicles_requires_auth(client, auth_headers):
+def test_customer_vehicles_requires_auth(client, auth_headers, second_client):
     customer = client.post(
         "/api/v1/admin/customers",
         headers=auth_headers,
         json=_pf_customer_payload(name="Pedro", email="pedro4@test.com", phone=None),
     ).json()
 
-    response = client.get(f"/api/v1/admin/customers/{customer['id']}/vehicles")
+    response = second_client.get(f"/api/v1/admin/customers/{customer['id']}/vehicles")
     assert response.status_code == 401
 
 
@@ -489,7 +501,14 @@ def test_products_and_suppliers_crud(client, auth_headers):
     assert delete_supplier.status_code == 204
 
 
-def test_full_flow(client, auth_headers):
+def _os_status(client, auth_headers, os_id: int) -> str:
+    return client.get(
+        f"/api/v1/admin/service-orders/{os_id}",
+        headers=auth_headers,
+    ).json()["status"]
+
+
+def test_full_flow(client, auth_headers, captured_emails):
     customer = client.post(
         "/api/v1/admin/customers",
         headers=auth_headers,
@@ -564,14 +583,16 @@ def test_full_flow(client, auth_headers):
         headers=auth_headers,
     )
     assert send.status_code == 200
-    token = send.json().get("approval_token")
-    assert token
+    # The raw bearer token is never returned by the API; it exists only in
+    # the e-mail link.
+    assert "approval_token" not in send.json()
+    token = captured_emails.approval_token()
 
     get_approve = client.get(f"/api/v1/public/budgets/{token}/approve")
-    assert get_approve.status_code == 405
+    assert get_approve.status_code in {404, 405}
 
     get_reject = client.get(f"/api/v1/public/budgets/{token}/reject")
-    assert get_reject.status_code == 405
+    assert get_reject.status_code in {404, 405}
 
     budget_after_get = client.get(
         f"/api/v1/admin/budgets/{budget['id']}",
@@ -582,7 +603,10 @@ def test_full_flow(client, auth_headers):
     orders_after_get = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()
     assert orders_after_get == []
 
-    approve = client.post(f"/api/v1/public/budgets/{token}/approve")
+    approve = client.post(
+        "/api/v1/public/budgets/decisions",
+        json={"token": token, "decision": "approve"},
+    )
     assert approve.status_code == 200
 
     orders = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()
@@ -605,10 +629,21 @@ def test_full_flow(client, auth_headers):
     assert priority.status_code == 200
     assert priority.json()["priority"] == "Alta"
 
-    updated_os = client.put(
+    swap_without_reason = client.put(
         f"/api/v1/admin/service-orders/{os_id}",
         headers=auth_headers,
         json={"mechanic_name": "Carlos Silva", "priority": "Urgente"},
+    )
+    assert swap_without_reason.status_code == 422
+
+    updated_os = client.put(
+        f"/api/v1/admin/service-orders/{os_id}",
+        headers=auth_headers,
+        json={
+            "mechanic_name": "Carlos Silva",
+            "priority": "Urgente",
+            "reason": "Mecânico original de férias",
+        },
     )
     assert updated_os.status_code == 200
     assert updated_os.json()["mechanic_name"] == "Carlos Silva"
@@ -622,7 +657,9 @@ def test_full_flow(client, auth_headers):
     )
     assert generic_status_update.status_code == 422
 
-    status_override = client.patch(
+    # Break-glass only moves between the pre-execution states, and only for
+    # an admin.
+    same_status_override = client.patch(
         f"/api/v1/admin/service-orders/{os_id}/status-override",
         headers=auth_headers,
         json={
@@ -630,8 +667,38 @@ def test_full_flow(client, auth_headers):
             "reason": "Correção administrativa no fluxo de teste",
         },
     )
+    assert same_status_override.status_code == 422
+
+    forward_override = client.patch(
+        f"/api/v1/admin/service-orders/{os_id}/status-override",
+        headers=auth_headers,
+        json={
+            "status": "Finalizada",
+            "reason": "Correção administrativa no fluxo de teste",
+        },
+    )
+    assert forward_override.status_code == 422
+
+    status_override = client.patch(
+        f"/api/v1/admin/service-orders/{os_id}/status-override",
+        headers=auth_headers,
+        json={
+            "status": "Recebida",
+            "reason": "Correção administrativa no fluxo de teste",
+        },
+    )
     assert status_override.status_code == 200
-    assert status_override.json()["status"] == "Em diagnóstico"
+    assert status_override.json()["status"] == "Recebida"
+
+    restore_override = client.patch(
+        f"/api/v1/admin/service-orders/{os_id}/status-override",
+        headers=auth_headers,
+        json={
+            "status": "Em diagnóstico",
+            "reason": "Retomando o diagnóstico",
+        },
+    )
+    assert restore_override.status_code == 200
 
     no_op_update = client.put(
         f"/api/v1/admin/service-orders/{os_id}",
@@ -639,6 +706,30 @@ def test_full_flow(client, auth_headers):
         json={},
     )
     assert no_op_update.status_code == 422
+
+    # Reaching the execution queue goes through the workflow: a revision is
+    # sent for approval, and the customer's approval advances the OS.
+    revision = client.post(
+        f"/api/v1/admin/budgets/{budget['id']}/revisions",
+        headers=auth_headers,
+    )
+    assert revision.status_code == 201
+    revision_id = revision.json()["id"]
+
+    captured_emails.clear()
+    send_revision = client.post(
+        f"/api/v1/admin/budgets/{revision_id}/send-email",
+        headers=auth_headers,
+    )
+    assert send_revision.status_code == 200
+    assert _os_status(client, auth_headers, os_id) == "Aguardando aprovação"
+
+    approve_revision = client.post(
+        "/api/v1/public/budgets/decisions",
+        json={"token": captured_emails.approval_token(), "decision": "approve"},
+    )
+    assert approve_revision.status_code == 200
+    assert _os_status(client, auth_headers, os_id) == "Aguardando início"
 
     with patch(
         "src.infrastructure.auth.service_order_tracking.HmacServiceOrderTrackingTokenService.create_token",
@@ -709,23 +800,31 @@ def test_full_flow(client, auth_headers):
     assert paid.status_code == 200
     assert paid.json()["status"] == "Paga"
 
-    old_track = client.get(f"/api/v1/public/service-orders/{os_id}?document=52998224725")
-    assert old_track.status_code in {404, 405}
-
     deliver = client.patch(
         f"/api/v1/admin/service-orders/{os_id}/deliver",
         headers=auth_headers,
     )
     assert deliver.status_code == 422
 
-    track = client.get("/api/v1/public/service-orders/track/service-order-tracking-token")
+    old_track = client.get(f"/api/v1/public/service-orders/{os_id}?document=52998224725")
+    assert old_track.status_code in {404, 405}
+
+    old_track_route = client.get(
+        "/api/v1/public/service-orders/track/service-order-tracking-token"
+    )
+    assert old_track_route.status_code in {404, 405}
+
+    track = client.post(
+        "/api/v1/public/service-orders/track",
+        json={"token": captured_emails.tracking_token()},
+    )
     assert track.status_code == 200
     assert track.json()["status"] == "Entregue"
     assert "mechanic_name" not in track.json()
     assert "priority" not in track.json()
 
 
-def test_execution_queue_orders_pending_service_orders_by_priority(client, auth_headers):
+def test_execution_queue_orders_pending_service_orders_by_priority(client, auth_headers, captured_emails):
     customer = client.post(
         "/api/v1/admin/customers",
         headers=auth_headers,
@@ -760,14 +859,40 @@ def test_execution_queue_orders_pending_service_orders_by_priority(client, auth_
             headers=auth_headers,
             json={"service_id": service["id"], "quantity": 1},
         )
-        send = client.post(
+        client.post(
             f"/api/v1/admin/budgets/{budget['id']}/send-email",
             headers=auth_headers,
         )
-        token = send.json()["approval_token"]
-        client.post(f"/api/v1/public/budgets/{token}/approve")
+        client.post(
+            "/api/v1/public/budgets/decisions",
+            json={"token": captured_emails.approval_token(), "decision": "approve"},
+        )
+        captured_emails.clear()
         orders = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()
-        return next(order for order in orders if order["vehicle_id"] == vehicle["id"])
+        order = next(o for o in orders if o["vehicle_id"] == vehicle["id"])
+
+        # The OS only reaches the queue after a mechanic diagnoses it and the
+        # customer approves the resulting revision.
+        client.patch(
+            f"/api/v1/admin/service-orders/{order['id']}/assign-mechanic",
+            headers=auth_headers,
+            json={"mechanic_name": "Carlos"},
+        )
+        revision = client.post(
+            f"/api/v1/admin/budgets/{budget['id']}/revisions",
+            headers=auth_headers,
+        ).json()
+        client.post(
+            f"/api/v1/admin/budgets/{revision['id']}/send-email",
+            headers=auth_headers,
+        )
+        client.post(
+            "/api/v1/public/budgets/decisions",
+            json={"token": captured_emails.approval_token(), "decision": "approve"},
+        )
+        captured_emails.clear()
+        assert _os_status(client, auth_headers, order["id"]) == "Aguardando início"
+        return order
 
     low_priority_os = _create_approved_os("LOW1A23")
     urgent_os = _create_approved_os("URG2B34")
@@ -795,9 +920,10 @@ def test_validate_and_create_pj_customer(mock_validate, client, auth_headers):
         trade_name="Empresa",
     )
 
-    validate = client.get(
-        "/api/v1/admin/customers/validate-cnpj/04252011000110",
+    validate = client.post(
+        "/api/v1/admin/customers/validate-cnpj",
         headers=auth_headers,
+        json={"document": "04252011000110"},
     )
     assert validate.status_code == 200
     assert validate.json()["valid"] is True
@@ -827,9 +953,10 @@ def test_validate_and_create_pf_customer(mock_validate, client, auth_headers, mo
         formatted="529.982.247-25",
     )
 
-    validate = client.get(
-        "/api/v1/admin/customers/validate-cpf/52998224725",
+    validate = client.post(
+        "/api/v1/admin/customers/validate-cpf",
         headers=auth_headers,
+        json={"document": "52998224725"},
     )
     assert validate.status_code == 200
     assert validate.json()["valid"] is True

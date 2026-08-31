@@ -56,6 +56,17 @@
           [ngModelOptions]="{ standalone: true }"
         />
       </div>
+      <div class="field-name" *ngIf="serviceOrder.mechanic_name">
+        <span>Motivo da troca</span>
+        <input
+          class="text-input medium-input"
+          type="text"
+          name="mechanicChangeReason"
+          [(ngModel)]="mechanicChangeReason"
+          [ngModelOptions]="{ standalone: true }"
+          placeholder="Obrigatório ao substituir o mecânico"
+        />
+      </div>
       <div class="field-name">
         <span>Prioridade</span>
         <select
@@ -146,5 +157,8 @@
 
   <div *ngIf="actionMessage" class="action-message">
     {{ actionMessage }}
+  </div>
+  <div *ngIf="errorMessage" class="error-message" role="alert">
+    {{ errorMessage }}
   </div>
 </div>

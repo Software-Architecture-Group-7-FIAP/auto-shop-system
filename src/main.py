@@ -58,6 +58,26 @@ app.add_middleware(
     allow_headers=settings.cors_headers(),
 )
 
+# The bundled pages ship no inline or third-party scripts; only the inline
+# <style> on the landing page needs an exception.
+CONTENT_SECURITY_POLICY = "; ".join(
+    [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data:",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+    ]
+)
+
+# Swagger and ReDoc pull their assets from a CDN, so the policy above would
+# break them; the API docs are the one surface left without CSP.
+CSP_EXEMPT_PATHS = ("/docs", "/redoc", "/openapi.json")
+
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
@@ -69,6 +89,10 @@ async def add_security_headers(request: Request, call_next):
         "Permissions-Policy",
         "camera=(), microphone=(), geolocation=()",
     )
+    if not request.url.path.startswith(CSP_EXEMPT_PATHS):
+        response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+    if request.url.path.startswith("/api/v1/public/"):
+        response.headers.setdefault("Cache-Control", "no-store")
     if settings.security_hsts_enabled:
         response.headers.setdefault(
             "Strict-Transport-Security",
@@ -200,6 +224,7 @@ def health_check():
 api_prefix = "/api/v1"
 
 app.include_router(auth.router, prefix=api_prefix)
+app.include_router(auth.admin_router, prefix=api_prefix)
 app.include_router(customers.router, prefix=api_prefix)
 app.include_router(public_customers.router, prefix=api_prefix)
 app.include_router(vehicles.router, prefix=api_prefix)

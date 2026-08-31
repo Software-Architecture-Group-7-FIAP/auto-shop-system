@@ -1,63 +1,79 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap } from 'rxjs';
-import { LoginRequest, TokenResponse } from '../model/models';
-
-const TOKEN_KEY = 'oficina_token';
-const USER_KEY = 'oficina_user';
+import { Observable, catchError, finalize, map, of, shareReplay, tap } from 'rxjs';
+import { LoginRequest, SessionResponse } from '../model/models';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private authUrl = 'api/v1/auth';
+  private adminUrl = 'api/v1/admin';
+  private currentUser: SessionResponse | null = null;
+  private refreshInFlight: Observable<SessionResponse> | null = null;
 
   constructor(private http: HttpClient) {}
 
-  login(credentials: LoginRequest): Observable<TokenResponse> {
-    this.logout();
-    return this.http.post<TokenResponse>(`${this.authUrl}/login`, credentials).pipe(
-      tap((response) => {
-        localStorage.setItem(TOKEN_KEY, response.access_token);
-        localStorage.setItem(USER_KEY, credentials.username);
+  login(credentials: LoginRequest): Observable<SessionResponse> {
+    this.currentUser = null;
+    this.refreshInFlight = null;
+    return this.http
+      .post<SessionResponse>(`${this.authUrl}/login`, credentials, { withCredentials: true })
+      .pipe(tap((response) => (this.currentUser = response)));
+  }
+
+  refresh(): Observable<SessionResponse> {
+    // Parallel 401s must share one rotation. Two concurrent POSTs would send
+    // the same refresh cookie, and the server reads the second one as token
+    // reuse and revokes the whole session family.
+    if (!this.refreshInFlight) {
+      this.refreshInFlight = this.http
+        .post<SessionResponse>(`${this.authUrl}/refresh`, {}, { withCredentials: true })
+        .pipe(
+          tap((response) => (this.currentUser = response)),
+          finalize(() => (this.refreshInFlight = null)),
+          shareReplay({ bufferSize: 1, refCount: false })
+        );
+    }
+    return this.refreshInFlight;
+  }
+
+  logout(): void {
+    this.currentUser = null;
+    this.refreshInFlight = null;
+    this.http
+      .post(`${this.authUrl}/logout`, {}, { withCredentials: true })
+      .pipe(catchError(() => of(null)))
+      .subscribe();
+  }
+
+  me(): Observable<SessionResponse> {
+    return this.http
+      .get<SessionResponse>(`${this.adminUrl}/me`, { withCredentials: true })
+      .pipe(tap((response) => (this.currentUser = response)));
+  }
+
+  ensureSession(): Observable<boolean> {
+    if (this.currentUser) {
+      return of(true);
+    }
+    return this.me().pipe(
+      map(() => true),
+      catchError(() => {
+        return this.refresh().pipe(
+          map(() => true),
+          catchError(() => {
+            this.currentUser = null;
+            return of(false);
+          })
+        );
       })
     );
   }
 
-  logout(): void {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
-  }
-
-  getToken(): string | null {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) {
-      return null;
-    }
-    const trimmed = token.trim();
-    return trimmed.length > 0 ? trimmed : null;
-  }
-
   getUsername(): string | null {
-    return localStorage.getItem(USER_KEY);
+    return this.currentUser?.username ?? null;
   }
 
   isLoggedIn(): boolean {
-    const token = this.getToken();
-    return !!token && !this.isTokenExpired(token);
-  }
-
-  isTokenExpired(token: string): boolean {
-    try {
-      const payload = token.split('.')[1];
-      if (!payload) {
-        return true;
-      }
-      const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
-      if (typeof decoded.exp !== 'number') {
-        return true;
-      }
-      return decoded.exp * 1000 < Date.now();
-    } catch {
-      return true;
-    }
+    return this.currentUser !== null;
   }
 }

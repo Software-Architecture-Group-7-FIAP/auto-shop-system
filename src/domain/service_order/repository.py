@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Protocol
 
 from src.domain.enums import ServiceOrderStatus
@@ -8,6 +9,9 @@ class ServiceOrderRepository(Protocol):
     def get_by_id(self, service_order_id: int) -> ServiceOrder | None:
         ...
 
+    def get_by_budget_id(self, budget_id: int) -> ServiceOrder | None:
+        ...
+
     def get_by_tracking_token_fingerprint(self, token_fingerprint: str) -> ServiceOrder | None:
         ...
 
@@ -15,6 +19,7 @@ class ServiceOrderRepository(Protocol):
         self,
         service_order_id: int,
         token_fingerprint: str,
+        expires_at: datetime | None = None,
     ) -> None:
         ...
 

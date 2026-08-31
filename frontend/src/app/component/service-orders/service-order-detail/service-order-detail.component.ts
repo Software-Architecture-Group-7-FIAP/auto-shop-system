@@ -19,6 +19,7 @@ export class ServiceOrderDetailComponent implements OnChanges {
 
   serviceOrder: ServiceOrder | undefined;
   mechanicName = '';
+  mechanicChangeReason = '';
   selectedPriority: Priority = Priority.NORMAL;
   selectedStatus: ServiceOrderStatus = ServiceOrderStatus.AGUARDANDO_APROVACAO;
   statusOverrideReason = '';
@@ -50,18 +51,30 @@ export class ServiceOrderDetailComponent implements OnChanges {
     this.serviceOrderService.getById(this.serviceOrderId).subscribe((data) => {
       this.serviceOrder = data;
       this.mechanicName = data.mechanic_name || '';
+      this.mechanicChangeReason = '';
       this.selectedPriority = data.priority;
       this.selectedStatus = data.status;
     });
   }
 
   saveChanges(): void {
+    this.actionMessage = '';
+    this.errorMessage = '';
     const name = this.mechanicName.trim();
+    const previousName = this.serviceOrder?.mechanic_name?.trim() || '';
+    const isReassignment = Boolean(previousName && name && name !== previousName);
+    if (isReassignment && !this.mechanicChangeReason.trim()) {
+      this.errorMessage = 'Motivo obrigatório para trocar o mecânico.';
+      return;
+    }
     const payload: ServiceOrderUpdate = {
       priority: this.selectedPriority,
     };
     if (name) {
       payload.mechanic_name = name;
+    }
+    if (isReassignment) {
+      payload.reason = this.mechanicChangeReason.trim();
     }
     this.isSaving = true;
     this.errorMessage = '';
@@ -69,19 +82,23 @@ export class ServiceOrderDetailComponent implements OnChanges {
       next: (updated) => {
         this.serviceOrder = updated;
         this.selectedStatus = updated.status;
+        this.mechanicChangeReason = '';
         this.parent.updateServiceOrderInList(updated);
         this.actionMessage = 'Ordem de serviço atualizada.';
       },
       complete: () => {
         this.isSaving = false;
       },
-      error: () => {
+      error: (error) => {
         this.isSaving = false;
+        this.setErrorMessage(error, 'Não foi possível atualizar a ordem de serviço.');
       },
     });
   }
 
   overrideStatus(): void {
+    this.actionMessage = '';
+    this.errorMessage = '';
     const reason = this.statusOverrideReason.trim();
     if (!reason) {
       this.errorMessage = 'Motivo obrigatório para alterar status.';
@@ -114,6 +131,8 @@ export class ServiceOrderDetailComponent implements OnChanges {
 
   sendEmail(): void {
     this.isSendingEmail = true;
+    this.actionMessage = '';
+    this.errorMessage = '';
     this.serviceOrderService.sendEmail(this.serviceOrderId).subscribe({
       next: (response) => {
         this.actionMessage = response.message;
@@ -121,8 +140,9 @@ export class ServiceOrderDetailComponent implements OnChanges {
       complete: () => {
         this.isSendingEmail = false;
       },
-      error: () => {
+      error: (error) => {
         this.isSendingEmail = false;
+        this.setErrorMessage(error, 'Não foi possível enviar o PDF por e-mail.');
       },
     });
   }
@@ -134,26 +154,20 @@ export class ServiceOrderDetailComponent implements OnChanges {
     const hasMechanic = Boolean(this.serviceOrder.mechanic_name?.trim());
     return (
       hasMechanic &&
-      [
-        ServiceOrderStatus.AGUARDANDO_APROVACAO,
-        ServiceOrderStatus.EM_DIAGNOSTICO,
-      ].includes(this.serviceOrder.status)
+      this.serviceOrder.status === ServiceOrderStatus.AGUARDANDO_INICIO
     );
   }
 
   shouldShowStart(): boolean {
     return Boolean(
       this.serviceOrder &&
-      [
-        ServiceOrderStatus.AGUARDANDO_APROVACAO,
-        ServiceOrderStatus.EM_DIAGNOSTICO,
-      ].includes(this.serviceOrder.status)
+      this.serviceOrder.status === ServiceOrderStatus.AGUARDANDO_INICIO
     );
   }
 
   startService(): void {
     if (!this.canStart()) {
-      this.actionMessage = 'Mecânico obrigatório para iniciar.';
+      this.actionMessage = 'A OS deve estar aguardando início e ter um mecânico atribuído.';
       return;
     }
     this.isStarting = true;

@@ -42,14 +42,14 @@ class InvoiceService:
         self.uow.commit()
         return invoice
 
-    def pay_invoice(self, invoice_id: int) -> Invoice:
+    def pay_invoice(self, invoice_id: int, *, actor_id: int | None = None, request_id: str | None = None) -> Invoice:
         invoice = self.get_by_id(invoice_id)
         invoice.pay(self.clock.now())
         updated = self.invoices.save(invoice)
 
         service_order = self.service_orders.get_by_id(invoice.service_order_id)
         if service_order:
-            service_order.mark_delivered()
+            service_order.mark_delivered(actor_id=actor_id, request_id=request_id)
             self.service_orders.save(service_order)
 
         self.uow.commit()
@@ -61,7 +61,7 @@ class InvoiceService:
             raise NotFoundError("Fatura não encontrada")
         return invoice
 
-    def deliver(self, service_order_id: int) -> ServiceOrder:
+    def deliver(self, service_order_id: int, *, actor_id: int | None = None, request_id: str | None = None) -> ServiceOrder:
         service_order = self.service_orders.get_by_id(service_order_id)
         if not service_order:
             raise NotFoundError("OS não encontrada")
@@ -70,7 +70,7 @@ class InvoiceService:
         invoice = self.invoices.get_by_service_order_id(service_order_id)
         if not invoice or invoice.status != InvoiceStatus.PAID:
             raise ValidationError("Fatura deve estar paga para entregar a OS")
-        service_order.mark_delivered()
+        service_order.mark_delivered(actor_id=actor_id, request_id=request_id)
         updated = self.service_orders.save(service_order)
         self.uow.commit()
         return updated
