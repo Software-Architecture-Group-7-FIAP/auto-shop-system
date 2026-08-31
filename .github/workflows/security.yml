@@ -48,16 +48,18 @@ jobs:
       - name: Validate Compose configuration
         run: docker compose --env-file .env.example config
       - name: Build immutable release image
-        run: docker build --tag "$IMAGE_REFERENCE" .
+        shell: bash
+        run: docker build --tag "${IMAGE_REFERENCE,,}" .
       - name: Render and validate every environment phase
         shell: bash
         run: |
           set -euo pipefail
+          image_reference="${IMAGE_REFERENCE,,}"
           for environment in local staging production; do
             for phase in foundation migration app ingress; do
               output="$(mktemp)"
               kubectl kustomize "k8s/overlays/${environment}/${phase}" \
-                | sed "s#registry.example.com/auto-shop-system:__IMAGE_TAG__#${IMAGE_REFERENCE}#g" \
+                | sed "s#registry.example.com/auto-shop-system:__IMAGE_TAG__#${image_reference}#g" \
                 > "$output"
               if grep -Eiq 'secrets\.example|:latest' "$output"; then
                 echo "Unsafe value found in ${environment}/${phase}"
