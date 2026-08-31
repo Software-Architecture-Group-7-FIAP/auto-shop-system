@@ -85,7 +85,7 @@ jobs:
           node_image: kindest/node:v1.34.0
       - name: Build and load local image
         run: |
-          docker build --tag auto-shop-system:local .
+          docker build --load --provenance=false --tag auto-shop-system:local .
           kind load docker-image auto-shop-system:local
       - name: Create ephemeral local Secret
         shell: bash
