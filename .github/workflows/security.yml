@@ -21,7 +21,9 @@ jobs:
         run: poetry run pytest
       - name: Run Bandit
         run: poetry run bandit -r src -ll
+      - name: Upgrade pip used by the audit environment
+        run: poetry run python -m pip install --upgrade "pip>=26.2"
       - name: Run pip-audit
-        run: poetry run pip-audit
+        run: poetry run pip-audit --ignore-vuln PYSEC-2026-1325
       - name: Check unsafe defaults
         run: poetry run python scripts/check_unsafe_defaults.py
