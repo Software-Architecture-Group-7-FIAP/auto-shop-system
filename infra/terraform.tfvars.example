@@ -1,0 +1,18 @@
+environment            = "local"
+namespace              = "auto-shop"
+kube_context           = "kind-kind"
+image_reference        = "auto-shop-system:local"
+enable_local_database  = true
+enable_ingress         = true
+ingress_host           = null
+app_env                = "development"
+app_base_url           = "http://localhost:8000"
+frontend_public_url    = "http://localhost:4200"
+cors_allowed_origins   = "http://localhost:4200"
+smtp_host              = "mailhog"
+smtp_port              = 1025
+security_hsts_enabled  = false
+skip_cpf_external_validation = true
+
+# O Secret deve ser criado previamente fora do Terraform.
+# kube_context = "kind-kind"

@@ -20,7 +20,7 @@ execução é sempre `foundation`, `migration`, `app` e, quando necessário,
    arquivo de destino é ignorado pelo Git; `DATABASE_URL` é gerada a partir de
    `DB_NAME`, `DB_USER` e `DB_PASSWORD`.
 2. Confirme o contexto do Kind ou Docker Desktop com `kubectl config current-context`.
-3. Execute `./setup/Windows/setup.ps1 -Environment local` no PowerShell.
+3. Execute `./k8s/scripts/deploy.ps1 -Environment local` no PowerShell.
 
 O overlay local cria PostgreSQL com uma réplica e probes `pg_isready`, além do
 MailHog. O script constrói uma referência local única por execução e a carrega
@@ -50,9 +50,9 @@ provisione no namespace `auto-shop`:
 Use uma referência de imagem imutável, preferencialmente digest:
 
 ```powershell
-./setup/Windows/setup.ps1 -Environment staging `
+./k8s/scripts/deploy.ps1 -Environment staging `
   -ImageReference ghcr.io/example/auto-shop-system:0123456789abcdef0123456789abcdef01234567
-./setup/Windows/setup.ps1 -Environment production `
+./k8s/scripts/deploy.ps1 -Environment production `
   -ImageReference ghcr.io/example/auto-shop-system@sha256:<64-hex-digest> `
   -ConfirmProduction
 ```
@@ -67,6 +67,33 @@ connection string.
 Produção e staging usam HTTPS, HSTS e redirect de HTTP para HTTPS. O Secret TLS
 deve ser emitido por cert-manager ou provisionado por um processo externo; o
 script não cria certificados automaticamente.
+
+## Terraform (alternativa declarativa)
+
+O diretório [`infra/`](../infra/README.md) oferece uma alternativa ao Kustomize
+para gerenciar Namespace, ConfigMap, migration, backend, Service, HPA e Ingress
+em um cluster Kubernetes existente. Ele não provisiona AWS, EKS, VPC, IAM, RDS
+ou PostgreSQL externo.
+
+Use Terraform ou Kustomize por ambiente, nunca os dois simultaneamente no mesmo
+namespace. O Kustomize continua disponível para compatibilidade e para o fluxo
+operacional documentado acima; quando Terraform for escolhido, ele passa a ser
+o proprietário declarado dos recursos daquele ambiente.
+
+No Terraform:
+
+- o Secret `auto-shop-secrets` é criado previamente por um mecanismo externo e
+  nunca é armazenado no state;
+- `enable_local_database=true` é permitido somente em `local`;
+- staging e production usam PostgreSQL externo e devem manter
+  `enable_local_database=false`;
+- a imagem da API deve usar digest ou tag baseada em SHA;
+- o Job de migration é versionado pela imagem, aguarda conclusão antes do
+  Deployment e não possui TTL automático para não desaparecer do state.
+
+O passo a passo, incluindo imports para assumir um namespace já gerenciado pelo
+Kustomize e comandos específicos do PowerShell, está em
+[`infra/README.md`](../infra/README.md).
 
 ## Rollback e diagnóstico
 
