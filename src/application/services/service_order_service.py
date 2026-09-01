@@ -5,10 +5,8 @@ from src.domain.budget.repository import BudgetRepository
 from src.domain.enums import BudgetStatus, Priority, ServiceOrderStatus
 from src.domain.auth.entity import UserRole
 from src.domain.exceptions import ForbiddenError, NotFoundError
-from src.domain.pagination import Page
 from src.domain.service_order.entity import ServiceOrder
 from src.domain.service_order.repository import ServiceOrderRepository
-from src.domain.service_order.rules import ServiceOrderListItem, ServiceOrderListQuery
 
 
 class ServiceOrderService:
@@ -34,12 +32,6 @@ class ServiceOrderService:
 
     def list_all(self, status: ServiceOrderStatus | None = None) -> list[ServiceOrder]:
         return self.service_orders.list_all(status)
-
-    def list_operational(
-        self,
-        query: ServiceOrderListQuery,
-    ) -> Page[ServiceOrderListItem]:
-        return self.service_orders.list_operational(query)
 
     def get_by_tracking_token(self, token: str) -> ServiceOrder:
         token_fingerprint = self.tracking_tokens.fingerprint(token)

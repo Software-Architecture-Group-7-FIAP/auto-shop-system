@@ -345,35 +345,6 @@ class ServiceOrderResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class ServiceOrderListItemResponse(BaseModel):
-    id: int
-    budget_id: int | None
-    customer_id: int
-    vehicle_id: int
-    status: ServiceOrderStatus
-    priority: Priority
-    mechanic_name: str | None
-    total_price: float
-    started_at: datetime | None
-    finished_at: datetime | None
-    customer_name: str
-    vehicle_plate: str
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class ServiceOrderListResponse(BaseModel):
-    items: list[ServiceOrderListItemResponse]
-    page: int
-    page_size: int
-    total: int
-    total_pages: int
-
-
-
-
 class ServiceOrderPublicResponse(BaseModel):
     id: int
     status: ServiceOrderStatus

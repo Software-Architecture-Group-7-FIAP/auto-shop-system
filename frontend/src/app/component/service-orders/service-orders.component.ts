@@ -1,5 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-import { ServiceOrder, ServiceOrderListItem, ServiceOrderStatus } from '../../model/models';
+import { ServiceOrder, ServiceOrderStatus } from '../../model/models';
 import { ServiceOrderService } from '../../service/service-order.service';
 
 @Component({
@@ -8,15 +8,10 @@ import { ServiceOrderService } from '../../service/service-order.service';
   styleUrls: ['./service-orders.component.css'],
 })
 export class ServiceOrdersComponent implements OnInit {
-  serviceOrders: ServiceOrderListItem[] = [];
+  serviceOrders: ServiceOrder[] = [];
   selectedServiceOrderId: number | undefined;
   statusValues = Object.values(ServiceOrderStatus);
   selectedStatus = '';
-  includeClosed = false;
-  page = 1;
-  readonly pageSize = 20;
-  total = 0;
-  totalPages = 0;
   isLoading = false;
 
   constructor(private serviceOrderService: ServiceOrderService) {}
@@ -27,44 +22,26 @@ export class ServiceOrdersComponent implements OnInit {
 
   loadServiceOrders(): void {
     this.isLoading = true;
-    this.serviceOrderService
-      .getAll({
-        status: this.selectedStatus || undefined,
-        includeClosed: this.includeClosed,
-        page: this.page,
-        pageSize: this.pageSize,
-      })
-      .subscribe({
-        next: (data) => {
-          this.serviceOrders = data.items;
-          this.total = data.total;
-          this.totalPages = data.total_pages;
-          if (
-            this.selectedServiceOrderId &&
-            !this.serviceOrders.some((order) => order.id === this.selectedServiceOrderId)
-          ) {
-            this.selectedServiceOrderId = undefined;
-          }
-        },
-        complete: () => {
-          this.isLoading = false;
-        },
-        error: () => {
-          this.isLoading = false;
-        },
-      });
+    this.serviceOrderService.getAll(this.selectedStatus || undefined).subscribe({
+      next: (data) => {
+        this.serviceOrders = data.sort((a, b) => a.id - b.id);
+        if (
+          this.selectedServiceOrderId &&
+          !this.serviceOrders.some((order) => order.id === this.selectedServiceOrderId)
+        ) {
+          this.selectedServiceOrderId = undefined;
+        }
+      },
+      complete: () => {
+        this.isLoading = false;
+      },
+      error: () => {
+        this.isLoading = false;
+      },
+    });
   }
 
   applyStatusFilter(): void {
-    this.page = 1;
-    this.loadServiceOrders();
-  }
-
-  goToPage(page: number): void {
-    if (page < 1 || (this.totalPages > 0 && page > this.totalPages) || page === this.page) {
-      return;
-    }
-    this.page = page;
     this.loadServiceOrders();
   }
 
@@ -79,9 +56,7 @@ export class ServiceOrdersComponent implements OnInit {
   updateServiceOrderInList(serviceOrder: ServiceOrder): void {
     const index = this.serviceOrders.findIndex((o) => o.id === serviceOrder.id);
     if (index >= 0) {
-      this.serviceOrders = this.serviceOrders.map((order, currentIndex) =>
-        currentIndex === index ? { ...order, ...serviceOrder } : order
-      );
+      this.serviceOrders[index] = serviceOrder;
     }
   }
 }

@@ -32,25 +32,6 @@
   font-size: 0.8rem;
 }
 
-.filter-toggle {
-  flex-direction: row !important;
-  align-items: center;
-  padding-bottom: 0.35rem;
-}
-
-.pagination-bar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-}
-
-.pagination-info {
-  color: var(--color-text-muted);
-  font-size: 0.8rem;
-}
-
 .badge {
   display: inline-block;
   padding: 0.2rem 0.45rem;
