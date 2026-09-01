@@ -1,8 +1,10 @@
 from datetime import datetime
 from typing import Protocol
 
+from src.domain.pagination import Page
 from src.domain.enums import ServiceOrderStatus
 from src.domain.service_order.entity import ServiceOrder
+from src.domain.service_order.rules import ServiceOrderListItem, ServiceOrderListQuery
 
 
 class ServiceOrderRepository(Protocol):
@@ -24,6 +26,12 @@ class ServiceOrderRepository(Protocol):
         ...
 
     def list_all(self, status: ServiceOrderStatus | None = None) -> list[ServiceOrder]:
+        ...
+
+    def list_operational(
+        self,
+        query: ServiceOrderListQuery,
+    ) -> Page[ServiceOrderListItem]:
         ...
 
     def list_with_execution_times(self) -> list[ServiceOrder]:

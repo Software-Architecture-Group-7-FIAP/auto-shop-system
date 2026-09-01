@@ -1,14 +1,18 @@
 from datetime import datetime
+from decimal import Decimal
 from urllib.parse import urlparse
 from uuid import uuid4
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     Float,
     ForeignKey,
     Integer,
+    Index,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -22,6 +26,7 @@ from src.config import settings
 from src.domain.enums import (
     BudgetStatus,
     InvoiceStatus,
+    PaymentMethod,
     Priority,
     PurchaseRequestStatus,
     ReservationStatus,
@@ -237,6 +242,19 @@ class ServiceOrderModel(Base):
     __tablename__ = "service_orders"
     __table_args__ = (
         UniqueConstraint("budget_id", name="uq_service_orders_budget_id"),
+        Index(
+            "uq_service_orders_active_vehicle",
+            "vehicle_id",
+            unique=True,
+            sqlite_where=text(
+                "status IN ('Recebida', 'Em diagnóstico', 'Aguardando aprovação', "
+                "'Aguardando início', 'Em execução', 'Finalizada')"
+            ),
+            postgresql_where=text(
+                "status IN ('Recebida', 'Em diagnóstico', 'Aguardando aprovação', "
+                "'Aguardando início', 'Em execução', 'Finalizada')"
+            ),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -386,12 +404,41 @@ class InvoiceModel(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     service_order_id: Mapped[int] = mapped_column(ForeignKey("service_orders.id"), unique=True)
-    amount: Mapped[float] = mapped_column(Float)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     status: Mapped[InvoiceStatus] = mapped_column(
         db_enum(InvoiceStatus), default=InvoiceStatus.PENDING
     )
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    payments: Mapped[list["PaymentModel"]] = relationship(
+        back_populates="invoice",
+        cascade="all, delete-orphan",
+        order_by="PaymentModel.paid_at",
+    )
+
+
+class PaymentModel(Base):
+    __tablename__ = "payments"
+    __table_args__ = (
+        UniqueConstraint(
+            "invoice_id",
+            "idempotency_key",
+            name="uq_payments_invoice_idempotency_key",
+        ),
+        CheckConstraint("amount > 0", name="ck_payments_positive_amount"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(
+        ForeignKey("invoices.id", ondelete="CASCADE"), index=True
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    method: Mapped[PaymentMethod] = mapped_column(db_enum(PaymentMethod), nullable=False)
+    paid_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    invoice: Mapped["InvoiceModel"] = relationship(back_populates="payments")
 
 
 def _engine_connect_args() -> dict[str, int]:

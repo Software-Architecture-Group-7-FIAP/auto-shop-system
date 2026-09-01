@@ -1,11 +1,11 @@
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.orm import Session
 
 from src.api.composition.billing import compose_invoice_service
 from src.api.dependencies import domain_error_handler, get_current_user
-from src.api.schemas import InvoiceResponse, ServiceOrderResponse
+from src.api.schemas import InvoiceResponse, PaymentCreate, ServiceOrderResponse
 from src.domain.exceptions import DomainError
 from src.infrastructure.database import UserModel, get_db
 
@@ -45,6 +45,35 @@ def pay_invoice(
 ):
     try:
         return compose_invoice_service(db).pay_invoice(invoice_id, actor_id=current_user.id, request_id=request.headers.get("x-request-id") or str(uuid4()))
+    except DomainError as e:
+            raise domain_error_handler(e)
+
+
+@router.post("/admin/invoices/{invoice_id}/payments", response_model=InvoiceResponse)
+def record_payment(
+    invoice_id: int,
+    data: PaymentCreate,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        key = idempotency_key or request.headers.get("x-request-id") or str(uuid4())
+        if len(key) > 128:
+            raise ValueError("Idempotency-Key excede o limite permitido")
+        return compose_invoice_service(db).record_payment(
+            invoice_id,
+            amount=data.amount,
+            method=data.method,
+            actor_id=current_user.id,
+            idempotency_key=key,
+            request_id=key,
+        )
+    except ValueError as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except DomainError as e:
         raise domain_error_handler(e)
 
