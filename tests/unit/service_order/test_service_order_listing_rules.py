@@ -8,6 +8,7 @@ from src.domain.service_order.rules import (
     MAX_PAGE_SIZE,
     OPERATIONAL_STATUSES,
     STATUS_RANKING,
+    ServiceOrderOrdering,
     ServiceOrderListQuery,
 )
 
@@ -30,6 +31,10 @@ def test_status_ranking_matches_operational_priority():
 
 def test_default_query_only_exposes_operational_statuses():
     assert ServiceOrderListQuery().visible_statuses() == OPERATIONAL_STATUSES
+
+
+def test_default_query_orders_by_creation_date():
+    assert ServiceOrderListQuery().order_by is ServiceOrderOrdering.CREATED_AT_ASC
 
 
 def test_include_closed_query_exposes_every_status():

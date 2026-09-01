@@ -50,7 +50,7 @@ class ServiceOrderListQuery:
     include_closed: bool = False
     page: int = 1
     page_size: int = DEFAULT_PAGE_SIZE
-    order_by: ServiceOrderOrdering = ServiceOrderOrdering.STATUS_PRIORITY
+    order_by: ServiceOrderOrdering = ServiceOrderOrdering.CREATED_AT_ASC
 
     def __post_init__(self) -> None:
         if self.page < 1:

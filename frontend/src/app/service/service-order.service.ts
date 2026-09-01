@@ -30,7 +30,7 @@ export class ServiceOrderService {
       .set('page', query.page ?? 1)
       .set('page_size', query.pageSize ?? 20)
       .set('include_closed', query.includeClosed ?? false)
-      .set('order_by', query.orderBy ?? 'status_priority');
+      .set('order_by', query.orderBy ?? 'created_at_asc');
     if (query.status) {
       params = params.set('status', query.status);
     }

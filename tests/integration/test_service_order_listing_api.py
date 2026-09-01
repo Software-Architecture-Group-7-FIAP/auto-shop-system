@@ -103,7 +103,7 @@ def test_default_listing_excludes_closed_and_returns_joined_fields(
     assert body["total_pages"] == 1
 
 
-def test_default_ordering_uses_status_priority_then_created_at_and_id(
+def test_default_ordering_uses_created_at_ascending(
     client,
     auth_headers,
     db_session,
@@ -120,6 +120,27 @@ def test_default_ordering_uses_status_priority_then_created_at_and_id(
     )
 
     body = client.get(LISTING_URL, headers=auth_headers).json()
+
+    assert [item["id"] for item in body["items"]] == [item["id"] for item in seeded]
+
+
+def test_explicit_status_priority_ordering_is_supported(client, auth_headers, db_session):
+    seeded = seed_service_orders(
+        db_session,
+        [
+            ServiceOrderStatus.RECEBIDA,
+            ServiceOrderStatus.AGUARDANDO_INICIO,
+            ServiceOrderStatus.EM_EXECUCAO,
+            ServiceOrderStatus.AGUARDANDO_INICIO,
+            ServiceOrderStatus.AGUARDANDO_APROVACAO,
+        ],
+    )
+
+    body = client.get(
+        LISTING_URL,
+        headers=auth_headers,
+        params={"order_by": "status_priority"},
+    ).json()
 
     assert [item["id"] for item in body["items"]] == [
         seeded[2]["id"],
@@ -171,7 +192,7 @@ def test_include_closed_returns_every_status(client, auth_headers, operational_a
     ).json()
 
     assert {item["status"] for item in body["items"]} == {status.value for status in ServiceOrderStatus}
-    assert body["total"] == 7
+    assert body["total"] == 8
 
 
 def test_explicit_closed_status_is_not_hidden_by_default(client, auth_headers, operational_and_closed_orders):
@@ -181,7 +202,7 @@ def test_explicit_closed_status_is_not_hidden_by_default(client, auth_headers, o
         params={"status": ServiceOrderStatus.FINALIZADA.value},
     ).json()
 
-    assert [item["id"] for item in body["items"]] == [operational_and_closed_orders[5]["id"]]
+    assert [item["id"] for item in body["items"]] == [operational_and_closed_orders[6]["id"]]
     assert body["total"] == 1
 
 
