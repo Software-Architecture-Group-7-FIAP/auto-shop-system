@@ -150,4 +150,7 @@ def test_active_service_order_conflicts_but_delivered_history_does_not(
     created = creator.create_from_budget(Budget(id=2, customer_id=1, vehicle_id=1))
 
     assert created.id != 1
-    assert db_session.get(ServiceOrderModel, created.id).status == ServiceOrderStatus.RECEBIDA
+    assert (
+        db_session.get(ServiceOrderModel, created.id).status
+        == ServiceOrderStatus.AGUARDANDO_INICIO
+    )
