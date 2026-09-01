@@ -27,12 +27,13 @@ def upgrade() -> None:
     dialect = bind.dialect.name
 
     if dialect == "postgresql":
-        op.execute(
-            "ALTER TYPE serviceorderstatus ADD VALUE IF NOT EXISTS 'Aguardando compra'"
-        )
-        op.execute(
-            "ALTER TYPE invoicestatus ADD VALUE IF NOT EXISTS 'Parcialmente paga'"
-        )
+        with op.get_context().autocommit_block():
+            op.execute(
+                "ALTER TYPE serviceorderstatus ADD VALUE IF NOT EXISTS 'Aguardando compra'"
+            )
+            op.execute(
+                "ALTER TYPE invoicestatus ADD VALUE IF NOT EXISTS 'Parcialmente paga'"
+            )
 
     if dialect == "sqlite":
         with op.batch_alter_table("invoices") as batch_op:
