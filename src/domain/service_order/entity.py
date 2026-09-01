@@ -68,7 +68,10 @@ class ServiceOrder:
             }
         ),
         ServiceOrderStatus.AGUARDANDO_INICIO: frozenset(
-            {ServiceOrderStatus.EM_EXECUCAO}
+            {
+                ServiceOrderStatus.EM_EXECUCAO,
+                ServiceOrderStatus.AGUARDANDO_APROVACAO,
+            }
         ),
         ServiceOrderStatus.EM_EXECUCAO: frozenset({ServiceOrderStatus.FINALIZADA}),
         ServiceOrderStatus.FINALIZADA: frozenset({ServiceOrderStatus.ENTREGUE}),

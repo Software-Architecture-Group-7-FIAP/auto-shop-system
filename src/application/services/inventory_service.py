@@ -1,9 +1,13 @@
 from src.application.ports.inventory import (
+    InventoryProduct,
     InventoryProductGateway,
     InventoryServiceOrderLookup,
+    InventoryServiceOrderProductLine,
+    InventoryServiceOrderSnapshot,
 )
 from src.application.ports.unit_of_work import UnitOfWork
-from src.domain.exceptions import NotFoundError
+from src.domain.enums import PurchaseRequestStatus, ReservationStatus, ServiceOrderStatus
+from src.domain.exceptions import NotFoundError, ValidationError
 from src.domain.inventory.entity import GoodsReceipt, PurchaseRequest, Reservation
 from src.domain.inventory.repository import InventoryRepository
 
@@ -27,41 +31,231 @@ class InventoryService:
         product_id: int,
         quantity: int,
     ) -> Reservation:
-        reservation = self.inventory.add_reservation(
-            Reservation.create(service_order_id, product_id, quantity)
-        )
+        snapshot = self._get_snapshot(service_order_id)
+        self._ensure_snapshot_exists(snapshot)
+        self._ensure_reservable(snapshot)
+        if product_id not in self._required_by_product(snapshot.product_lines):
+            raise ValidationError(
+                f"Produto #{product_id} não está no escopo da OS #{service_order_id}"
+            )
+        product = self._get_product_for_update(product_id)
+        if product is None:
+            raise NotFoundError("Produto não encontrado")
+        reservation = self._reserve_quantity(service_order_id, product, quantity)
         self.uow.commit()
         return reservation
 
     def create_reservations_for_os(self, service_order_id: int) -> list[Reservation]:
-        product_lines = self.service_orders.get_product_lines(service_order_id)
-        if product_lines is None:
-            raise NotFoundError("OS não encontrada")
-
-        reservations = []
-        for line in product_lines:
-            product = self.products.get_product(line.product_id)
-            if not product:
-                continue
-            available = self._available_stock(product.id, product.stock_quantity)
-            if available < line.quantity and not self.check_pending_receipt(product.id):
-                self._create_purchase_request(
-                    product.id,
-                    line.quantity - available,
-                    service_order_id,
-                )
-            reservation = self.inventory.add_reservation(
-                Reservation.create(service_order_id, line.product_id, line.quantity)
-            )
-            reservations.append(reservation)
+        reservations = self.reconcile_for_service_order(service_order_id)
         self.uow.commit()
         return reservations
 
-    def _available_stock(self, product_id: int, stock_quantity: int) -> int:
-        return stock_quantity - self.inventory.active_quantity_for_product(product_id)
+    def reconcile_reservations_for_os(self, service_order_id: int) -> list[Reservation]:
+        reservations = self.reconcile_for_service_order(service_order_id)
+        self.uow.commit()
+        return reservations
 
-    def check_pending_receipt(self, product_id: int) -> bool:
-        return self.inventory.has_pending_receipt(product_id)
+    def reconcile_for_service_order(self, service_order_id: int) -> list[Reservation]:
+        snapshot = self._get_snapshot(service_order_id)
+        self._ensure_snapshot_exists(snapshot)
+        if snapshot.status != ServiceOrderStatus.AGUARDANDO_INICIO:
+            self.inventory.release_active_for_service_order(service_order_id)
+            self.inventory.cancel_pending_purchase_requests_for_service_order(
+                service_order_id
+            )
+            return []
+
+        required = self._required_by_product(snapshot.product_lines)
+        self._release_removed_product_reservations(service_order_id, required)
+        products = {
+            product_id: self._get_product_for_update(product_id)
+            for product_id in sorted(required)
+        }
+        for product_id, required_quantity in required.items():
+            product = products[product_id]
+            if product is not None:
+                self._reconcile_product(
+                    service_order_id,
+                    product,
+                    required_quantity,
+                )
+
+        return sorted(
+            (
+                reservation
+                for reservation in self.inventory.list_reservations()
+                if reservation.service_order_id == service_order_id
+                and reservation.status == ReservationStatus.ACTIVE
+            ),
+            key=lambda reservation: reservation.product_id,
+        )
+
+    def release_for_service_order(self, service_order_id: int) -> None:
+        self.inventory.release_active_for_service_order(service_order_id)
+        self.inventory.cancel_pending_purchase_requests_for_service_order(
+            service_order_id
+        )
+
+    def release_reservations_for_os(self, service_order_id: int) -> None:
+        snapshot = self._get_snapshot(service_order_id)
+        self._ensure_snapshot_exists(snapshot)
+        self.release_for_service_order(service_order_id)
+        self.uow.commit()
+
+    def _reserve_quantity(
+        self,
+        service_order_id: int,
+        product: InventoryProduct,
+        quantity: int,
+    ) -> Reservation:
+        if quantity <= 0:
+            raise ValidationError("Quantidade deve ser maior que zero")
+        current = self.inventory.get_active_reservation(
+            service_order_id,
+            product.id,
+            for_update=True,
+        )
+        current_quantity = current.quantity if current else 0
+        other_active = self.inventory.active_quantity_for_product(product.id) - current_quantity
+        available = max(product.stock_quantity - max(other_active, 0), 0)
+        desired = min(quantity, available)
+        self._reconcile_backorder(service_order_id, product, quantity - desired)
+        if desired <= 0:
+            raise ValidationError("Estoque físico insuficiente para reserva")
+        if current is None:
+            return self.inventory.add_reservation(
+                Reservation.create(service_order_id, product.id, desired)
+            )
+        if current.quantity != desired:
+            current.reconcile_quantity(desired)
+            return self.inventory.save_reservation(current)
+        return current
+
+    def _reconcile_product(
+        self,
+        service_order_id: int,
+        product: InventoryProduct,
+        required_quantity: int,
+    ) -> None:
+        current = self.inventory.get_active_reservation(
+            service_order_id,
+            product.id,
+            for_update=True,
+        )
+        current_quantity = current.quantity if current else 0
+        other_active = self.inventory.active_quantity_for_product(product.id) - current_quantity
+        available = max(product.stock_quantity - max(other_active, 0), 0)
+        desired = min(required_quantity, available)
+
+        if current is not None:
+            if desired == 0:
+                current.release()
+                self.inventory.save_reservation(current)
+            elif current.quantity != desired:
+                current.reconcile_quantity(desired)
+                self.inventory.save_reservation(current)
+        elif desired > 0:
+            self.inventory.add_reservation(
+                Reservation.create(service_order_id, product.id, desired)
+            )
+
+        self._reconcile_backorder(
+            service_order_id,
+            product,
+            required_quantity - desired,
+        )
+
+    def _reconcile_backorder(
+        self,
+        service_order_id: int,
+        product: InventoryProduct,
+        missing_quantity: int,
+    ) -> None:
+        existing = self.inventory.get_pending_purchase_request(
+            service_order_id,
+            product.id,
+            for_update=True,
+        )
+        if missing_quantity <= 0:
+            if existing is not None:
+                existing.cancel()
+                self.inventory.save_purchase_request(existing)
+            return
+        if existing is not None:
+            existing.reconcile_quantity(missing_quantity)
+            self.inventory.save_purchase_request(existing)
+            return
+        self.inventory.add_purchase_request(
+            PurchaseRequest.create(
+                product_id=product.id,
+                quantity=missing_quantity,
+                supplier_id=product.supplier_id,
+                service_order_id=service_order_id,
+            )
+        )
+
+    def _release_removed_product_reservations(
+        self,
+        service_order_id: int,
+        required: dict[int, int],
+    ) -> None:
+        for reservation in self.inventory.list_reservations():
+            if (
+                reservation.service_order_id == service_order_id
+                and reservation.status == ReservationStatus.ACTIVE
+                and reservation.product_id not in required
+            ):
+                reservation.release()
+                self.inventory.save_reservation(reservation)
+
+    def _get_snapshot(self, service_order_id: int) -> InventoryServiceOrderSnapshot | None:
+        get_snapshot = getattr(self.service_orders, "get_reservation_snapshot", None)
+        if get_snapshot is not None:
+            return get_snapshot(service_order_id)
+        product_lines = self.service_orders.get_product_lines(service_order_id)
+        if product_lines is None:
+            return None
+        get_status = getattr(self.service_orders, "get_status", None)
+        status = (
+            get_status(service_order_id)
+            if get_status is not None
+            else ServiceOrderStatus.AGUARDANDO_INICIO
+        )
+        return InventoryServiceOrderSnapshot(
+            id=service_order_id,
+            status=status,
+            product_lines=tuple(product_lines),
+        )
+
+    @staticmethod
+    def _ensure_snapshot_exists(
+        snapshot: InventoryServiceOrderSnapshot | None,
+    ) -> None:
+        if snapshot is None:
+            raise NotFoundError("OS não encontrada")
+
+    @staticmethod
+    def _ensure_reservable(snapshot: InventoryServiceOrderSnapshot) -> None:
+        if snapshot.status != ServiceOrderStatus.AGUARDANDO_INICIO:
+            raise ValidationError(
+                "Reserva só é permitida quando a OS aguarda início"
+            )
+
+    def _get_product_for_update(self, product_id: int) -> InventoryProduct | None:
+        get_for_update = getattr(self.products, "get_product_for_update", None)
+        if get_for_update is not None:
+            return get_for_update(product_id)
+        return self.products.get_product(product_id)
+
+    @staticmethod
+    def _required_by_product(
+        product_lines: tuple[InventoryServiceOrderProductLine, ...]
+        | list[InventoryServiceOrderProductLine],
+    ) -> dict[int, int]:
+        required: dict[int, int] = {}
+        for line in product_lines:
+            required[line.product_id] = required.get(line.product_id, 0) + line.quantity
+        return required
 
     def create_purchase_request(
         self,
@@ -86,6 +280,14 @@ class InventoryService:
         product = self.products.get_product(product_id)
         if not product:
             raise NotFoundError("Produto não encontrado")
+        if service_order_id is not None:
+            existing = self.inventory.get_pending_purchase_request(
+                service_order_id,
+                product_id,
+            )
+            if existing is not None:
+                existing.reconcile_quantity(existing.quantity + quantity)
+                return self.inventory.save_purchase_request(existing)
         return self.inventory.add_purchase_request(
             PurchaseRequest.create(
                 product_id=product_id,
@@ -112,8 +314,13 @@ class InventoryService:
         self.products.add_stock(purchase_request.product_id, quantity)
         purchase_request.mark_received()
         self.inventory.save_purchase_request(purchase_request)
+        if purchase_request.service_order_id is not None:
+            self.reconcile_for_service_order(purchase_request.service_order_id)
         self.uow.commit()
         return receipt
 
     def get_pending_receipts(self, product_id: int) -> list[PurchaseRequest]:
         return self.inventory.get_pending_receipts(product_id)
+
+    def check_pending_receipt(self, product_id: int) -> bool:
+        return self.inventory.has_pending_receipt(product_id)

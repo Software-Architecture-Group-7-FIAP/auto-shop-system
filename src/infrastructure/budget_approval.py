@@ -131,7 +131,7 @@ class SqlAlchemyApprovedBudgetServiceOrderCreator:
             budget_id=root_budget_id,
             customer_id=budget.customer_id,
             vehicle_id=budget.vehicle_id,
-            status=ServiceOrderStatus.RECEBIDA,
+            status=ServiceOrderStatus.AGUARDANDO_INICIO,
             total_price=budget.total_price,
         )
         self.db.add(service_order)

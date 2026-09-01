@@ -13,7 +13,25 @@ class ExecutionProductGateway(Protocol):
 
 
 class ExecutionReservationGateway(Protocol):
+    def active_quantity_for_product(
+        self,
+        service_order_id: int,
+        product_id: int,
+    ) -> int:
+        ...
+
+    def consume_for_withdrawal(
+        self,
+        service_order_id: int,
+        product_id: int,
+        quantity: int,
+    ) -> None:
+        ...
+
     def consume_active_for_product(self, service_order_id: int, product_id: int) -> None:
+        ...
+
+    def release_active_for_service_order(self, service_order_id: int) -> None:
         ...
 
 

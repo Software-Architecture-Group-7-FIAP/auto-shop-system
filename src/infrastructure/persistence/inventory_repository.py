@@ -39,6 +39,54 @@ class SqlAlchemyInventoryRepository:
             for model in self.db.query(ReservationModel).all()
         ]
 
+    def get_active_reservation(
+        self,
+        service_order_id: int,
+        product_id: int,
+        *,
+        for_update: bool = False,
+    ) -> Reservation | None:
+        query = self.db.query(ReservationModel).filter(
+            ReservationModel.service_order_id == service_order_id,
+            ReservationModel.product_id == product_id,
+            ReservationModel.status == ReservationStatus.ACTIVE,
+        )
+        if for_update:
+            query = query.with_for_update()
+        model = query.first()
+        return self._reservation_to_domain(model) if model else None
+
+    def save_reservation(self, reservation: Reservation) -> Reservation:
+        if reservation.id is None:
+            raise NotFoundError("Reserva não encontrada")
+        model = (
+            self.db.query(ReservationModel)
+            .filter(ReservationModel.id == reservation.id)
+            .with_for_update()
+            .first()
+        )
+        if model is None:
+            raise NotFoundError("Reserva não encontrada")
+        model.quantity = reservation.quantity
+        model.status = reservation.status
+        self.db.flush()
+        self.db.refresh(model)
+        return self._reservation_to_domain(model)
+
+    def release_active_for_service_order(self, service_order_id: int) -> None:
+        (
+            self.db.query(ReservationModel)
+            .filter(
+                ReservationModel.service_order_id == service_order_id,
+                ReservationModel.status == ReservationStatus.ACTIVE,
+            )
+            .update(
+                {ReservationModel.status: ReservationStatus.RELEASED},
+                synchronize_session=False,
+            )
+        )
+        self.db.flush()
+
     def active_quantity_for_product(self, product_id: int) -> int:
         rows = (
             self.db.query(ReservationModel.quantity)
@@ -117,6 +165,44 @@ class SqlAlchemyInventoryRepository:
             is not None
         )
 
+    def get_pending_purchase_request(
+        self,
+        service_order_id: int,
+        product_id: int,
+        *,
+        for_update: bool = False,
+    ) -> PurchaseRequest | None:
+        query = self.db.query(PurchaseRequestModel).filter(
+            PurchaseRequestModel.service_order_id == service_order_id,
+            PurchaseRequestModel.product_id == product_id,
+            PurchaseRequestModel.status.in_(
+                [PurchaseRequestStatus.PENDING, PurchaseRequestStatus.ORDERED]
+            ),
+        )
+        if for_update:
+            query = query.with_for_update()
+        model = query.order_by(PurchaseRequestModel.id).first()
+        return self._purchase_request_to_domain(model) if model else None
+
+    def cancel_pending_purchase_requests_for_service_order(
+        self,
+        service_order_id: int,
+    ) -> None:
+        (
+            self.db.query(PurchaseRequestModel)
+            .filter(
+                PurchaseRequestModel.service_order_id == service_order_id,
+                PurchaseRequestModel.status.in_(
+                    [PurchaseRequestStatus.PENDING, PurchaseRequestStatus.ORDERED]
+                ),
+            )
+            .update(
+                {PurchaseRequestModel.status: PurchaseRequestStatus.CANCELLED},
+                synchronize_session=False,
+            )
+        )
+        self.db.flush()
+
     def get_pending_receipts(self, product_id: int) -> list[PurchaseRequest]:
         models = (
             self.db.query(PurchaseRequestModel)
@@ -187,11 +273,32 @@ class SqlAlchemyInventoryProductGateway:
             supplier_id=model.supplier_id,
         )
 
+    def get_product_for_update(self, product_id: int) -> InventoryProduct | None:
+        model = (
+            self.db.query(ProductModel)
+            .filter(ProductModel.id == product_id)
+            .with_for_update()
+            .first()
+        )
+        if not model:
+            return None
+        return InventoryProduct(
+            id=model.id,
+            stock_quantity=model.stock_quantity,
+            supplier_id=model.supplier_id,
+        )
+
     def add_stock(self, product_id: int, quantity: int) -> None:
-        model = self.db.query(ProductModel).filter(ProductModel.id == product_id).first()
-        if model:
-            model.stock_quantity += quantity
-            self.db.flush()
+        model = (
+            self.db.query(ProductModel)
+            .filter(ProductModel.id == product_id)
+            .with_for_update()
+            .first()
+        )
+        if model is None:
+            raise NotFoundError("Produto não encontrado")
+        model.stock_quantity += quantity
+        self.db.flush()
 
 
 class SqlAlchemyInventoryServiceOrderLookup:
@@ -222,3 +329,20 @@ class SqlAlchemyInventoryServiceOrderLookup:
             )
             for model in models
         ]
+
+    def get_reservation_snapshot(self, service_order_id: int):
+        from src.application.ports.inventory import InventoryServiceOrderSnapshot
+
+        service_order = (
+            self.db.query(ServiceOrderModel)
+            .filter(ServiceOrderModel.id == service_order_id)
+            .with_for_update()
+            .first()
+        )
+        if not service_order:
+            return None
+        return InventoryServiceOrderSnapshot(
+            id=service_order.id,
+            status=service_order.status,
+            product_lines=tuple(self.get_product_lines(service_order_id) or []),
+        )
