@@ -75,6 +75,34 @@ jobs:
             done
           done
 
+  terraform-plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: helm/kind-action@v1.12.0
+        with:
+          version: v0.30.0
+          node_image: kindest/node:v1.34.0
+          cluster_name: kind
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.0"
+      - name: Validate Terraform formatting and configuration
+        run: |
+          set -euo pipefail
+          terraform -chdir=infra init -backend=false -input=false
+          terraform -chdir=infra fmt -check -recursive
+          terraform -chdir=infra validate
+      - name: Plan local Kubernetes stack
+        run: |
+          set -euo pipefail
+          terraform -chdir=infra plan \
+            -input=false \
+            -refresh=false \
+            -var-file=terraform.tfvars.example \
+            -var=kube_context=kind-kind \
+            -out=terraform.tfplan
+
   cluster-smoke:
     runs-on: ubuntu-latest
     needs: [test-and-security, manifests]
