@@ -30,17 +30,6 @@ class InMemoryInventoryRepository:
     def list_reservations(self) -> list[Reservation]:
         return list(self.reservations.values())
 
-    def list_active_reservations_for_service_order(
-        self,
-        service_order_id: int,
-    ) -> list[Reservation]:
-        return [
-            reservation
-            for reservation in self.reservations.values()
-            if reservation.service_order_id == service_order_id
-            and reservation.status == ReservationStatus.ACTIVE
-        ]
-
     def active_quantity_for_product(self, product_id: int) -> int:
         return sum(
             reservation.quantity
@@ -99,14 +88,9 @@ class InMemoryInventoryRepository:
 class FakeProductGateway:
     def __init__(self, products: dict[int, InventoryProduct]):
         self.products = products
-        self.for_update_calls = []
 
     def get_product(self, product_id: int) -> InventoryProduct | None:
         return self.products.get(product_id)
-
-    def get_product_for_update(self, product_id: int) -> InventoryProduct | None:
-        self.for_update_calls.append(product_id)
-        return self.get_product(product_id)
 
     def add_stock(self, product_id: int, quantity: int) -> None:
         product = self.products.get(product_id)
@@ -188,17 +172,6 @@ def test_inventory_service_creates_reservations_for_service_order():
     assert reservations[0].quantity == 3
     assert inventory.list_purchase_requests() == []
     assert uow.commits == 1
-
-
-def test_inventory_service_locks_products_before_creating_reservations():
-    products = FakeProductGateway(
-        {1: InventoryProduct(id=1, stock_quantity=10, supplier_id=2)}
-    )
-    service = make_service(products=products)
-
-    service.create_reservations_for_os(1)
-
-    assert products.for_update_calls == [1]
 
 
 def test_inventory_service_creates_purchase_request_for_insufficient_stock():

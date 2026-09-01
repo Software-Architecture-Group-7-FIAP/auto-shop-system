@@ -7,12 +7,6 @@ class InventoryRepository(Protocol):
     def add_reservation(self, reservation: Reservation) -> Reservation:
         ...
 
-    def list_active_reservations_for_service_order(
-        self,
-        service_order_id: int,
-    ) -> list[Reservation]:
-        ...
-
     def list_reservations(self) -> list[Reservation]:
         ...
 

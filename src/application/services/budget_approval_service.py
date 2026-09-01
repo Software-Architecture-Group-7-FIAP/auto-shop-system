@@ -7,7 +7,6 @@ from src.application.ports.budget_approval import (
     CreatedServiceOrder,
     EmailSender,
 )
-from src.application.ports.service_order import ServiceOrderStockReserver
 from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.budget.entity import Budget
 from src.domain.budget.repository import BudgetRepository
@@ -28,7 +27,6 @@ class BudgetApprovalService:
         emails: EmailSender,
         service_orders: ApprovedBudgetServiceOrderCreator,
         uow: UnitOfWork,
-        stock_reserver: ServiceOrderStockReserver | None = None,
     ):
         self.budgets = budgets
         self.contacts = contacts
@@ -38,7 +36,6 @@ class BudgetApprovalService:
         self.emails = emails
         self.service_orders = service_orders
         self.uow = uow
-        self.stock_reserver = stock_reserver
 
     async def send_budget_email(self, budget_id: int) -> Budget:
         budget = self._get_by_id(budget_id)
@@ -121,8 +118,6 @@ class BudgetApprovalService:
         budget.approve()
         updated_budget = self.budgets.save(budget)
         service_order = self.service_orders.create_from_budget(updated_budget)
-        if self.stock_reserver is not None:
-            self.stock_reserver.create_reservations_for_os(service_order.id, commit=False)
         self.uow.commit()
         return service_order
 

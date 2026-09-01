@@ -3,15 +3,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from src.application.ports.service_order import (
-    RequestedPart,
-    RequestedService,
-    ServiceOrderCatalogService,
-    ServiceOrderCustomer,
-    ServiceOrderProduct,
-    ServiceOrderProductRequirement,
-    ServiceOrderVehicle,
-)
+from src.application.ports.service_order import ServiceOrderCustomer, ServiceOrderVehicle
 from src.application.services.service_order_email_service import ServiceOrderEmailService
 from src.application.services.service_order_service import ServiceOrderService
 from src.application.services.service_order_tracking import build_service_order_tracking_url
@@ -31,12 +23,6 @@ class InMemoryServiceOrderRepository:
 
     def get_by_id(self, service_order_id: int) -> ServiceOrder | None:
         return self.service_orders.get(service_order_id)
-
-    def create(self, service_order: ServiceOrder) -> ServiceOrder:
-        next_id = max(self.service_orders, default=0) + 1
-        created = replace(service_order, id=next_id)
-        self.service_orders[next_id] = created
-        return created
 
     def get_by_tracking_token_fingerprint(
         self,
@@ -89,43 +75,6 @@ class FakeContactLookup:
 
     def get_vehicle(self, vehicle_id: int) -> ServiceOrderVehicle | None:
         return ServiceOrderVehicle(plate="ABC1234")
-
-
-class FakeOpeningLookup:
-    def __init__(
-        self,
-        customer_ids=(1,),
-        vehicle_ownership=((1, 1),),
-        services=None,
-        products=None,
-    ):
-        self.customer_ids = set(customer_ids)
-        self.vehicle_ownership = set(vehicle_ownership)
-        self.services = services or {
-            1: ServiceOrderCatalogService(id=1, base_price=100.0)
-        }
-        self.products = products or {1: ServiceOrderProduct(id=1, unit_price=10.0)}
-
-    def customer_exists(self, customer_id: int) -> bool:
-        return customer_id in self.customer_ids
-
-    def vehicle_belongs_to_customer(self, vehicle_id: int, customer_id: int) -> bool:
-        return (vehicle_id, customer_id) in self.vehicle_ownership
-
-    def get_service(self, service_id: int) -> ServiceOrderCatalogService | None:
-        return self.services.get(service_id)
-
-    def get_product(self, product_id: int) -> ServiceOrderProduct | None:
-        return self.products.get(product_id)
-
-
-class FakeStockReserver:
-    def __init__(self):
-        self.calls = []
-
-    def create_reservations_for_os(self, service_order_id: int, *, commit: bool = True) -> list:
-        self.calls.append((service_order_id, commit))
-        return []
 
 
 class FakeUnitOfWork:
@@ -228,15 +177,11 @@ def make_service_order(**overrides) -> ServiceOrder:
 def make_service(
     repository: InMemoryServiceOrderRepository | None = None,
     contacts: FakeContactLookup | None = None,
-    openings: FakeOpeningLookup | None = None,
-    stock_reserver: FakeStockReserver | None = None,
     uow: FakeUnitOfWork | None = None,
 ) -> ServiceOrderService:
     return ServiceOrderService(
         service_orders=repository or InMemoryServiceOrderRepository([make_service_order()]),
         contacts=contacts or FakeContactLookup(),
-        openings=openings or FakeOpeningLookup(),
-        stock_reserver=stock_reserver or FakeStockReserver(),
         tracking_tokens=FakeTrackingTokenService(),
         uow=uow or FakeUnitOfWork(),
     )
@@ -255,43 +200,6 @@ def test_service_order_service_lists_and_filters_orders_without_sqlalchemy():
     orders = service.list_all(ServiceOrderStatus.EM_DIAGNOSTICO)
 
     assert [order.id for order in orders] == [2]
-
-
-def test_service_order_service_opens_order_with_catalog_bom_and_explicit_parts():
-    repository = InMemoryServiceOrderRepository()
-    stock_reserver = FakeStockReserver()
-    openings = FakeOpeningLookup(
-        services={
-            10: ServiceOrderCatalogService(
-                id=10,
-                base_price=100.0,
-                product_requirements=(
-                    ServiceOrderProductRequirement(product_id=20, quantity=2),
-                ),
-            )
-        },
-        products={20: ServiceOrderProduct(id=20, unit_price=5.0)},
-    )
-    uow = FakeUnitOfWork()
-    service = make_service(
-        repository=repository,
-        openings=openings,
-        stock_reserver=stock_reserver,
-        uow=uow,
-    )
-
-    created = service.open(
-        customer_id=1,
-        vehicle_id=1,
-        services=[RequestedService(service_id=10, quantity=3)],
-        parts=[RequestedPart(product_id=20, quantity=1)],
-    )
-
-    assert created.id == 1
-    assert [(line.product_id, line.quantity) for line in created.product_lines] == [(20, 7)]
-    assert created.total_price == 335.0
-    assert stock_reserver.calls == [(1, False)]
-    assert uow.commits == 1
 
 
 def test_service_order_service_assigns_mechanic_and_commits():

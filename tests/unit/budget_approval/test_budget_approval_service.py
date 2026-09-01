@@ -127,15 +127,6 @@ class FakeServiceOrderCreator:
         return CreatedServiceOrder(id=99)
 
 
-class FakeStockReserver:
-    def __init__(self):
-        self.calls = []
-
-    def create_reservations_for_os(self, service_order_id: int, *, commit: bool = True) -> list:
-        self.calls.append((service_order_id, commit))
-        return []
-
-
 class FakeUnitOfWork:
     def __init__(self):
         self.commits = 0
@@ -181,7 +172,6 @@ def make_service(
     emails: FakeEmailSender | None = None,
     service_orders: FakeServiceOrderCreator | None = None,
     uow: FakeUnitOfWork | None = None,
-    stock_reserver: FakeStockReserver | None = None,
 ) -> BudgetApprovalService:
     return BudgetApprovalService(
         budgets=repository or InMemoryBudgetRepository([make_budget()]),
@@ -192,7 +182,6 @@ def make_service(
         emails=emails or FakeEmailSender(),
         service_orders=service_orders or FakeServiceOrderCreator(),
         uow=uow or FakeUnitOfWork(),
-        stock_reserver=stock_reserver,
     )
 
 
@@ -239,21 +228,6 @@ def test_approve_budget_marks_budget_approved_and_creates_service_order():
     assert service_order.id == 99
     assert repository.get_by_id(1).status == BudgetStatus.APPROVED
     assert service_orders.created_from[0].status == BudgetStatus.APPROVED
-
-
-def test_approve_budget_creates_stock_reservations_in_same_unit_of_work():
-    stock_reserver = FakeStockReserver()
-    uow = FakeUnitOfWork()
-    budget = replace(make_budget(), status=BudgetStatus.SENT, approval_token="token-1")
-    service = make_service(
-        repository=InMemoryBudgetRepository([budget]),
-        stock_reserver=stock_reserver,
-        uow=uow,
-    )
-
-    service.approve_budget("token-1")
-
-    assert stock_reserver.calls == [(99, False)]
     assert uow.commits == 1
 
 
