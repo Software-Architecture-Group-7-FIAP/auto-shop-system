@@ -1,7 +1,7 @@
 """support partial payments and one active service order per vehicle
 
-Revision ID: 015
-Revises: 014
+Revision ID: 016
+Revises: 015
 """
 
 from typing import Sequence, Union
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision: str = "015"
-down_revision: Union[str, None] = "014"
+revision: str = "016"
+down_revision: Union[str, None] = "015"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -28,9 +28,6 @@ def upgrade() -> None:
 
     if dialect == "postgresql":
         with op.get_context().autocommit_block():
-            op.execute(
-                "ALTER TYPE serviceorderstatus ADD VALUE IF NOT EXISTS 'Aguardando compra'"
-            )
             op.execute(
                 "ALTER TYPE invoicestatus ADD VALUE IF NOT EXISTS 'Parcialmente paga'"
             )
