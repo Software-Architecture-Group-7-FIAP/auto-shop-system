@@ -59,18 +59,19 @@ class ExecutionService:
 
     def start_service(self, service_order_id: int, *, actor_id: int | None = None, request_id: str | None = None) -> ServiceOrder:
         service_order = self._get_os(service_order_id)
-        active_quantity = getattr(self.reservations, "active_quantity_for_product", None)
-        if active_quantity is not None:
-            required_by_product: dict[int, int] = {}
-            for line in service_order.product_lines:
-                required_by_product[line.product_id] = (
-                    required_by_product.get(line.product_id, 0) + line.quantity
+        service_order.ensure_can_start_execution()
+        required_by_product: dict[int, int] = {}
+        for line in service_order.product_lines:
+            required_by_product[line.product_id] = (
+                required_by_product.get(line.product_id, 0) + line.quantity
+            )
+        for product_id, required_quantity in required_by_product.items():
+            if self.reservations.active_quantity_for_product(
+                service_order_id, product_id
+            ) < required_quantity:
+                raise ValidationError(
+                    f"Estoque não reservado para o produto #{product_id}"
                 )
-            for product_id, required_quantity in required_by_product.items():
-                if active_quantity(service_order_id, product_id) < required_quantity:
-                    raise ValidationError(
-                        f"Estoque não reservado para o produto #{product_id}"
-                    )
         start_service_order(service_order, self.clock.now(), actor_id=actor_id, request_id=request_id)
         updated = self.service_orders.save(service_order)
         self.uow.commit()
@@ -85,19 +86,7 @@ class ExecutionService:
         withdrawn = self.withdrawals.fulfilled_quantity_by_product(service_order_id)
         finish_service_order(service_order, self.clock.now(), withdrawn, actor_id=actor_id, request_id=request_id)
 
-        release_all = getattr(
-            self.reservations,
-            "release_active_for_service_order",
-            None,
-        )
-        if release_all is not None:
-            release_all(service_order_id)
-        else:
-            for line in service_order.product_lines:
-                self.reservations.consume_active_for_product(
-                    service_order_id,
-                    line.product_id,
-                )
+        self.reservations.release_active_for_service_order(service_order_id)
 
         updated = self.service_orders.save(service_order)
         self.uow.commit()
@@ -135,18 +124,11 @@ class ExecutionService:
         )
         if not withdrawal:
             raise NotFoundError("Solicitação de retirada não encontrada")
-        consume = getattr(self.reservations, "consume_for_withdrawal", None)
-        if consume is not None:
-            consume(
-                withdrawal.service_order_id,
-                withdrawal.product_id,
-                withdrawal.quantity,
-            )
-        else:
-            self.reservations.consume_active_for_product(
-                withdrawal.service_order_id,
-                withdrawal.product_id,
-            )
+        self.reservations.consume_for_withdrawal(
+            withdrawal.service_order_id,
+            withdrawal.product_id,
+            withdrawal.quantity,
+        )
         withdrawal.fulfill(self.clock.now())
         self.products.decrement_stock(withdrawal.product_id, withdrawal.quantity)
         updated = self.withdrawals.save(withdrawal)

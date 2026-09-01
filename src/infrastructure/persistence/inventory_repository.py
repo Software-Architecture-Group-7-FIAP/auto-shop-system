@@ -5,7 +5,7 @@ from src.application.ports.inventory import (
     InventoryServiceOrderProductLine,
 )
 from src.domain.enums import PurchaseRequestStatus, ReservationStatus, ServiceOrderStatus
-from src.domain.exceptions import NotFoundError
+from src.domain.exceptions import NotFoundError, ValidationError
 from src.domain.inventory.entity import GoodsReceipt, PurchaseRequest, Reservation
 from src.infrastructure.database import (
     GoodsReceiptModel,
@@ -345,6 +345,7 @@ class SqlAlchemyInventoryServiceOrderLookup:
             id=service_order.id,
             status=service_order.status,
             product_lines=tuple(self.get_product_lines(service_order_id) or []),
+            created_at=service_order.created_at,
         )
 
     def list_reservation_queue(self, product_id: int):
@@ -375,6 +376,7 @@ class SqlAlchemyInventoryServiceOrderLookup:
                 id=model.id,
                 status=model.status,
                 product_lines=tuple(self.get_product_lines(model.id) or []),
+                created_at=model.created_at,
             )
             for model in models
         ]
@@ -384,13 +386,20 @@ class SqlAlchemyInventoryServiceOrderLookup:
         service_order_id: int,
         status: ServiceOrderStatus,
     ) -> None:
-        model = (
-            self.db.query(ServiceOrderModel)
-            .filter(ServiceOrderModel.id == service_order_id)
-            .with_for_update()
-            .first()
+        from src.infrastructure.persistence.service_order_repository import (
+            SqlAlchemyServiceOrderRepository,
         )
-        if model is None:
+
+        repository = SqlAlchemyServiceOrderRepository(self.db)
+        service_order = repository.get_by_id(service_order_id)
+        if service_order is None:
             raise NotFoundError("OS não encontrada")
-        model.status = status
-        self.db.flush()
+        if service_order.status == status:
+            return
+        if status == ServiceOrderStatus.AGUARDANDO_COMPRA:
+            service_order.mark_waiting_for_purchase()
+        elif status == ServiceOrderStatus.AGUARDANDO_INICIO:
+            service_order.mark_ready_to_start()
+        else:
+            raise ValidationError("Status de reserva inválido")
+        repository.save(service_order)

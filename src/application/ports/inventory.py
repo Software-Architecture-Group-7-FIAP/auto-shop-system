@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 from src.domain.enums import ServiceOrderStatus
@@ -22,6 +23,7 @@ class InventoryServiceOrderSnapshot:
     id: int
     status: ServiceOrderStatus
     product_lines: tuple[InventoryServiceOrderProductLine, ...]
+    created_at: datetime | None = None
 
 
 class InventoryProductGateway(Protocol):

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from src.application.ports.inventory import (
     InventoryProduct,
     InventoryProductGateway,
@@ -42,6 +44,7 @@ class InventoryService:
         if product is None:
             raise NotFoundError("Produto não encontrado")
         reservation = self._reserve_quantity(service_order_id, product, quantity)
+        self._refresh_queue_statuses(service_order_id)
         self.uow.commit()
         return reservation
 
@@ -93,14 +96,13 @@ class InventoryService:
         if product is None:
             return
 
-        list_queue = getattr(self.service_orders, "list_reservation_queue", None)
-        queue = list_queue(product_id) if list_queue is not None else []
+        queue = self.service_orders.list_reservation_queue(product_id)
         requested_snapshot = self._get_snapshot(requested_service_order_id)
         if requested_snapshot is not None and requested_snapshot.id not in {
             item.id for item in queue
         }:
             queue = [*queue, requested_snapshot]
-            queue.sort(key=lambda item: item.id)
+            queue.sort(key=self._reservation_queue_key)
 
         queue_ids = {item.id for item in queue}
         reserved_outside_queue = sum(
@@ -143,10 +145,10 @@ class InventoryService:
         if requested is None:
             return
         queue_by_product: dict[int, list[InventoryServiceOrderSnapshot]] = {}
-        list_queue = getattr(self.service_orders, "list_reservation_queue", None)
-        if list_queue is not None:
-            for line in requested.product_lines:
-                queue_by_product[line.product_id] = list_queue(line.product_id)
+        for line in requested.product_lines:
+            queue_by_product[line.product_id] = self.service_orders.list_reservation_queue(
+                line.product_id
+            )
 
         candidates = {
             item.id: item
@@ -159,9 +161,6 @@ class InventoryService:
             for reservation in self.inventory.list_reservations()
             if reservation.status == ReservationStatus.ACTIVE
         }
-        set_status = getattr(self.service_orders, "set_reservation_status", None)
-        if set_status is None:
-            return
         for item in candidates.values():
             required = self._required_by_product(item.product_lines)
             has_shortage = any(
@@ -174,7 +173,7 @@ class InventoryService:
                 else ServiceOrderStatus.AGUARDANDO_INICIO
             )
             if item.status != target:
-                set_status(item.id, target)
+                self.service_orders.set_reservation_status(item.id, target)
 
     def release_for_service_order(self, service_order_id: int) -> None:
         self.inventory.release_active_for_service_order(service_order_id)
@@ -295,23 +294,7 @@ class InventoryService:
                 self.inventory.save_reservation(reservation)
 
     def _get_snapshot(self, service_order_id: int) -> InventoryServiceOrderSnapshot | None:
-        get_snapshot = getattr(self.service_orders, "get_reservation_snapshot", None)
-        if get_snapshot is not None:
-            return get_snapshot(service_order_id)
-        product_lines = self.service_orders.get_product_lines(service_order_id)
-        if product_lines is None:
-            return None
-        get_status = getattr(self.service_orders, "get_status", None)
-        status = (
-            get_status(service_order_id)
-            if get_status is not None
-            else ServiceOrderStatus.AGUARDANDO_INICIO
-        )
-        return InventoryServiceOrderSnapshot(
-            id=service_order_id,
-            status=status,
-            product_lines=tuple(product_lines),
-        )
+        return self.service_orders.get_reservation_snapshot(service_order_id)
 
     @staticmethod
     def _ensure_snapshot_exists(
@@ -328,10 +311,14 @@ class InventoryService:
             )
 
     def _get_product_for_update(self, product_id: int) -> InventoryProduct | None:
-        get_for_update = getattr(self.products, "get_product_for_update", None)
-        if get_for_update is not None:
-            return get_for_update(product_id)
-        return self.products.get_product(product_id)
+        return self.products.get_product_for_update(product_id)
+
+    @staticmethod
+    def _reservation_queue_key(
+        snapshot: InventoryServiceOrderSnapshot,
+    ) -> tuple[object, int]:
+        """Keep in-memory and SQL-backed allocation order identical."""
+        return (snapshot.created_at or datetime.max, snapshot.id)
 
     @staticmethod
     def _required_by_product(

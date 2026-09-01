@@ -1,4 +1,5 @@
 from dataclasses import replace
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -16,8 +17,10 @@ class InMemoryInventoryRepository:
     def __init__(self) -> None:
         self.reservations: dict[int, Reservation] = {}
         self.purchase_requests: dict[int, PurchaseRequest] = {}
+        self.receipts: dict[int, object] = {}
         self.next_reservation_id = 1
         self.next_purchase_request_id = 1
+        self.next_receipt_id = 1
 
     def add_reservation(self, reservation: Reservation) -> Reservation:
         created = replace(reservation, id=self.next_reservation_id)
@@ -57,6 +60,9 @@ class InMemoryInventoryRepository:
             if item.service_order_id == service_order_id and item.status == ReservationStatus.ACTIVE:
                 item.status = ReservationStatus.RELEASED
 
+    def get_purchase_request(self, purchase_request_id: int) -> PurchaseRequest | None:
+        return self.purchase_requests.get(purchase_request_id)
+
     def add_purchase_request(self, request: PurchaseRequest) -> PurchaseRequest:
         created = replace(request, id=self.next_purchase_request_id)
         self.purchase_requests[created.id] = created
@@ -88,6 +94,12 @@ class InMemoryInventoryRepository:
             ):
                 item.cancel()
 
+    def add_receipt(self, receipt):
+        created = replace(receipt, id=self.next_receipt_id)
+        self.receipts[created.id] = created
+        self.next_receipt_id += 1
+        return created
+
 
 class FakeProductGateway:
     def __init__(self, products: dict[int, InventoryProduct]) -> None:
@@ -105,11 +117,44 @@ class FakeProductGateway:
 
 
 class FakeServiceOrderLookup:
-    def __init__(self, snapshot: InventoryServiceOrderSnapshot) -> None:
-        self.snapshot = snapshot
+    def __init__(
+        self,
+        snapshot: InventoryServiceOrderSnapshot,
+        additional_snapshots: list[InventoryServiceOrderSnapshot] | None = None,
+    ) -> None:
+        snapshots = [snapshot, *(additional_snapshots or [])]
+        self.snapshots = {item.id: item for item in snapshots}
+
+    @property
+    def snapshot(self) -> InventoryServiceOrderSnapshot:
+        return self.snapshots[1]
+
+    @snapshot.setter
+    def snapshot(self, value: InventoryServiceOrderSnapshot) -> None:
+        self.snapshots[value.id] = value
 
     def get_reservation_snapshot(self, service_order_id: int) -> InventoryServiceOrderSnapshot | None:
-        return self.snapshot if self.snapshot.id == service_order_id else None
+        return self.snapshots.get(service_order_id)
+
+    def list_reservation_queue(self, product_id: int) -> list[InventoryServiceOrderSnapshot]:
+        return sorted(
+            [
+                snapshot
+                for snapshot in self.snapshots.values()
+                if snapshot.status
+                in {
+                    ServiceOrderStatus.AGUARDANDO_INICIO,
+                    ServiceOrderStatus.AGUARDANDO_COMPRA,
+                }
+                and any(line.product_id == product_id for line in snapshot.product_lines)
+            ],
+            key=lambda snapshot: (snapshot.created_at or datetime.max, snapshot.id),
+        )
+
+    def set_reservation_status(self, service_order_id: int, status: ServiceOrderStatus) -> None:
+        self.snapshots[service_order_id] = replace(
+            self.snapshots[service_order_id], status=status
+        )
 
 
 class FakeUnitOfWork:
@@ -136,6 +181,7 @@ def make_service(
             id=1,
             status=status,
             product_lines=(InventoryServiceOrderProductLine(product_id=1, quantity=quantity),),
+            created_at=datetime(2026, 1, 1),
         )
     )
     uow = FakeUnitOfWork()
@@ -143,7 +189,7 @@ def make_service(
 
 
 def test_reconciliation_reserves_only_physical_stock_and_creates_backorder() -> None:
-    service, inventory, _, _, _ = make_service(stock=1, quantity=5)
+    service, inventory, _, _, lookup = make_service(stock=1, quantity=5)
 
     reservations = service.reconcile_reservations_for_os(1)
 
@@ -151,6 +197,7 @@ def test_reconciliation_reserves_only_physical_stock_and_creates_backorder() -> 
     request = inventory.get_pending_purchase_request(1, 1)
     assert request is not None
     assert request.quantity == 4
+    assert lookup.snapshot.status == ServiceOrderStatus.AGUARDANDO_COMPRA
 
 
 def test_reconciliation_is_idempotent_and_updates_existing_quantities() -> None:
@@ -193,3 +240,43 @@ def test_reconciliation_releases_reservations_and_pending_backorder() -> None:
     assert all(item.status == ReservationStatus.RELEASED for item in inventory.list_reservations())
     request = inventory.get_pending_purchase_request(1, 1)
     assert request is None
+
+
+def test_reconciliation_allocates_stock_in_approval_order_and_reprocesses_after_receipt() -> None:
+    inventory = InMemoryInventoryRepository()
+    products = FakeProductGateway({1: InventoryProduct(id=1, stock_quantity=3, supplier_id=2)})
+    older = InventoryServiceOrderSnapshot(
+        id=1,
+        status=ServiceOrderStatus.AGUARDANDO_INICIO,
+        product_lines=(InventoryServiceOrderProductLine(product_id=1, quantity=3),),
+        created_at=datetime(2026, 1, 1),
+    )
+    newer = InventoryServiceOrderSnapshot(
+        id=2,
+        status=ServiceOrderStatus.AGUARDANDO_INICIO,
+        product_lines=(InventoryServiceOrderProductLine(product_id=1, quantity=3),),
+        created_at=datetime(2026, 1, 2),
+    )
+    lookup = FakeServiceOrderLookup(older, [newer])
+    service = InventoryService(inventory, products, lookup, FakeUnitOfWork())
+
+    service.reconcile_reservations_for_os(2)
+
+    assert [(item.service_order_id, item.quantity) for item in inventory.list_reservations()] == [
+        (1, 3)
+    ]
+    assert lookup.get_reservation_snapshot(1).status == ServiceOrderStatus.AGUARDANDO_INICIO
+    assert lookup.get_reservation_snapshot(2).status == ServiceOrderStatus.AGUARDANDO_COMPRA
+    request = inventory.get_pending_purchase_request(2, 1)
+    assert request is not None
+    assert request.quantity == 3
+
+    service.register_receipt(request.id, 3)
+
+    active = [
+        item
+        for item in inventory.list_reservations()
+        if item.status == ReservationStatus.ACTIVE
+    ]
+    assert [(item.service_order_id, item.quantity) for item in active] == [(1, 3), (2, 3)]
+    assert lookup.get_reservation_snapshot(2).status == ServiceOrderStatus.AGUARDANDO_INICIO
