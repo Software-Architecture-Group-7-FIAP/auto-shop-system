@@ -9,6 +9,7 @@ OPERATIONAL_STATUSES: frozenset[ServiceOrderStatus] = frozenset(
     {
         ServiceOrderStatus.EM_EXECUCAO,
         ServiceOrderStatus.AGUARDANDO_INICIO,
+        ServiceOrderStatus.AGUARDANDO_COMPRA,
         ServiceOrderStatus.AGUARDANDO_APROVACAO,
         ServiceOrderStatus.EM_DIAGNOSTICO,
         ServiceOrderStatus.RECEBIDA,
@@ -25,6 +26,7 @@ CLOSED_STATUSES: frozenset[ServiceOrderStatus] = frozenset(
 STATUS_RANKING: tuple[ServiceOrderStatus, ...] = (
     ServiceOrderStatus.EM_EXECUCAO,
     ServiceOrderStatus.AGUARDANDO_INICIO,
+    ServiceOrderStatus.AGUARDANDO_COMPRA,
     ServiceOrderStatus.AGUARDANDO_APROVACAO,
     ServiceOrderStatus.EM_DIAGNOSTICO,
     ServiceOrderStatus.RECEBIDA,

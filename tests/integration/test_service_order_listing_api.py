@@ -61,6 +61,7 @@ def operational_and_closed_orders(db_session) -> list[dict[str, object]]:
             ServiceOrderStatus.EM_DIAGNOSTICO,
             ServiceOrderStatus.AGUARDANDO_APROVACAO,
             ServiceOrderStatus.AGUARDANDO_INICIO,
+            ServiceOrderStatus.AGUARDANDO_COMPRA,
             ServiceOrderStatus.EM_EXECUCAO,
             ServiceOrderStatus.FINALIZADA,
             ServiceOrderStatus.ENTREGUE,
@@ -88,6 +89,7 @@ def test_default_listing_excludes_closed_and_returns_joined_fields(
             ServiceOrderStatus.EM_DIAGNOSTICO,
             ServiceOrderStatus.AGUARDANDO_APROVACAO,
             ServiceOrderStatus.AGUARDANDO_INICIO,
+            ServiceOrderStatus.AGUARDANDO_COMPRA,
             ServiceOrderStatus.EM_EXECUCAO,
         }
     }
@@ -95,7 +97,7 @@ def test_default_listing_excludes_closed_and_returns_joined_fields(
     assert first["customer_name"] == operational_and_closed_orders[0]["customer_name"]
     assert first["vehicle_plate"] == operational_and_closed_orders[0]["vehicle_plate"]
     assert first["updated_at"]
-    assert body["total"] == 5
+    assert body["total"] == 6
     assert body["page"] == 1
     assert body["page_size"] == 20
     assert body["total_pages"] == 1
