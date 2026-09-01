@@ -12,6 +12,7 @@ ACTIVE_SERVICE_ORDER_STATUSES = frozenset(
         ServiceOrderStatus.EM_DIAGNOSTICO,
         ServiceOrderStatus.AGUARDANDO_APROVACAO,
         ServiceOrderStatus.AGUARDANDO_INICIO,
+        ServiceOrderStatus.AGUARDANDO_COMPRA,
         ServiceOrderStatus.EM_EXECUCAO,
         ServiceOrderStatus.FINALIZADA,
     }
@@ -80,7 +81,16 @@ class ServiceOrder:
             }
         ),
         ServiceOrderStatus.AGUARDANDO_INICIO: frozenset(
-            {ServiceOrderStatus.EM_EXECUCAO}
+            {
+                ServiceOrderStatus.EM_EXECUCAO,
+                ServiceOrderStatus.AGUARDANDO_COMPRA,
+            }
+        ),
+        ServiceOrderStatus.AGUARDANDO_COMPRA: frozenset(
+            {
+                ServiceOrderStatus.AGUARDANDO_INICIO,
+                ServiceOrderStatus.AGUARDANDO_APROVACAO,
+            }
         ),
         ServiceOrderStatus.EM_EXECUCAO: frozenset({ServiceOrderStatus.FINALIZADA}),
         ServiceOrderStatus.FINALIZADA: frozenset({ServiceOrderStatus.ENTREGUE}),
@@ -102,6 +112,7 @@ class ServiceOrder:
         {
             ServiceOrderStatus.AGUARDANDO_APROVACAO,
             ServiceOrderStatus.AGUARDANDO_INICIO,
+            ServiceOrderStatus.AGUARDANDO_COMPRA,
         }
     )
 

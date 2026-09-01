@@ -18,7 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 ACTIVE_SERVICE_ORDER_STATUSES = (
     "'Recebida', 'Em diagnóstico', 'Aguardando aprovação', "
-    "'Aguardando início', 'Em execução', 'Finalizada'"
+    "'Aguardando início', 'Aguardando compra', 'Em execução', 'Finalizada'"
 )
 
 
@@ -27,6 +27,9 @@ def upgrade() -> None:
     dialect = bind.dialect.name
 
     if dialect == "postgresql":
+        op.execute(
+            "ALTER TYPE serviceorderstatus ADD VALUE IF NOT EXISTS 'Aguardando compra'"
+        )
         op.execute(
             "ALTER TYPE invoicestatus ADD VALUE IF NOT EXISTS 'Parcialmente paga'"
         )

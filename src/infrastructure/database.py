@@ -248,11 +248,11 @@ class ServiceOrderModel(Base):
             unique=True,
             sqlite_where=text(
                 "status IN ('Recebida', 'Em diagnóstico', 'Aguardando aprovação', "
-                "'Aguardando início', 'Em execução', 'Finalizada')"
+                "'Aguardando início', 'Aguardando compra', 'Em execução', 'Finalizada')"
             ),
             postgresql_where=text(
                 "status IN ('Recebida', 'Em diagnóstico', 'Aguardando aprovação', "
-                "'Aguardando início', 'Em execução', 'Finalizada')"
+                "'Aguardando início', 'Aguardando compra', 'Em execução', 'Finalizada')"
             ),
         ),
     )
