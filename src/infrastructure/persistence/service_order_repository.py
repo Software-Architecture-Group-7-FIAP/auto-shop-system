@@ -1,15 +1,23 @@
 from datetime import datetime, timezone
 
-from sqlalchemy.orm import Session
+from sqlalchemy import case
+from sqlalchemy.orm import Query, Session
 
 from src.application.ports.service_order import ServiceOrderCustomer, ServiceOrderVehicle
 from src.domain.enums import ServiceOrderStatus
 from src.domain.exceptions import NotFoundError
+from src.domain.pagination import Page
 from src.domain.service_order.entity import (
     ServiceOrder,
     ServiceOrderProductLine,
     ServiceOrderServiceLine,
     ServiceOrderStatusTransition,
+)
+from src.domain.service_order.rules import (
+    STATUS_RANKING,
+    ServiceOrderListItem,
+    ServiceOrderListQuery,
+    ServiceOrderOrdering,
 )
 from src.infrastructure.database import (
     CustomerModel,
@@ -81,6 +89,96 @@ class SqlAlchemyServiceOrderRepository:
         if status:
             query = query.filter(ServiceOrderModel.status == status)
         return [self._to_domain(model) for model in query.all()]
+
+    def list_operational(
+        self,
+        query: ServiceOrderListQuery,
+    ) -> Page[ServiceOrderListItem]:
+        base_query = self._listing_query(query.visible_statuses())
+        total = base_query.order_by(None).count()
+        rows = (
+            self._apply_listing_order(base_query, query.order_by)
+            .offset(query.offset)
+            .limit(query.page_size)
+            .all()
+        )
+        return Page(
+            items=tuple(self._listing_row_to_item(row) for row in rows),
+            total=total,
+            page=query.page,
+            page_size=query.page_size,
+        )
+
+    def _listing_query(
+        self,
+        visible_statuses: frozenset[ServiceOrderStatus],
+    ) -> Query:
+        query = (
+            self.db.query(
+                ServiceOrderModel.id.label("id"),
+                ServiceOrderModel.budget_id.label("budget_id"),
+                ServiceOrderModel.customer_id.label("customer_id"),
+                ServiceOrderModel.vehicle_id.label("vehicle_id"),
+                ServiceOrderModel.status.label("status"),
+                ServiceOrderModel.priority.label("priority"),
+                ServiceOrderModel.mechanic_name.label("mechanic_name"),
+                ServiceOrderModel.total_price.label("total_price"),
+                ServiceOrderModel.started_at.label("started_at"),
+                ServiceOrderModel.finished_at.label("finished_at"),
+                CustomerModel.name.label("customer_name"),
+                VehicleModel.plate.label("vehicle_plate"),
+                ServiceOrderModel.created_at.label("created_at"),
+                ServiceOrderModel.updated_at.label("updated_at"),
+            )
+            .join(CustomerModel, CustomerModel.id == ServiceOrderModel.customer_id)
+            .join(VehicleModel, VehicleModel.id == ServiceOrderModel.vehicle_id)
+        )
+        return query.filter(ServiceOrderModel.status.in_(tuple(visible_statuses)))
+
+    @staticmethod
+    def _apply_listing_order(query: Query, ordering: ServiceOrderOrdering) -> Query:
+        if ordering is ServiceOrderOrdering.CREATED_AT_DESC:
+            return query.order_by(
+                ServiceOrderModel.created_at.desc(),
+                ServiceOrderModel.id.asc(),
+            )
+        if ordering is ServiceOrderOrdering.CREATED_AT_ASC:
+            return query.order_by(
+                ServiceOrderModel.created_at.asc(),
+                ServiceOrderModel.id.asc(),
+            )
+
+        status_rank = case(
+            *(
+                (ServiceOrderModel.status == status, rank)
+                for rank, status in enumerate(STATUS_RANKING)
+            ),
+            else_=len(STATUS_RANKING),
+        )
+        return query.order_by(
+            status_rank.asc(),
+            ServiceOrderModel.created_at.asc(),
+            ServiceOrderModel.id.asc(),
+        )
+
+    @staticmethod
+    def _listing_row_to_item(row) -> ServiceOrderListItem:
+        return ServiceOrderListItem(
+            id=row.id,
+            budget_id=row.budget_id,
+            customer_id=row.customer_id,
+            vehicle_id=row.vehicle_id,
+            status=row.status,
+            priority=row.priority,
+            mechanic_name=row.mechanic_name,
+            total_price=row.total_price,
+            started_at=row.started_at,
+            finished_at=row.finished_at,
+            customer_name=row.customer_name,
+            vehicle_plate=row.vehicle_plate,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
 
     def list_with_execution_times(self) -> list[ServiceOrder]:
         models = (
