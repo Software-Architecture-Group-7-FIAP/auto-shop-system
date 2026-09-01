@@ -84,6 +84,14 @@ jobs:
           version: v0.30.0
           node_image: kindest/node:v1.34.0
           cluster_name: kind
+      - name: Configure kubeconfig for Terraform
+        run: |
+          set -euo pipefail
+          kubeconfig_path="$RUNNER_TEMP/kind-kubeconfig"
+          kind get kubeconfig --name kind > "$kubeconfig_path"
+          echo "KUBECONFIG=$kubeconfig_path" >> "$GITHUB_ENV"
+          kubectl --kubeconfig="$kubeconfig_path" config get-contexts
+          kubectl --kubeconfig="$kubeconfig_path" config use-context kind-kind
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.16.0"
@@ -109,6 +117,7 @@ jobs:
               -input=false \
               -refresh=false \
               -var-file=terraform.tfvars.example \
+              -var=kubeconfig_path="$KUBECONFIG" \
               -var=kube_context=kind-kind \
               "$@" \
               -out="$plan_file"
