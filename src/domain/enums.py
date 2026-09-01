@@ -24,6 +24,7 @@ class PurchaseRequestStatus(StrEnum):
     PENDING = "Pendente"
     ORDERED = "Pedido"
     RECEIVED = "Recebido"
+    CANCELLED = "Cancelada"
 
 
 class ReservationStatus(StrEnum):
