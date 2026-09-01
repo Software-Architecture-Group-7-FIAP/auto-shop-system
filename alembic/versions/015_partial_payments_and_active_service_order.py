@@ -95,7 +95,7 @@ def upgrade() -> None:
             f"status IN ({ACTIVE_SERVICE_ORDER_STATUSES})"
         ),
         postgresql_where=sa.text(
-            f"status::text IN ({ACTIVE_SERVICE_ORDER_STATUSES})"
+            f"status IN ({ACTIVE_SERVICE_ORDER_STATUSES})"
         ),
     )
 
