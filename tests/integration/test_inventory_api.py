@@ -104,8 +104,15 @@ def test_inventory_reservations_and_purchase_requests_flow(client, auth_headers,
     reservations = create_reservations.json()
     assert len(reservations) == 1
     assert reservations[0]["product_id"] == context["product_id"]
-    assert reservations[0]["quantity"] == 5
+    assert reservations[0]["quantity"] == 1
     assert reservations[0]["service_order_id"] == context["service_order_id"]
+
+    waiting_order = client.get(
+        f"/api/v1/admin/service-orders/{context['service_order_id']}",
+        headers=auth_headers,
+    )
+    assert waiting_order.status_code == 200
+    assert waiting_order.json()["status"] == "Aguardando compra"
 
     list_reservations = client.get("/api/v1/admin/reservations", headers=auth_headers)
     assert list_reservations.status_code == 200
@@ -150,6 +157,13 @@ def test_inventory_reservations_and_purchase_requests_flow(client, auth_headers,
     )
     assert pending_after_receipt.status_code == 200
     assert pending_after_receipt.json() == []
+
+    ready_order = client.get(
+        f"/api/v1/admin/service-orders/{context['service_order_id']}",
+        headers=auth_headers,
+    )
+    assert ready_order.status_code == 200
+    assert ready_order.json()["status"] == "Aguardando início"
 
 
 def test_inventory_create_purchase_request_and_reject_missing_os(client, auth_headers):

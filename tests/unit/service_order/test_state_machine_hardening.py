@@ -117,3 +117,16 @@ def test_break_glass_override_records_reason_and_actor() -> None:
     assert event.reason == "revisão solicitada pelo cliente"
     assert event.actor_id == 10
     assert event.request_id == "req-1"
+
+
+def test_inventory_transitions_are_audited_by_the_aggregate() -> None:
+    order = make_order(status=ServiceOrderStatus.AGUARDANDO_INICIO)
+
+    order.mark_waiting_for_purchase(actor_id=7, request_id="stock-1")
+    order.mark_ready_to_start(actor_id=7, request_id="stock-2")
+
+    assert order.status == ServiceOrderStatus.AGUARDANDO_INICIO
+    assert [event.transition_type for event in order.status_history] == [
+        "inventory_shortage",
+        "inventory_reconciled",
+    ]

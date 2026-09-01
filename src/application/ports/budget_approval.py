@@ -75,6 +75,14 @@ class EmailSender(Protocol):
         ...
 
 
+class ServiceOrderReservationReconciler(Protocol):
+    def reconcile_for_service_order(self, service_order_id: int) -> None:
+        ...
+
+    def release_for_service_order(self, service_order_id: int) -> None:
+        ...
+
+
 class ApprovedBudgetServiceOrderCreator(Protocol):
     def create_from_budget(self, budget: Budget) -> CreatedServiceOrder:
         ...
