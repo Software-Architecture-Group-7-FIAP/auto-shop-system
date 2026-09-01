@@ -601,7 +601,7 @@ def test_full_flow(client, auth_headers, captured_emails):
     assert budget_after_get["status"] == "Enviado"
 
     orders_after_get = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()
-    assert orders_after_get["items"] == []
+    assert orders_after_get == []
 
     approve = client.post(
         "/api/v1/public/budgets/decisions",
@@ -610,8 +610,8 @@ def test_full_flow(client, auth_headers, captured_emails):
     assert approve.status_code == 200
 
     orders = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()
-    assert len(orders["items"]) == 1
-    os_id = orders["items"][0]["id"]
+    assert len(orders) == 1
+    os_id = orders[0]["id"]
 
     assign = client.patch(
         f"/api/v1/admin/service-orders/{os_id}/assign-mechanic",
@@ -784,7 +784,7 @@ def test_full_flow(client, auth_headers, captured_emails):
         headers=auth_headers,
     )
     assert invoice.status_code == 201
-    assert invoice.json()["amount"] == 160.0
+    assert invoice.json()["amount"] == "160.00"
 
     invoice_lookup = client.get(
         f"/api/v1/admin/service-orders/{os_id}/invoice",
@@ -869,7 +869,7 @@ def test_execution_queue_orders_pending_service_orders_by_priority(client, auth_
         )
         captured_emails.clear()
         orders = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()
-        order = next(o for o in orders["items"] if o["vehicle_id"] == vehicle["id"])
+        order = next(o for o in orders if o["vehicle_id"] == vehicle["id"])
 
         # The OS only reaches the queue after a mechanic diagnoses it and the
         # customer approves the resulting revision.

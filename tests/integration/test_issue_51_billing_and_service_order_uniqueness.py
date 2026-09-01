@@ -69,6 +69,30 @@ def test_partial_payment_is_idempotent_and_keeps_order_undelivered(
     assert db_session.get(ServiceOrderModel, order_id).status == ServiceOrderStatus.FINALIZADA
 
 
+def test_payment_requires_an_explicit_idempotency_key(client, auth_headers, db_session):
+    _, invoice_id = _seed_invoice(db_session)
+
+    response = client.post(
+        f"/api/v1/admin/invoices/{invoice_id}/payments",
+        headers=auth_headers,
+        json={"amount": "40.00", "method": PaymentMethod.PIX.value},
+    )
+
+    assert response.status_code == 422
+
+
+def test_payment_rejects_a_blank_idempotency_key(client, auth_headers, db_session):
+    _, invoice_id = _seed_invoice(db_session)
+
+    response = client.post(
+        f"/api/v1/admin/invoices/{invoice_id}/payments",
+        headers={**auth_headers, "Idempotency-Key": "   "},
+        json={"amount": "40.00", "method": PaymentMethod.PIX.value},
+    )
+
+    assert response.status_code == 422
+
+
 def test_exact_payment_marks_invoice_paid_and_delivers_finalized_order(
     client, auth_headers, db_session
 ):

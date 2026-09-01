@@ -1,7 +1,7 @@
-from src.application.ports.billing import BillingClock
-from src.application.ports.unit_of_work import UnitOfWork
 from decimal import Decimal
 
+from src.application.ports.billing import BillingClock
+from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.billing.entity import Invoice, Payment
 from src.domain.billing.rules import (
     calculate_invoice_amount,
@@ -71,9 +71,7 @@ class InvoiceService:
             idempotency_key=idempotency_key,
         )
         try:
-            add_payment = getattr(self.invoices, "add_payment", None)
-            if add_payment:
-                add_payment(payment)
+            self.invoices.add_payment(payment)
             updated = self.invoices.save(invoice)
             self._deliver_if_paid(updated, actor_id=actor_id, request_id=request_id)
             self.uow.commit()
@@ -129,19 +127,17 @@ class InvoiceService:
         return invoice
 
     def _get_for_update(self, invoice_id: int) -> Invoice:
-        get_for_update = getattr(self.invoices, "get_by_id_for_update", None)
-        invoice = get_for_update(invoice_id) if get_for_update else self.invoices.get_by_id(invoice_id)
+        invoice = self.invoices.get_by_id_for_update(invoice_id)
         if not invoice:
             raise NotFoundError("Fatura não encontrada")
         return invoice
 
     def _get_payment_by_key(self, invoice: Invoice, idempotency_key: str) -> Payment | None:
-        lookup = getattr(self.invoices, "get_payment_by_idempotency_key", None)
-        if lookup and invoice.id is not None:
-            return lookup(invoice.id, idempotency_key)
-        return next(
-            (payment for payment in invoice.payments if payment.idempotency_key == idempotency_key),
-            None,
+        if invoice.id is None:
+            return None
+        return self.invoices.get_payment_by_idempotency_key(
+            invoice.id,
+            idempotency_key,
         )
 
     def _deliver_if_paid(

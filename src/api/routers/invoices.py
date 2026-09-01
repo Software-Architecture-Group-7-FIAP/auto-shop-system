@@ -53,13 +53,14 @@ def pay_invoice(
 def record_payment(
     invoice_id: int,
     data: PaymentCreate,
-    request: Request,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
-        key = idempotency_key or request.headers.get("x-request-id") or str(uuid4())
+        key = idempotency_key.strip()
+        if not key:
+            raise ValueError("Idempotency-Key é obrigatória")
         if len(key) > 128:
             raise ValueError("Idempotency-Key excede o limite permitido")
         return compose_invoice_service(db).record_payment(
