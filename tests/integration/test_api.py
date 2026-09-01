@@ -619,7 +619,7 @@ def test_full_flow(client, auth_headers, captured_emails):
         json={"mechanic_name": "Carlos"},
     )
     assert assign.status_code == 200
-    assert assign.json()["status"] == "Em diagnóstico"
+    assert assign.json()["status"] == "Aguardando início"
 
     priority = client.patch(
         f"/api/v1/admin/service-orders/{os_id}/priority",
@@ -648,7 +648,7 @@ def test_full_flow(client, auth_headers, captured_emails):
     assert updated_os.status_code == 200
     assert updated_os.json()["mechanic_name"] == "Carlos Silva"
     assert updated_os.json()["priority"] == "Urgente"
-    assert updated_os.json()["status"] == "Em diagnóstico"
+    assert updated_os.json()["status"] == "Aguardando início"
 
     generic_status_update = client.put(
         f"/api/v1/admin/service-orders/{os_id}",
@@ -663,7 +663,7 @@ def test_full_flow(client, auth_headers, captured_emails):
         f"/api/v1/admin/service-orders/{os_id}/status-override",
         headers=auth_headers,
         json={
-            "status": "Em diagnóstico",
+            "status": "Aguardando início",
             "reason": "Correção administrativa no fluxo de teste",
         },
     )
@@ -784,7 +784,7 @@ def test_full_flow(client, auth_headers, captured_emails):
         headers=auth_headers,
     )
     assert invoice.status_code == 201
-    assert invoice.json()["amount"] == 160.0
+    assert invoice.json()["amount"] == "160.00"
 
     invoice_lookup = client.get(
         f"/api/v1/admin/service-orders/{os_id}/invoice",

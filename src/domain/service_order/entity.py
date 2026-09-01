@@ -6,6 +6,19 @@ from src.domain.enums import Priority, ServiceOrderStatus
 from src.domain.exceptions import ValidationError
 
 
+ACTIVE_SERVICE_ORDER_STATUSES = frozenset(
+    {
+        ServiceOrderStatus.RECEBIDA,
+        ServiceOrderStatus.EM_DIAGNOSTICO,
+        ServiceOrderStatus.AGUARDANDO_APROVACAO,
+        ServiceOrderStatus.AGUARDANDO_INICIO,
+        ServiceOrderStatus.AGUARDANDO_COMPRA,
+        ServiceOrderStatus.EM_EXECUCAO,
+        ServiceOrderStatus.FINALIZADA,
+    }
+)
+
+
 @dataclass(frozen=True)
 class ServiceOrderStatusTransition:
     """Append-only audit record for a service-order status transition."""
@@ -68,7 +81,17 @@ class ServiceOrder:
             }
         ),
         ServiceOrderStatus.AGUARDANDO_INICIO: frozenset(
-            {ServiceOrderStatus.EM_EXECUCAO}
+            {
+                ServiceOrderStatus.EM_EXECUCAO,
+                ServiceOrderStatus.AGUARDANDO_APROVACAO,
+                ServiceOrderStatus.AGUARDANDO_COMPRA,
+            }
+        ),
+        ServiceOrderStatus.AGUARDANDO_COMPRA: frozenset(
+            {
+                ServiceOrderStatus.AGUARDANDO_INICIO,
+                ServiceOrderStatus.AGUARDANDO_APROVACAO,
+            }
         ),
         ServiceOrderStatus.EM_EXECUCAO: frozenset({ServiceOrderStatus.FINALIZADA}),
         ServiceOrderStatus.FINALIZADA: frozenset({ServiceOrderStatus.ENTREGUE}),
@@ -80,6 +103,8 @@ class ServiceOrder:
             ServiceOrderStatus.RECEBIDA,
             ServiceOrderStatus.EM_DIAGNOSTICO,
             ServiceOrderStatus.AGUARDANDO_APROVACAO,
+            ServiceOrderStatus.AGUARDANDO_INICIO,
+            ServiceOrderStatus.AGUARDANDO_COMPRA,
         }
     )
 
@@ -90,12 +115,17 @@ class ServiceOrder:
         {
             ServiceOrderStatus.AGUARDANDO_APROVACAO,
             ServiceOrderStatus.AGUARDANDO_INICIO,
+            ServiceOrderStatus.AGUARDANDO_COMPRA,
         }
     )
 
     @property
     def is_terminal(self) -> bool:
         return self.status == ServiceOrderStatus.ENTREGUE
+
+    @property
+    def is_active(self) -> bool:
+        return self.status in ACTIVE_SERVICE_ORDER_STATUSES
 
     def transition_to(
         self,
@@ -140,18 +170,34 @@ class ServiceOrder:
             raise ValidationError("Nome do mecânico é obrigatório")
 
         if self.mechanic_name is None:
-            if self.status != ServiceOrderStatus.RECEBIDA:
-                raise ValidationError(
-                    "A primeira atribuição de mecânico só é permitida para OS recebida"
+            if self.status == ServiceOrderStatus.RECEBIDA:
+                self.mechanic_name = cleaned_name
+                self.transition_to(
+                    ServiceOrderStatus.EM_DIAGNOSTICO,
+                    transition_type="mechanic_assignment",
+                    actor_id=actor_id,
+                    request_id=request_id,
                 )
-            self.mechanic_name = cleaned_name
-            self.transition_to(
-                ServiceOrderStatus.EM_DIAGNOSTICO,
-                transition_type="mechanic_assignment",
-                actor_id=actor_id,
-                request_id=request_id,
+                return
+            if self.status in {
+                ServiceOrderStatus.AGUARDANDO_INICIO,
+                ServiceOrderStatus.AGUARDANDO_COMPRA,
+            }:
+                self.mechanic_name = cleaned_name
+                self.status_history.append(
+                    ServiceOrderStatusTransition(
+                        from_status=self.status,
+                        to_status=self.status,
+                        transition_type="mechanic_assignment",
+                        actor_id=actor_id,
+                        request_id=request_id,
+                    )
+                )
+                return
+            raise ValidationError(
+                "A primeira atribuição de mecânico só é permitida para OS recebida "
+                "ou aguardando início/compra"
             )
-            return
 
         if cleaned_name == self.mechanic_name:
             return
@@ -240,6 +286,40 @@ class ServiceOrder:
             )
         )
 
+    def mark_waiting_for_purchase(
+        self,
+        *,
+        actor_id: int | None = None,
+        request_id: str | None = None,
+    ) -> None:
+        if self.status != ServiceOrderStatus.AGUARDANDO_INICIO:
+            raise ValidationError(
+                "OS deve estar aguardando início para aguardar compra"
+            )
+        self.transition_to(
+            ServiceOrderStatus.AGUARDANDO_COMPRA,
+            transition_type="inventory_shortage",
+            actor_id=actor_id,
+            request_id=request_id,
+        )
+
+    def mark_ready_to_start(
+        self,
+        *,
+        actor_id: int | None = None,
+        request_id: str | None = None,
+    ) -> None:
+        if self.status != ServiceOrderStatus.AGUARDANDO_COMPRA:
+            raise ValidationError(
+                "OS deve estar aguardando compra para voltar à fila de início"
+            )
+        self.transition_to(
+            ServiceOrderStatus.AGUARDANDO_INICIO,
+            transition_type="inventory_reconciled",
+            actor_id=actor_id,
+            request_id=request_id,
+        )
+
     def return_to_diagnosis_after_rejection(
         self,
         *,
@@ -263,10 +343,7 @@ class ServiceOrder:
         actor_id: int | None = None,
         request_id: str | None = None,
     ) -> None:
-        if self.status != ServiceOrderStatus.AGUARDANDO_INICIO:
-            raise ValidationError("OS não pode ser iniciada neste status")
-        if not self.mechanic_name or not self.mechanic_name.strip():
-            raise ValidationError("Mecânico deve ser atribuído antes de iniciar a OS")
+        self.ensure_can_start_execution()
         self.transition_to(
             ServiceOrderStatus.EM_EXECUCAO,
             transition_type="execution_started",
@@ -274,6 +351,12 @@ class ServiceOrder:
             request_id=request_id,
         )
         self.started_at = started_at
+
+    def ensure_can_start_execution(self) -> None:
+        if self.status != ServiceOrderStatus.AGUARDANDO_INICIO:
+            raise ValidationError("OS não pode ser iniciada neste status")
+        if not self.mechanic_name or not self.mechanic_name.strip():
+            raise ValidationError("Mecânico deve ser atribuído antes de iniciar a OS")
 
     def finish_execution(
         self,

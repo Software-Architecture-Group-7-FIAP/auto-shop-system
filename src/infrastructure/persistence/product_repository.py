@@ -1,7 +1,7 @@
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from src.domain.exceptions import NotFoundError
+from src.domain.exceptions import NotFoundError, ValidationError
 from src.domain.product.entity import Product
 from src.infrastructure.database import ProductModel
 
@@ -66,6 +66,26 @@ class SqlAlchemyProductRepository:
         self.db.flush()
         self.db.refresh(model)
         return self._to_domain(model)
+
+    def adjust_stock(self, product_id: int, quantity_delta: int) -> Product:
+        conditions = [ProductModel.id == product_id]
+        if quantity_delta < 0:
+            conditions.append(ProductModel.stock_quantity >= -quantity_delta)
+        result = self.db.execute(
+            update(ProductModel)
+            .where(*conditions)
+            .values(stock_quantity=ProductModel.stock_quantity + quantity_delta)
+        )
+        if result.rowcount == 0:
+            exists = self.db.query(ProductModel.id).filter(ProductModel.id == product_id).first()
+            if exists is None:
+                raise NotFoundError("Produto não encontrado")
+            raise ValidationError("Estoque insuficiente")
+        self.db.flush()
+        updated = self.get_by_id(product_id)
+        if updated is None:
+            raise NotFoundError("Produto não encontrado")
+        return updated
 
     def delete(self, product: Product) -> None:
         if product.id is None:

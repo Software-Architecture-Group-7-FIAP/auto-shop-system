@@ -9,6 +9,7 @@ from src.application.ports.budget_approval import (
     BudgetPdfGenerator,
     CreatedServiceOrder,
     EmailSender,
+    ServiceOrderReservationReconciler,
 )
 from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.budget.entity import Budget
@@ -37,6 +38,7 @@ class BudgetApprovalService:
         emails: EmailSender,
         service_orders: ApprovedBudgetServiceOrderCreator,
         uow: UnitOfWork,
+        reservations: ServiceOrderReservationReconciler | None = None,
     ):
         self.budgets = budgets
         self.contacts = contacts
@@ -46,6 +48,7 @@ class BudgetApprovalService:
         self.emails = emails
         self.service_orders = service_orders
         self.uow = uow
+        self.reservations = reservations
 
     async def send_budget_email(self, budget_id: int, *, actor_id: int | None = None, request_id: str | None = None) -> Budget:
         budget = self._get_by_id(budget_id)
@@ -58,6 +61,7 @@ class BudgetApprovalService:
         submit_for_approval = getattr(self.service_orders, "submit_for_approval", None)
         if submit_for_approval and updated_budget.id is not None:
             submit_for_approval(updated_budget.id, actor_id=actor_id, request_id=request_id)
+            self._release_revision_reservations(updated_budget.id)
 
         customer = self.contacts.get_customer(updated_budget.customer_id)
         vehicle = self.contacts.get_vehicle(updated_budget.vehicle_id)
@@ -117,6 +121,7 @@ class BudgetApprovalService:
             if apply_revision
             else self.service_orders.create_from_budget(updated_budget)
         )
+        self._reconcile_approved_order(service_order)
         self.uow.commit()
         return service_order
 
@@ -134,6 +139,7 @@ class BudgetApprovalService:
                 if decision == "approve" and budget.id is not None and get_order
                 else None
             )
+            self._reconcile_approved_order(order)
             return BudgetDecisionResult(budget.status, order, True)
 
         if decision == "approve":
@@ -152,13 +158,26 @@ class BudgetApprovalService:
                 if apply_revision
                 else self.service_orders.create_from_budget(updated_budget)
             )
+            self._reconcile_approved_order(order)
         else:
             return_to_diagnosis = getattr(self.service_orders, "return_to_diagnosis", None)
             if return_to_diagnosis and updated_budget.id is not None:
                 return_to_diagnosis(updated_budget.id, actor_id=actor_id, request_id=request_id)
+            self._release_revision_reservations(updated_budget.id)
             order = None
         self.uow.commit()
         return BudgetDecisionResult(updated_budget.status, order)
+
+    def _reconcile_approved_order(self, order: CreatedServiceOrder | None) -> None:
+        if self.reservations is not None and order is not None:
+            self.reservations.reconcile_for_service_order(order.id)
+
+    def _release_revision_reservations(self, budget_id: int) -> None:
+        if self.reservations is None:
+            return
+        order = self.service_orders.get_by_budget_id(budget_id)
+        if order is not None:
+            self.reservations.release_for_service_order(order.id)
 
     def _validate_can_approve(self, budget: Budget) -> None:
         if budget.status == BudgetStatus.REJECTED:

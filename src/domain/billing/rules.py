@@ -1,20 +1,25 @@
+from decimal import Decimal
+
 from src.domain.exceptions import ValidationError
 from src.domain.service_order.entity import ServiceOrder
+from src.domain.billing.entity import to_money
 
 
-def calculate_invoice_amount(service_order: ServiceOrder) -> float:
+def calculate_invoice_amount(service_order: ServiceOrder) -> Decimal:
     service_total = sum(
-        line.unit_price * line.quantity for line in service_order.service_lines
+        (to_money(line.unit_price) * line.quantity for line in service_order.service_lines),
+        Decimal("0.00"),
     )
     product_total = sum(
-        line.unit_price * line.quantity for line in service_order.product_lines
+        (to_money(line.unit_price) * line.quantity for line in service_order.product_lines),
+        Decimal("0.00"),
     )
-    return service_total + product_total
+    return to_money(service_total + product_total)
 
 
 def validate_invoice_total_matches_lines(service_order: ServiceOrder) -> None:
     line_total = calculate_invoice_amount(service_order)
-    if abs(line_total - service_order.total_price) > 0.01:
+    if abs(line_total - to_money(service_order.total_price)) > Decimal("0.01"):
         raise ValidationError(
             "Total da OS diverge da soma dos itens: revise os valores antes da emissão da fatura"
         )
