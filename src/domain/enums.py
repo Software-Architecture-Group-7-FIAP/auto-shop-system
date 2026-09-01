@@ -39,15 +39,7 @@ class StockWithdrawalStatus(StrEnum):
 
 class InvoiceStatus(StrEnum):
     PENDING = "Pendente"
-    PARTIALLY_PAID = "Parcialmente paga"
     PAID = "Paga"
-
-
-class PaymentMethod(StrEnum):
-    DINHEIRO = "DINHEIRO"
-    CARTAO = "CARTAO"
-    PIX = "PIX"
-    TRANSFERENCIA = "TRANSFERENCIA"
 
 
 class Priority(StrEnum):

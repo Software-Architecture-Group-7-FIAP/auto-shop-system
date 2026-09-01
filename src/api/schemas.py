@@ -1,5 +1,4 @@
 from datetime import datetime
-from decimal import Decimal
 from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, EmailStr, Field, StrictInt, model_validator
@@ -7,7 +6,6 @@ from pydantic import BaseModel, EmailStr, Field, StrictInt, model_validator
 from src.domain.enums import (
     BudgetStatus,
     InvoiceStatus,
-    PaymentMethod,
     Priority,
     PurchaseRequestStatus,
     ReservationStatus,
@@ -292,15 +290,6 @@ class BudgetDecisionRequest(BaseModel):
     decision: Literal["approve", "reject"]
 
 
-class PaymentCreate(BaseModel):
-    amount: Decimal = Field(
-        gt=Decimal("0.00"),
-        max_digits=12,
-        decimal_places=2,
-    )
-    method: PaymentMethod
-
-
 class BudgetDecisionResponse(BaseModel):
     message: str
     status: BudgetStatus
@@ -370,8 +359,6 @@ class ServiceOrderListResponse(BaseModel):
     page_size: int
     total: int
     total_pages: int
-
-
 
 
 class ServiceOrderPublicResponse(BaseModel):
@@ -479,28 +466,13 @@ class ServiceOrderWithWithdrawalsResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class PaymentResponse(BaseModel):
-    id: int
-    invoice_id: int
-    amount: Decimal
-    method: PaymentMethod
-    paid_at: datetime
-    user_id: int
-    idempotency_key: str
-
-    model_config = {"from_attributes": True}
-
-
 class InvoiceResponse(BaseModel):
     id: int
     service_order_id: int
-    amount: Decimal
+    amount: float
     status: InvoiceStatus
     paid_at: datetime | None
     created_at: datetime
-    total_paid: Decimal
-    balance: Decimal
-    payments: list[PaymentResponse]
 
     model_config = {"from_attributes": True}
 

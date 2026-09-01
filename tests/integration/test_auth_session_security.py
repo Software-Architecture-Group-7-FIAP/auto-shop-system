@@ -326,7 +326,7 @@ def _approved_service_order(client, auth_headers, captured_emails) -> int:
         json={"token": captured_emails.approval_token(), "decision": "approve"},
     )
     orders = client.get("/api/v1/admin/service-orders", headers=auth_headers).json()
-    return orders["items"][0]["id"]
+    return orders[0]["id"]
 
 
 def test_status_override_is_refused_for_an_operator(
