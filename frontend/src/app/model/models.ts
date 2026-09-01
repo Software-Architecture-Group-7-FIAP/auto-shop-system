@@ -11,6 +11,7 @@ export enum ServiceOrderStatus {
   EM_DIAGNOSTICO = 'Em diagn\u00f3stico',
   AGUARDANDO_APROVACAO = 'Aguardando aprova\u00e7\u00e3o',
   AGUARDANDO_INICIO = 'Aguardando in\u00edcio',
+  AGUARDANDO_COMPRA = 'Aguardando compra',
   EM_EXECUCAO = 'Em execu\u00e7\u00e3o',
   FINALIZADA = 'Finalizada',
   ENTREGUE = 'Entregue',
