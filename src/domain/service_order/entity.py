@@ -71,6 +71,13 @@ class ServiceOrder:
             {
                 ServiceOrderStatus.EM_EXECUCAO,
                 ServiceOrderStatus.AGUARDANDO_APROVACAO,
+                ServiceOrderStatus.AGUARDANDO_COMPRA,
+            }
+        ),
+        ServiceOrderStatus.AGUARDANDO_COMPRA: frozenset(
+            {
+                ServiceOrderStatus.AGUARDANDO_INICIO,
+                ServiceOrderStatus.AGUARDANDO_APROVACAO,
             }
         ),
         ServiceOrderStatus.EM_EXECUCAO: frozenset({ServiceOrderStatus.FINALIZADA}),
@@ -93,6 +100,7 @@ class ServiceOrder:
         {
             ServiceOrderStatus.AGUARDANDO_APROVACAO,
             ServiceOrderStatus.AGUARDANDO_INICIO,
+            ServiceOrderStatus.AGUARDANDO_COMPRA,
         }
     )
 

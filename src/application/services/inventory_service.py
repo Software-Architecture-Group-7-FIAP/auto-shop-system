@@ -58,7 +58,10 @@ class InventoryService:
     def reconcile_for_service_order(self, service_order_id: int) -> list[Reservation]:
         snapshot = self._get_snapshot(service_order_id)
         self._ensure_snapshot_exists(snapshot)
-        if snapshot.status != ServiceOrderStatus.AGUARDANDO_INICIO:
+        if snapshot.status not in {
+            ServiceOrderStatus.AGUARDANDO_INICIO,
+            ServiceOrderStatus.AGUARDANDO_COMPRA,
+        }:
             self.inventory.release_active_for_service_order(service_order_id)
             self.inventory.cancel_pending_purchase_requests_for_service_order(
                 service_order_id
@@ -67,19 +70,10 @@ class InventoryService:
 
         required = self._required_by_product(snapshot.product_lines)
         self._release_removed_product_reservations(service_order_id, required)
-        products = {
-            product_id: self._get_product_for_update(product_id)
-            for product_id in sorted(required)
-        }
-        for product_id, required_quantity in required.items():
-            product = products[product_id]
-            if product is not None:
-                self._reconcile_product(
-                    service_order_id,
-                    product,
-                    required_quantity,
-                )
+        for product_id in sorted(required):
+            self._reconcile_product_queue(product_id, service_order_id)
 
+        self._refresh_queue_statuses(service_order_id)
         return sorted(
             (
                 reservation
@@ -89,6 +83,98 @@ class InventoryService:
             ),
             key=lambda reservation: reservation.product_id,
         )
+
+    def _reconcile_product_queue(
+        self,
+        product_id: int,
+        requested_service_order_id: int,
+    ) -> None:
+        product = self._get_product_for_update(product_id)
+        if product is None:
+            return
+
+        list_queue = getattr(self.service_orders, "list_reservation_queue", None)
+        queue = list_queue(product_id) if list_queue is not None else []
+        requested_snapshot = self._get_snapshot(requested_service_order_id)
+        if requested_snapshot is not None and requested_snapshot.id not in {
+            item.id for item in queue
+        }:
+            queue = [*queue, requested_snapshot]
+            queue.sort(key=lambda item: item.id)
+
+        queue_ids = {item.id for item in queue}
+        reserved_outside_queue = sum(
+            reservation.quantity
+            for reservation in self.inventory.list_reservations()
+            if reservation.product_id == product_id
+            and reservation.status == ReservationStatus.ACTIVE
+            and reservation.service_order_id not in queue_ids
+        )
+        remaining = max(product.stock_quantity - reserved_outside_queue, 0)
+
+        for item in queue:
+            required = self._required_by_product(item.product_lines).get(product_id, 0)
+            current = self.inventory.get_active_reservation(
+                item.id,
+                product_id,
+                for_update=True,
+            )
+            desired = min(required, remaining)
+            if current is not None:
+                if desired == 0:
+                    current.release()
+                    self.inventory.save_reservation(current)
+                elif current.quantity != desired:
+                    current.reconcile_quantity(desired)
+                    self.inventory.save_reservation(current)
+            elif desired > 0:
+                self.inventory.add_reservation(
+                    Reservation.create(item.id, product_id, desired)
+                )
+            remaining -= desired
+            self._reconcile_backorder(
+                item.id,
+                product,
+                required - desired,
+            )
+
+    def _refresh_queue_statuses(self, requested_service_order_id: int) -> None:
+        requested = self._get_snapshot(requested_service_order_id)
+        if requested is None:
+            return
+        queue_by_product: dict[int, list[InventoryServiceOrderSnapshot]] = {}
+        list_queue = getattr(self.service_orders, "list_reservation_queue", None)
+        if list_queue is not None:
+            for line in requested.product_lines:
+                queue_by_product[line.product_id] = list_queue(line.product_id)
+
+        candidates = {
+            item.id: item
+            for queue in queue_by_product.values()
+            for item in queue
+        }
+        candidates[requested.id] = requested
+        active_quantity = {
+            (reservation.service_order_id, reservation.product_id): reservation.quantity
+            for reservation in self.inventory.list_reservations()
+            if reservation.status == ReservationStatus.ACTIVE
+        }
+        set_status = getattr(self.service_orders, "set_reservation_status", None)
+        if set_status is None:
+            return
+        for item in candidates.values():
+            required = self._required_by_product(item.product_lines)
+            has_shortage = any(
+                active_quantity.get((item.id, product_id), 0) < quantity
+                for product_id, quantity in required.items()
+            )
+            target = (
+                ServiceOrderStatus.AGUARDANDO_COMPRA
+                if has_shortage
+                else ServiceOrderStatus.AGUARDANDO_INICIO
+            )
+            if item.status != target:
+                set_status(item.id, target)
 
     def release_for_service_order(self, service_order_id: int) -> None:
         self.inventory.release_active_for_service_order(service_order_id)

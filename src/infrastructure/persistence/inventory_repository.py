@@ -4,7 +4,7 @@ from src.application.ports.inventory import (
     InventoryProduct,
     InventoryServiceOrderProductLine,
 )
-from src.domain.enums import PurchaseRequestStatus, ReservationStatus
+from src.domain.enums import PurchaseRequestStatus, ReservationStatus, ServiceOrderStatus
 from src.domain.exceptions import NotFoundError
 from src.domain.inventory.entity import GoodsReceipt, PurchaseRequest, Reservation
 from src.infrastructure.database import (
@@ -346,3 +346,51 @@ class SqlAlchemyInventoryServiceOrderLookup:
             status=service_order.status,
             product_lines=tuple(self.get_product_lines(service_order_id) or []),
         )
+
+    def list_reservation_queue(self, product_id: int):
+        from src.application.ports.inventory import InventoryServiceOrderSnapshot
+
+        models = (
+            self.db.query(ServiceOrderModel)
+            .join(
+                ServiceOrderProductLineModel,
+                ServiceOrderProductLineModel.service_order_id == ServiceOrderModel.id,
+            )
+            .filter(
+                ServiceOrderProductLineModel.product_id == product_id,
+                ServiceOrderModel.status.in_(
+                    [
+                        ServiceOrderStatus.AGUARDANDO_INICIO,
+                        ServiceOrderStatus.AGUARDANDO_COMPRA,
+                    ]
+                ),
+            )
+            .distinct()
+            .order_by(ServiceOrderModel.created_at.asc(), ServiceOrderModel.id.asc())
+            .with_for_update()
+            .all()
+        )
+        return [
+            InventoryServiceOrderSnapshot(
+                id=model.id,
+                status=model.status,
+                product_lines=tuple(self.get_product_lines(model.id) or []),
+            )
+            for model in models
+        ]
+
+    def set_reservation_status(
+        self,
+        service_order_id: int,
+        status: ServiceOrderStatus,
+    ) -> None:
+        model = (
+            self.db.query(ServiceOrderModel)
+            .filter(ServiceOrderModel.id == service_order_id)
+            .with_for_update()
+            .first()
+        )
+        if model is None:
+            raise NotFoundError("OS não encontrada")
+        model.status = status
+        self.db.flush()

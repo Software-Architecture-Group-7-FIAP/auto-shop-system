@@ -47,3 +47,16 @@ class InventoryServiceOrderLookup(Protocol):
         service_order_id: int,
     ) -> list[InventoryServiceOrderProductLine] | None:
         ...
+
+    def list_reservation_queue(
+        self,
+        product_id: int,
+    ) -> list[InventoryServiceOrderSnapshot]:
+        ...
+
+    def set_reservation_status(
+        self,
+        service_order_id: int,
+        status: ServiceOrderStatus,
+    ) -> None:
+        ...
