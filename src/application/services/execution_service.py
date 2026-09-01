@@ -9,7 +9,7 @@ from src.application.ports.execution import (
 )
 from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.enums import ServiceOrderStatus, StockWithdrawalStatus
-from src.domain.exceptions import NotFoundError
+from src.domain.exceptions import NotFoundError, ValidationError
 from src.domain.execution.entity import (
     StockWithdrawal,
     enqueue_service_order,
@@ -50,34 +50,43 @@ class ExecutionService:
         self.emails = emails
         self.uow = uow
 
-    def enqueue(self, service_order_id: int) -> ServiceOrder:
+    def enqueue(self, service_order_id: int, *, actor_id: int | None = None, request_id: str | None = None) -> ServiceOrder:
         service_order = self._get_os(service_order_id)
-        enqueue_service_order(service_order)
+        enqueue_service_order(service_order, actor_id=actor_id, request_id=request_id)
         updated = self.service_orders.save(service_order)
         self.uow.commit()
         return updated
 
-    def start_service(self, service_order_id: int) -> ServiceOrder:
+    def start_service(self, service_order_id: int, *, actor_id: int | None = None, request_id: str | None = None) -> ServiceOrder:
         service_order = self._get_os(service_order_id)
-        start_service_order(service_order, self.clock.now())
+        service_order.ensure_can_start_execution()
+        required_by_product: dict[int, int] = {}
+        for line in service_order.product_lines:
+            required_by_product[line.product_id] = (
+                required_by_product.get(line.product_id, 0) + line.quantity
+            )
+        for product_id, required_quantity in required_by_product.items():
+            if self.reservations.active_quantity_for_product(
+                service_order_id, product_id
+            ) < required_quantity:
+                raise ValidationError(
+                    f"Estoque não reservado para o produto #{product_id}"
+                )
+        start_service_order(service_order, self.clock.now(), actor_id=actor_id, request_id=request_id)
         updated = self.service_orders.save(service_order)
         self.uow.commit()
         return updated
 
     def list_execution_queue(self) -> list[ServiceOrder]:
-        waiting = self.service_orders.list_all(ServiceOrderStatus.AGUARDANDO_APROVACAO)
+        waiting = self.service_orders.list_all(ServiceOrderStatus.AGUARDANDO_INICIO)
         return order_execution_queue(waiting)
 
-    def finish_service(self, service_order_id: int) -> ServiceOrder:
+    def finish_service(self, service_order_id: int, *, actor_id: int | None = None, request_id: str | None = None) -> ServiceOrder:
         service_order = self._get_os(service_order_id)
         withdrawn = self.withdrawals.fulfilled_quantity_by_product(service_order_id)
-        finish_service_order(service_order, self.clock.now(), withdrawn)
+        finish_service_order(service_order, self.clock.now(), withdrawn, actor_id=actor_id, request_id=request_id)
 
-        for line in service_order.product_lines:
-            self.reservations.consume_active_for_product(
-                service_order_id,
-                line.product_id,
-            )
+        self.reservations.release_active_for_service_order(service_order_id)
 
         updated = self.service_orders.save(service_order)
         self.uow.commit()
@@ -107,9 +116,19 @@ class ExecutionService:
         return withdrawal
 
     def fulfill_withdrawal(self, withdrawal_id: int) -> StockWithdrawal:
-        withdrawal = self.withdrawals.get_by_id(withdrawal_id)
+        get_for_update = getattr(self.withdrawals, "get_by_id_for_update", None)
+        withdrawal = (
+            get_for_update(withdrawal_id)
+            if get_for_update is not None
+            else self.withdrawals.get_by_id(withdrawal_id)
+        )
         if not withdrawal:
             raise NotFoundError("Solicitação de retirada não encontrada")
+        self.reservations.consume_for_withdrawal(
+            withdrawal.service_order_id,
+            withdrawal.product_id,
+            withdrawal.quantity,
+        )
         withdrawal.fulfill(self.clock.now())
         self.products.decrement_stock(withdrawal.product_id, withdrawal.quantity)
         updated = self.withdrawals.save(withdrawal)

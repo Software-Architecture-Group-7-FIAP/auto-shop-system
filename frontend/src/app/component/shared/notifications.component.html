@@ -1,0 +1,18 @@
+<div class="notifications" aria-live="polite" aria-atomic="false">
+  <div
+    *ngFor="let notification of notifications$ | async; trackBy: trackById"
+    class="notification"
+    [ngClass]="'notification--' + notification.level"
+    [attr.role]="notification.level === 'error' ? 'alert' : 'status'"
+  >
+    <p class="notification__message">{{ notification.message }}</p>
+    <button
+      type="button"
+      class="notification__close"
+      (click)="dismiss(notification.id)"
+      aria-label="Fechar notificação"
+    >
+      &times;
+    </button>
+  </div>
+</div>

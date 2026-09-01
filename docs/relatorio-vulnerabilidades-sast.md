@@ -1,7 +1,12 @@
 # Relatório de Vulnerabilidade de Segurança (SAST)
 
 **Projeto:** Oficina Mecânica API — auto-shop-system  
-**Stack:** Python 3.12 · FastAPI · SQLAlchemy · JWT · Angular  
+**Stack:** Python 3.12 · FastAPI · SQLAlchemy · JWT em cookies HttpOnly · Angular
+
+> Atualização: o relatório histórico abaixo foi complementado pelas migrations
+> 010/011. O contrato vigente usa cookies de sessão, decisões públicas POST,
+> fingerprints HMAC e histórico de transições; referências a Bearer, tokens
+> brutos e endpoints GET são achados anteriores à implementação do hardening.
 **Referência:** PR #26 — `fix/vulnerability-issues`  
 **Commit analisado:** `491ef7433034a46352a1928967b02e7d0d76daef`  
 **Data da revisão:** 30/06/2026  
@@ -35,11 +40,11 @@ Este relatório consolida o **scan SAST original** (baseline em `main` antes do 
 | Severidade original | Total | Corrigido | Residual |
 |-------------------|-------|-----------|----------|
 | **Alta** | 4 | **4** | 0 |
-| **Média** | 4 | **3** | **1** (rate limiting) |
-| **Baixa** | 3 | **2** | **1** (CSP ausente) |
-| **Total** | 11 | **9** | **2** |
+| **Média** | 4 | **4** | 0 |
+| **Baixa** | 3 | **3** | 0 |
+| **Total** | 11 | **11** | 0 |
 
-**Conclusão:** o PR #26 endereça todos os riscos **críticos** identificados no scan inicial. O sistema está **apto para homologação** com configuração correta de variáveis de ambiente. Para produção, permanecem recomendações de hardening contínuo (rate limiting e CSP).
+**Conclusão:** o PR #26 endereça todos os riscos **críticos** identificados no scan inicial. O sistema está **apto para homologação** com configuração correta de variáveis de ambiente. Para produção, permanece a recomendação de um limitador distribuído na borda.
 
 ---
 
@@ -49,12 +54,12 @@ Este relatório consolida o **scan SAST original** (baseline em `main` antes do 
 |----|--------------|------------|--------|-------------------|
 | VULN-01 | CWE-798 — Admin default `admin123` automático | Alta | **Corrigido** | `0260cab` — removido seed automático no lifespan; `seed_dev_admin.py` exige `DEV_ADMIN_PASSWORD` |
 | VULN-02 | CWE-798/321 — `SECRET_KEY` previsível | Alta | **Corrigido** | `0260cab`, `491ef74` — `SecretStr`, mín. 32 chars, blocklist de valores inseguros |
-| VULN-03 | CWE-352 — CSRF em `GET /approve` | Alta | **Corrigido** | `79a5be9`, `eafde8e` — `POST /public/budgets/{token}/approve\|reject` + confirmação no Angular |
+| VULN-03 | CWE-352 — CSRF em `GET /approve` | Alta | **Corrigido** | Hardening 010/011 — `POST /public/budgets/decisions` com token no corpo + confirmação no Angular |
 | VULN-04 | CWE-613 — Token de aprovação sem `exp` | Alta | **Corrigido** | `79a5be9` — `BUDGET_APPROVAL_TOKEN_EXPIRE_HOURS` (default 72h) + `validate_approval_token()` |
 | VULN-05 | CWE-200 — Lookup público por documento | Média | **Corrigido** | `de5343a` — `POST /customers/lookup` com segundo fator (email, phone ou placa) |
-| VULN-06 | CWE-307 — Sem rate limiting | Média | **Residual** | `aa28097` — rate limiting removido do MVP; documentado como backlog |
+| VULN-06 | CWE-307 — Sem rate limiting | Média | **Corrigida** | Throttle por IP/usuário com janela, bloqueio e limite de cardinalidade em `src/api/rate_limit.py` |
 | VULN-07 | CWE-319 — SMTP sem TLS | Média | **Corrigido** | `de5343a`, `c88c26f` — `SMTP_USE_TLS` / `SMTP_STARTTLS`; obrigatório em `APP_ENV=production\|staging` |
-| VULN-08 | CWE-287 — Rastreio OS por ID + documento | Média | **Corrigido** | `72be1b3` — `GET /public/service-orders/track/{token}` com HMAC-SHA256 do token |
+| VULN-08 | CWE-287 — Rastreio OS por ID + documento | Média | **Corrigido** | Hardening 010/011 — `POST /public/service-orders/track` com token no corpo, HMAC e expiração |
 | VULN-09 | CWE-942 — CORS hardcoded | Baixa | **Corrigido** | `de5343a` — `CORS_ALLOWED_ORIGINS` via env; validação anti-wildcard com credentials |
 | VULN-10 | CWE-693 — Security headers ausentes | Baixa | **Corrigido** | `de5343a` — middleware `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, HSTS opcional |
 | VULN-11 | CWE-798 — Credenciais DB no compose | Baixa | **Corrigido** | `491ef74` — `${POSTGRES_USER:?}` / `${POSTGRES_PASSWORD:?}` / `${SECRET_KEY:?}` |
@@ -97,8 +102,8 @@ DEV_ADMIN_PASSWORD=<senha-forte> poetry run python -m src.scripts.seed_dev_admin
 **Antes:** `GET /api/v1/public/budgets/{token}/approve` executava ação de estado.
 
 **Depois:**
-- API: **`POST`** `/api/v1/public/budgets/{token}/approve` e `/reject`.
-- E-mail aponta para frontend: `/budget-approval?token=...&action=approve`.
+- API: **`POST`** `/api/v1/public/budgets/decisions`, com `{token, decision}` no corpo.
+- E-mail aponta para frontend com token no fragmento: `/budget-approval?action=approve#...`.
 - Componente Angular exige **seleção explícita + botão Confirmar** antes do POST.
 
 **Arquivos:** `src/api/routers/budgets.py`, `src/infrastructure/budget_approval.py`, `frontend/.../budget-approval.component.ts`
@@ -159,7 +164,7 @@ Resposta de erro sempre genérica (`404` — `"Cliente não encontrado"`) para e
 **Depois:**
 - Token opaco (`secrets.token_urlsafe(32)`) enviado por e-mail/PDF.
 - Apenas **hash HMAC-SHA256** persistido no banco (`tracking_token_hash`).
-- Rota pública: `GET /api/v1/public/service-orders/track/{token}`.
+- Rota pública vigente: `POST /api/v1/public/service-orders/track` com token no corpo.
 
 **Arquivos:** `src/infrastructure/auth/service_order_tracking.py`, migration `008_service_order_tracking_token_hash.py`, `src/application/services/service_order_email_service.py`
 
@@ -177,27 +182,27 @@ Resposta de erro sempre genérica (`404` — `"Cliente não encontrado"`) para e
 
 ---
 
-## 4. Achados Residuais (pós-PR #26)
+## 4. Residuais e hardening recomendado (pós-PR #26)
 
-### RES-01 — Ausência de rate limiting (ex-VULN-06)
+### RES-01 — Rate limiting distribuído (ex-VULN-06)
 
 | Campo | Valor |
 |-------|-------|
-| **Severidade** | Média (backlog) |
-| **Status** | Aceito no MVP — removido intencionalmente (`aa28097`) |
-| **Risco** | Brute-force em `/auth/login`; abuso de endpoints públicos (`/lookup`, `/track/{token}`) |
-| **Recomendação** | Adicionar `slowapi` ou rate limit no API Gateway/WAF antes de go-live em produção |
+| **Severidade** | Média (mitigação adicional) |
+| **Status** | Throttle local corrigido; distribuição permanece recomendada |
+| **Risco residual** | Contadores não são compartilhados entre workers/instâncias |
+| **Recomendação** | Complementar o throttle por processo com rate limit no API Gateway/WAF antes de go-live em produção |
 
 ---
 
-### RES-02 — Content-Security-Policy ausente (extensão de VULN-10)
+### RES-02 — Content-Security-Policy (corrigida)
 
 | Campo | Valor |
 |-------|-------|
 | **Severidade** | Baixa |
-| **Status** | Parcialmente mitigado (X-Frame-Options, nosniff) |
-| **Risco** | XSS refletido no painel legado `/app/` |
-| **Recomendação** | Definir CSP restritiva no reverse proxy ou middleware quando front Angular for servido pelo mesmo domínio |
+| **Status** | Corrigida por middleware da aplicação |
+| **Risco residual** | Nenhum identificado no escopo do relatório |
+| **Recomendação** | Revisar a política quando novos recursos externos forem adicionados |
 
 ---
 
@@ -267,11 +272,10 @@ docker compose up --build
 
 | Rota | Método | Autenticação | Proteção |
 |------|--------|--------------|----------|
-| `/api/v1/auth/login` | POST | Nenhuma | bcrypt + JWT (sem rate limit — RES-01) |
+| `/api/v1/auth/login` | POST | Nenhuma | bcrypt + sessão em cookies + rate limit por IP/usuário |
 | `/api/v1/customers/lookup` | POST | Documento + 2º fator | Erro genérico 404 |
-| `/api/v1/public/budgets/{token}/approve` | **POST** | JWT assinado + exp | Confirmação UI Angular |
-| `/api/v1/public/budgets/{token}/reject` | **POST** | JWT assinado + exp | Confirmação UI Angular |
-| `/api/v1/public/service-orders/track/{token}` | GET | Token opaco (HMAC no DB) | Sem ID sequencial exposto |
+| `/api/v1/public/budgets/decisions` | **POST** | JWT assinado + exp, uso único | Confirmação UI Angular |
+| `/api/v1/public/service-orders/track` | **POST** | Token opaco (HMAC no DB) + expiração | Sem ID sequencial exposto |
 
 > **Nota:** não existe rota `/users`. Admin = `POST /auth/login`. Clientes = `/admin/customers` (JWT) ou `/customers/lookup` (público com 2FA).
 
@@ -291,8 +295,7 @@ docker compose up --build
 
 | Prioridade | Ação |
 |------------|------|
-| P1 | Rate limiting em login e rotas públicas (RES-01) |
-| P2 | Content-Security-Policy (RES-02) |
+| P1 | Rate limiting distribuído em login e rotas públicas (RES-01) |
 | P3 | Renovar `docs/bandit-report.txt` no CI (artefato gerado automaticamente) |
 | P3 | Suprimir/documentar falso positivo B105 com `# nosec B105` + comentário |
 
@@ -314,7 +317,6 @@ docker compose up --build
 | `0260cab` | Harden auth secrets e admin seed |
 | `79a5be9` | Secure budget approval flow (POST + exp) |
 | `de5343a` | Security hardening base (CORS, headers, SMTP, lookup) |
-| `aa28097` | Remove MVP rate limiting |
 | `eafde8e` | Confirmação explícita de aprovação no frontend |
 | `72be1b3` | Token-based service order tracking |
 | `c88c26f` | SMTP delivery failures handling |
@@ -353,7 +355,7 @@ secret_key: SecretStr = Field(..., min_length=32)
 GET /public/service-orders/{id}?document=52998224725
 
 # Depois
-GET /public/service-orders/track/{opaque_token}
+POST /public/service-orders/track {"token": "<opaque_token>"}
 # token hash armazenado: HMAC-SHA256(secret, token)
 ```
 
@@ -372,4 +374,4 @@ Bandit classifica como `hardcoded_password_string` por conter a substring `"expi
 
 **Elaborado por:** Revisão SAST pós-PR #26  
 **Classificação:** Interno — Desenvolvimento e Gerência  
-**Próxima revisão:** após merge do PR #26 em `main` ou implementação de RES-01/RES-02
+**Próxima revisão:** após merge do PR #26 em `main` ou implementação de RES-01 distribuído

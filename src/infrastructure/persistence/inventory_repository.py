@@ -4,8 +4,8 @@ from src.application.ports.inventory import (
     InventoryProduct,
     InventoryServiceOrderProductLine,
 )
-from src.domain.enums import PurchaseRequestStatus, ReservationStatus
-from src.domain.exceptions import NotFoundError
+from src.domain.enums import PurchaseRequestStatus, ReservationStatus, ServiceOrderStatus
+from src.domain.exceptions import NotFoundError, ValidationError
 from src.domain.inventory.entity import GoodsReceipt, PurchaseRequest, Reservation
 from src.infrastructure.database import (
     GoodsReceiptModel,
@@ -33,25 +33,59 @@ class SqlAlchemyInventoryRepository:
         self.db.refresh(model)
         return self._reservation_to_domain(model)
 
-    def list_active_reservations_for_service_order(
-        self,
-        service_order_id: int,
-    ) -> list[Reservation]:
-        models = (
-            self.db.query(ReservationModel)
-            .filter(
-                ReservationModel.service_order_id == service_order_id,
-                ReservationModel.status == ReservationStatus.ACTIVE,
-            )
-            .all()
-        )
-        return [self._reservation_to_domain(model) for model in models]
-
     def list_reservations(self) -> list[Reservation]:
         return [
             self._reservation_to_domain(model)
             for model in self.db.query(ReservationModel).all()
         ]
+
+    def get_active_reservation(
+        self,
+        service_order_id: int,
+        product_id: int,
+        *,
+        for_update: bool = False,
+    ) -> Reservation | None:
+        query = self.db.query(ReservationModel).filter(
+            ReservationModel.service_order_id == service_order_id,
+            ReservationModel.product_id == product_id,
+            ReservationModel.status == ReservationStatus.ACTIVE,
+        )
+        if for_update:
+            query = query.with_for_update()
+        model = query.first()
+        return self._reservation_to_domain(model) if model else None
+
+    def save_reservation(self, reservation: Reservation) -> Reservation:
+        if reservation.id is None:
+            raise NotFoundError("Reserva não encontrada")
+        model = (
+            self.db.query(ReservationModel)
+            .filter(ReservationModel.id == reservation.id)
+            .with_for_update()
+            .first()
+        )
+        if model is None:
+            raise NotFoundError("Reserva não encontrada")
+        model.quantity = reservation.quantity
+        model.status = reservation.status
+        self.db.flush()
+        self.db.refresh(model)
+        return self._reservation_to_domain(model)
+
+    def release_active_for_service_order(self, service_order_id: int) -> None:
+        (
+            self.db.query(ReservationModel)
+            .filter(
+                ReservationModel.service_order_id == service_order_id,
+                ReservationModel.status == ReservationStatus.ACTIVE,
+            )
+            .update(
+                {ReservationModel.status: ReservationStatus.RELEASED},
+                synchronize_session=False,
+            )
+        )
+        self.db.flush()
 
     def active_quantity_for_product(self, product_id: int) -> int:
         rows = (
@@ -130,6 +164,44 @@ class SqlAlchemyInventoryRepository:
             .first()
             is not None
         )
+
+    def get_pending_purchase_request(
+        self,
+        service_order_id: int,
+        product_id: int,
+        *,
+        for_update: bool = False,
+    ) -> PurchaseRequest | None:
+        query = self.db.query(PurchaseRequestModel).filter(
+            PurchaseRequestModel.service_order_id == service_order_id,
+            PurchaseRequestModel.product_id == product_id,
+            PurchaseRequestModel.status.in_(
+                [PurchaseRequestStatus.PENDING, PurchaseRequestStatus.ORDERED]
+            ),
+        )
+        if for_update:
+            query = query.with_for_update()
+        model = query.order_by(PurchaseRequestModel.id).first()
+        return self._purchase_request_to_domain(model) if model else None
+
+    def cancel_pending_purchase_requests_for_service_order(
+        self,
+        service_order_id: int,
+    ) -> None:
+        (
+            self.db.query(PurchaseRequestModel)
+            .filter(
+                PurchaseRequestModel.service_order_id == service_order_id,
+                PurchaseRequestModel.status.in_(
+                    [PurchaseRequestStatus.PENDING, PurchaseRequestStatus.ORDERED]
+                ),
+            )
+            .update(
+                {PurchaseRequestModel.status: PurchaseRequestStatus.CANCELLED},
+                synchronize_session=False,
+            )
+        )
+        self.db.flush()
 
     def get_pending_receipts(self, product_id: int) -> list[PurchaseRequest]:
         models = (
@@ -217,10 +289,16 @@ class SqlAlchemyInventoryProductGateway:
         )
 
     def add_stock(self, product_id: int, quantity: int) -> None:
-        model = self.db.query(ProductModel).filter(ProductModel.id == product_id).first()
-        if model:
-            model.stock_quantity += quantity
-            self.db.flush()
+        model = (
+            self.db.query(ProductModel)
+            .filter(ProductModel.id == product_id)
+            .with_for_update()
+            .first()
+        )
+        if model is None:
+            raise NotFoundError("Produto não encontrado")
+        model.stock_quantity += quantity
+        self.db.flush()
 
 
 class SqlAlchemyInventoryServiceOrderLookup:
@@ -251,3 +329,77 @@ class SqlAlchemyInventoryServiceOrderLookup:
             )
             for model in models
         ]
+
+    def get_reservation_snapshot(self, service_order_id: int):
+        from src.application.ports.inventory import InventoryServiceOrderSnapshot
+
+        service_order = (
+            self.db.query(ServiceOrderModel)
+            .filter(ServiceOrderModel.id == service_order_id)
+            .with_for_update()
+            .first()
+        )
+        if not service_order:
+            return None
+        return InventoryServiceOrderSnapshot(
+            id=service_order.id,
+            status=service_order.status,
+            product_lines=tuple(self.get_product_lines(service_order_id) or []),
+            created_at=service_order.created_at,
+        )
+
+    def list_reservation_queue(self, product_id: int):
+        from src.application.ports.inventory import InventoryServiceOrderSnapshot
+
+        models = (
+            self.db.query(ServiceOrderModel)
+            .join(
+                ServiceOrderProductLineModel,
+                ServiceOrderProductLineModel.service_order_id == ServiceOrderModel.id,
+            )
+            .filter(
+                ServiceOrderProductLineModel.product_id == product_id,
+                ServiceOrderModel.status.in_(
+                    [
+                        ServiceOrderStatus.AGUARDANDO_INICIO,
+                        ServiceOrderStatus.AGUARDANDO_COMPRA,
+                    ]
+                ),
+            )
+            .distinct()
+            .order_by(ServiceOrderModel.created_at.asc(), ServiceOrderModel.id.asc())
+            .with_for_update()
+            .all()
+        )
+        return [
+            InventoryServiceOrderSnapshot(
+                id=model.id,
+                status=model.status,
+                product_lines=tuple(self.get_product_lines(model.id) or []),
+                created_at=model.created_at,
+            )
+            for model in models
+        ]
+
+    def set_reservation_status(
+        self,
+        service_order_id: int,
+        status: ServiceOrderStatus,
+    ) -> None:
+        from src.infrastructure.persistence.service_order_repository import (
+            SqlAlchemyServiceOrderRepository,
+        )
+
+        repository = SqlAlchemyServiceOrderRepository(self.db)
+        service_order = repository.get_by_id(service_order_id)
+        if service_order is None:
+            raise NotFoundError("OS não encontrada")
+        if service_order.status == status:
+            return
+        if status == ServiceOrderStatus.AGUARDANDO_COMPRA:
+            service_order.mark_waiting_for_purchase()
+        elif status == ServiceOrderStatus.AGUARDANDO_INICIO:
+            service_order.mark_ready_to_start()
+        else:
+            raise ValidationError("Status de reserva inválido")
+        repository.save(service_order)

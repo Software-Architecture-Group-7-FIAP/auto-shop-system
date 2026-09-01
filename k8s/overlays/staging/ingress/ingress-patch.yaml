@@ -1,0 +1,19 @@
+- op: replace
+  path: /spec/tls/0
+  value:
+    hosts:
+      - staging-api.autoshop.com
+    secretName: staging-auto-shop-tls
+- op: replace
+  path: /spec/rules
+  value:
+    - host: staging-api.autoshop.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: auto-shop-backend-service
+                port:
+                  number: 80

@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 
-from src.api.composition.inventory import compose_inventory_service
 from src.application.services.budget_approval_service import BudgetApprovalService
+from src.api.composition.inventory import compose_inventory_service
 from src.infrastructure.budget_approval import (
     ReportLabBudgetPdfGenerator,
     SettingsBudgetApprovalUrlBuilder,
@@ -24,5 +24,5 @@ def compose_budget_approval_service(db: Session) -> BudgetApprovalService:
         emails=SmtpEmailSender(),
         service_orders=SqlAlchemyApprovedBudgetServiceOrderCreator(db),
         uow=SqlAlchemyUnitOfWork(db),
-        stock_reserver=compose_inventory_service(db),
+        reservations=compose_inventory_service(db),
     )

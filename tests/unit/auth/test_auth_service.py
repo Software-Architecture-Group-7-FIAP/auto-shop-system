@@ -34,8 +34,8 @@ class FakeTokenService:
     def __init__(self):
         self.decoded_subject = "admin"
 
-    def create_access_token(self, subject: str) -> str:
-        return f"token:{subject}"
+    def create_access_token(self, subject: str, session_id: str | None = None) -> str:
+        return f"token:{subject}" if session_id is None else f"token:{subject}:{session_id}"
 
     def decode_token(self, token: str) -> str:
         if token == "invalid":
@@ -83,9 +83,9 @@ def test_auth_service_login_returns_access_token():
     )
     service = make_auth_service(users=users)
 
-    token = service.login("admin", "admin123")
+    token = service.login("admin", "admin123", "session-1")
 
-    assert token == "token:admin"
+    assert token == "token:admin:session-1"
 
 
 def test_auth_service_login_rejects_invalid_credentials():
@@ -102,7 +102,7 @@ def test_auth_service_login_rejects_invalid_credentials():
     service = make_auth_service(users=users)
 
     with pytest.raises(DomainError, match="Credenciais inválidas"):
-        service.login("admin", "wrong")
+        service.login("admin", "wrong", "session-1")
 
 
 def test_auth_service_get_current_user_decodes_token_and_loads_active_user():

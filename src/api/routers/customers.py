@@ -10,9 +10,11 @@ from src.api.schemas import (
     CnpjValidationResponse,
     CpfValidationResponse,
     CustomerCreate,
+    CustomerDocumentLookupRequest,
     CustomerDocumentAdd,
     CustomerResponse,
     CustomerUpdate,
+    DocumentValidationRequest,
     VehicleResponse,
 )
 from src.domain.auth.entity import User
@@ -52,27 +54,27 @@ def list_customers(
     return [customer_to_response(customer) for customer in customers]
 
 
-@router.get("/by-document/{document}", response_model=CustomerResponse)
+@router.post("/by-document", response_model=CustomerResponse)
 def get_customer_by_document_admin(
-    document: str,
+    data: CustomerDocumentLookupRequest,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     try:
-        customer = compose_customer_service(db).get_by_document(document)
+        customer = compose_customer_service(db).get_by_document(data.document)
         return customer_to_response(customer)
     except DomainError as e:
         raise domain_error_handler(e)
 
 
-@router.get("/validate-cnpj/{cnpj:path}", response_model=CnpjValidationResponse)
+@router.post("/validate-cnpj", response_model=CnpjValidationResponse)
 def validate_cnpj(
-    cnpj: str,
+    data: DocumentValidationRequest,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     try:
-        result = compose_customer_service(db).validate_cnpj(cnpj)
+        result = compose_customer_service(db).validate_cnpj(data.document)
         return CnpjValidationResponse(
             valid=result.valid,
             legal_name=result.legal_name,
@@ -82,14 +84,14 @@ def validate_cnpj(
         raise domain_error_handler(e)
 
 
-@router.get("/validate-cpf/{cpf:path}", response_model=CpfValidationResponse)
+@router.post("/validate-cpf", response_model=CpfValidationResponse)
 def validate_cpf(
-    cpf: str,
+    data: DocumentValidationRequest,
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     try:
-        result = compose_customer_service(db).validate_cpf(cpf)
+        result = compose_customer_service(db).validate_cpf(data.document)
         return CpfValidationResponse(
             valid=result.valid,
             formatted=result.formatted,

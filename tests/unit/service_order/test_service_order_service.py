@@ -3,20 +3,13 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from src.application.ports.service_order import (
-    RequestedPart,
-    RequestedService,
-    ServiceOrderCatalogService,
-    ServiceOrderCustomer,
-    ServiceOrderProduct,
-    ServiceOrderProductRequirement,
-    ServiceOrderVehicle,
-)
+from src.application.ports.service_order import ServiceOrderCustomer, ServiceOrderVehicle
 from src.application.services.service_order_email_service import ServiceOrderEmailService
 from src.application.services.service_order_service import ServiceOrderService
 from src.application.services.service_order_tracking import build_service_order_tracking_url
+from src.domain.auth.entity import UserRole
 from src.domain.enums import Priority, ServiceOrderStatus
-from src.domain.exceptions import NotFoundError, ValidationError
+from src.domain.exceptions import ForbiddenError, NotFoundError, ValidationError
 from src.domain.service_order.entity import ServiceOrder
 
 
@@ -28,15 +21,10 @@ class InMemoryServiceOrderRepository:
             if service_order.id is not None
         }
         self.tracking_token_fingerprints: dict[int, str] = {}
+        self.tracking_token_expirations: dict[int, datetime | None] = {}
 
     def get_by_id(self, service_order_id: int) -> ServiceOrder | None:
         return self.service_orders.get(service_order_id)
-
-    def create(self, service_order: ServiceOrder) -> ServiceOrder:
-        next_id = max(self.service_orders, default=0) + 1
-        created = replace(service_order, id=next_id)
-        self.service_orders[next_id] = created
-        return created
 
     def get_by_tracking_token_fingerprint(
         self,
@@ -51,8 +39,10 @@ class InMemoryServiceOrderRepository:
         self,
         service_order_id: int,
         token_fingerprint: str,
+        expires_at=None,
     ) -> None:
         self.tracking_token_fingerprints[service_order_id] = token_fingerprint
+        self.tracking_token_expirations[service_order_id] = expires_at
 
     def list_all(
         self,
@@ -89,43 +79,6 @@ class FakeContactLookup:
 
     def get_vehicle(self, vehicle_id: int) -> ServiceOrderVehicle | None:
         return ServiceOrderVehicle(plate="ABC1234")
-
-
-class FakeOpeningLookup:
-    def __init__(
-        self,
-        customer_ids=(1,),
-        vehicle_ownership=((1, 1),),
-        services=None,
-        products=None,
-    ):
-        self.customer_ids = set(customer_ids)
-        self.vehicle_ownership = set(vehicle_ownership)
-        self.services = services or {
-            1: ServiceOrderCatalogService(id=1, base_price=100.0)
-        }
-        self.products = products or {1: ServiceOrderProduct(id=1, unit_price=10.0)}
-
-    def customer_exists(self, customer_id: int) -> bool:
-        return customer_id in self.customer_ids
-
-    def vehicle_belongs_to_customer(self, vehicle_id: int, customer_id: int) -> bool:
-        return (vehicle_id, customer_id) in self.vehicle_ownership
-
-    def get_service(self, service_id: int) -> ServiceOrderCatalogService | None:
-        return self.services.get(service_id)
-
-    def get_product(self, product_id: int) -> ServiceOrderProduct | None:
-        return self.products.get(product_id)
-
-
-class FakeStockReserver:
-    def __init__(self):
-        self.calls = []
-
-    def create_reservations_for_os(self, service_order_id: int, *, commit: bool = True) -> list:
-        self.calls.append((service_order_id, commit))
-        return []
 
 
 class FakeUnitOfWork:
@@ -228,15 +181,11 @@ def make_service_order(**overrides) -> ServiceOrder:
 def make_service(
     repository: InMemoryServiceOrderRepository | None = None,
     contacts: FakeContactLookup | None = None,
-    openings: FakeOpeningLookup | None = None,
-    stock_reserver: FakeStockReserver | None = None,
     uow: FakeUnitOfWork | None = None,
 ) -> ServiceOrderService:
     return ServiceOrderService(
         service_orders=repository or InMemoryServiceOrderRepository([make_service_order()]),
         contacts=contacts or FakeContactLookup(),
-        openings=openings or FakeOpeningLookup(),
-        stock_reserver=stock_reserver or FakeStockReserver(),
         tracking_tokens=FakeTrackingTokenService(),
         uow=uow or FakeUnitOfWork(),
     )
@@ -255,43 +204,6 @@ def test_service_order_service_lists_and_filters_orders_without_sqlalchemy():
     orders = service.list_all(ServiceOrderStatus.EM_DIAGNOSTICO)
 
     assert [order.id for order in orders] == [2]
-
-
-def test_service_order_service_opens_order_with_catalog_bom_and_explicit_parts():
-    repository = InMemoryServiceOrderRepository()
-    stock_reserver = FakeStockReserver()
-    openings = FakeOpeningLookup(
-        services={
-            10: ServiceOrderCatalogService(
-                id=10,
-                base_price=100.0,
-                product_requirements=(
-                    ServiceOrderProductRequirement(product_id=20, quantity=2),
-                ),
-            )
-        },
-        products={20: ServiceOrderProduct(id=20, unit_price=5.0)},
-    )
-    uow = FakeUnitOfWork()
-    service = make_service(
-        repository=repository,
-        openings=openings,
-        stock_reserver=stock_reserver,
-        uow=uow,
-    )
-
-    created = service.open(
-        customer_id=1,
-        vehicle_id=1,
-        services=[RequestedService(service_id=10, quantity=3)],
-        parts=[RequestedPart(product_id=20, quantity=1)],
-    )
-
-    assert created.id == 1
-    assert [(line.product_id, line.quantity) for line in created.product_lines] == [(20, 7)]
-    assert created.total_price == 335.0
-    assert stock_reserver.calls == [(1, False)]
-    assert uow.commits == 1
 
 
 def test_service_order_service_assigns_mechanic_and_commits():
@@ -340,13 +252,48 @@ def test_service_order_service_updates_status_manually():
 
     updated = service.override_status(
         1,
-        ServiceOrderStatus.FINALIZADA,
+        ServiceOrderStatus.EM_DIAGNOSTICO,
         "Correção administrativa",
+        actor_role=UserRole.ADMIN,
     )
 
-    assert updated.status == ServiceOrderStatus.FINALIZADA
-    assert repository.get_by_id(1).status == ServiceOrderStatus.FINALIZADA
+    assert updated.status == ServiceOrderStatus.EM_DIAGNOSTICO
+    assert repository.get_by_id(1).status == ServiceOrderStatus.EM_DIAGNOSTICO
     assert uow.commits == 1
+
+
+def test_service_order_service_override_status_requires_admin():
+    repository = InMemoryServiceOrderRepository(
+        [make_service_order(status=ServiceOrderStatus.AGUARDANDO_APROVACAO)]
+    )
+    uow = FakeUnitOfWork()
+    service = make_service(repository=repository, uow=uow)
+
+    with pytest.raises(ForbiddenError, match="Apenas administradores"):
+        service.override_status(
+            1,
+            ServiceOrderStatus.EM_DIAGNOSTICO,
+            "Correção administrativa",
+            actor_role=UserRole.OPERATOR,
+        )
+
+    assert repository.get_by_id(1).status == ServiceOrderStatus.AGUARDANDO_APROVACAO
+    assert uow.commits == 0
+
+
+def test_service_order_service_override_status_cannot_skip_to_execution():
+    repository = InMemoryServiceOrderRepository(
+        [make_service_order(status=ServiceOrderStatus.AGUARDANDO_APROVACAO)]
+    )
+    service = make_service(repository=repository)
+
+    with pytest.raises(ValidationError, match="estados iniciais"):
+        service.override_status(
+            1,
+            ServiceOrderStatus.FINALIZADA,
+            "Correção administrativa",
+            actor_role=UserRole.ADMIN,
+        )
 
 
 def test_service_order_entity_override_status_requires_reason():
@@ -359,9 +306,12 @@ def test_service_order_entity_override_status_requires_reason():
 def test_service_order_entity_override_status():
     service_order = make_service_order(status=ServiceOrderStatus.AGUARDANDO_APROVACAO)
 
-    service_order.override_status(ServiceOrderStatus.EM_EXECUCAO, "Correção administrativa")
+    service_order.override_status(
+        ServiceOrderStatus.EM_DIAGNOSTICO, "Correção administrativa"
+    )
 
-    assert service_order.status == ServiceOrderStatus.EM_EXECUCAO
+    assert service_order.status == ServiceOrderStatus.EM_DIAGNOSTICO
+    assert service_order.status_history[-1].transition_type == "break_glass_override"
 
 
 def test_service_order_service_sets_priority_and_commits():
@@ -374,21 +324,6 @@ def test_service_order_service_sets_priority_and_commits():
     assert updated.priority == Priority.URGENT
     assert repository.get_by_id(1).priority == Priority.URGENT
     assert uow.commits == 1
-
-
-def test_service_order_service_tracks_by_customer_document():
-    service = make_service()
-
-    service_order = service.get_by_customer_document(1, "529.982.247-25")
-
-    assert service_order.id == 1
-
-
-def test_service_order_service_rejects_wrong_customer_document():
-    service = make_service(contacts=FakeContactLookup(document="11144477735"))
-
-    with pytest.raises(NotFoundError, match="OS não encontrada para este documento"):
-        service.get_by_customer_document(1, "529.982.247-25")
 
 
 def test_service_order_service_tracks_by_opaque_token():
@@ -457,9 +392,11 @@ async def test_service_order_email_service_uses_ports():
     assert pdfs.calls[0]["status"] == "Em diagnóstico"
     assert pdfs.calls[0]["mechanic_name"] == "Mecânico A"
     assert pdfs.calls[0]["tracking_url"].startswith(
-        "http://localhost:4200/track-service-order?token="
+        "http://localhost:4200/track-service-order#"
     )
     assert repository.tracking_token_fingerprints[1] == "fingerprint:tracking-token"
+    assert repository.tracking_token_expirations[1] is not None
+    assert repository.tracking_token_expirations[1] > datetime.now()
     message = emails.messages[0]
     assert message["to"] == "ana@test.com"
     assert message["subject"] == "Ordem de Serviço #1"
@@ -520,5 +457,5 @@ async def test_service_order_email_service_does_not_persist_token_when_email_fai
 
 def test_build_service_order_tracking_url_trims_trailing_slash():
     assert build_service_order_tracking_url("http://localhost:4200/", "token-10") == (
-        "http://localhost:4200/track-service-order?token=token-10"
+        "http://localhost:4200/track-service-order#token-10"
     )

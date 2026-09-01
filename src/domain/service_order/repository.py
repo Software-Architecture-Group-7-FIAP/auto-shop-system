@@ -1,11 +1,17 @@
+from datetime import datetime
 from typing import Protocol
 
+from src.domain.pagination import Page
 from src.domain.enums import ServiceOrderStatus
 from src.domain.service_order.entity import ServiceOrder
+from src.domain.service_order.rules import ServiceOrderListItem, ServiceOrderListQuery
 
 
 class ServiceOrderRepository(Protocol):
     def get_by_id(self, service_order_id: int) -> ServiceOrder | None:
+        ...
+
+    def get_by_budget_id(self, budget_id: int) -> ServiceOrder | None:
         ...
 
     def get_by_tracking_token_fingerprint(self, token_fingerprint: str) -> ServiceOrder | None:
@@ -15,10 +21,17 @@ class ServiceOrderRepository(Protocol):
         self,
         service_order_id: int,
         token_fingerprint: str,
+        expires_at: datetime | None = None,
     ) -> None:
         ...
 
     def list_all(self, status: ServiceOrderStatus | None = None) -> list[ServiceOrder]:
+        ...
+
+    def list_operational(
+        self,
+        query: ServiceOrderListQuery,
+    ) -> Page[ServiceOrderListItem]:
         ...
 
     def list_with_execution_times(self) -> list[ServiceOrder]:
@@ -29,9 +42,6 @@ class ServiceOrderRepository(Protocol):
         service_order_ids: list[int],
         status: ServiceOrderStatus,
     ) -> list[ServiceOrder]:
-        ...
-
-    def create(self, service_order: ServiceOrder) -> ServiceOrder:
         ...
 
     def save(self, service_order: ServiceOrder) -> ServiceOrder:

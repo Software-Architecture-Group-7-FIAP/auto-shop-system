@@ -1,22 +1,14 @@
-from src.application.ports.service_order import (
-    RequestedPart,
-    RequestedService,
-    ServiceOrderContactLookup,
-    ServiceOrderCatalogService,
-    ServiceOrderOpeningLookup,
-    ServiceOrderStockReserver,
-)
+from src.application.ports.service_order import ServiceOrderContactLookup
 from src.application.ports.service_order_tracking import ServiceOrderTrackingTokenService
 from src.application.ports.unit_of_work import UnitOfWork
-from src.domain.enums import Priority, ServiceOrderStatus
-from src.domain.exceptions import NotFoundError
-from src.domain.service_order.entity import (
-    ServiceOrder,
-    ServiceOrderProductLine,
-    ServiceOrderServiceLine,
-)
+from src.domain.budget.repository import BudgetRepository
+from src.domain.enums import BudgetStatus, Priority, ServiceOrderStatus
+from src.domain.auth.entity import UserRole
+from src.domain.exceptions import ForbiddenError, NotFoundError
+from src.domain.pagination import Page
+from src.domain.service_order.entity import ServiceOrder
 from src.domain.service_order.repository import ServiceOrderRepository
-from src.domain.value_objects.validators import DocumentValidator
+from src.domain.service_order.rules import ServiceOrderListItem, ServiceOrderListQuery
 
 
 class ServiceOrderService:
@@ -24,89 +16,15 @@ class ServiceOrderService:
         self,
         service_orders: ServiceOrderRepository,
         contacts: ServiceOrderContactLookup,
-        openings: ServiceOrderOpeningLookup,
-        stock_reserver: ServiceOrderStockReserver,
         tracking_tokens: ServiceOrderTrackingTokenService,
         uow: UnitOfWork,
+        budgets: BudgetRepository | None = None,
     ):
         self.service_orders = service_orders
         self.contacts = contacts
-        self.openings = openings
-        self.stock_reserver = stock_reserver
         self.tracking_tokens = tracking_tokens
         self.uow = uow
-
-    def open(
-        self,
-        customer_id: int,
-        vehicle_id: int,
-        services: list[RequestedService],
-        parts: list[RequestedPart],
-    ) -> ServiceOrder:
-        if not self.openings.customer_exists(customer_id):
-            raise NotFoundError("Customer not found")
-        if not self.openings.vehicle_belongs_to_customer(vehicle_id, customer_id):
-            raise NotFoundError("Vehicle not found or does not belong to the customer")
-
-        service_lines: list[ServiceOrderServiceLine] = []
-        product_lines = [self._build_product_line(item) for item in parts]
-        for item in services:
-            service = self.openings.get_service(item.service_id)
-            if not service:
-                raise NotFoundError("Service not found")
-            service_lines.append(self._service_line_from_catalog(item, service))
-            product_lines.extend(
-                self._build_catalog_product_lines(service, item.quantity)
-            )
-
-        created = self.service_orders.create(
-            ServiceOrder.open(customer_id, vehicle_id, service_lines, product_lines)
-        )
-        if created.id is None:
-            raise NotFoundError("OS não encontrada após criação")
-        self.stock_reserver.create_reservations_for_os(created.id, commit=False)
-        self.uow.commit()
-        return created
-
-    @staticmethod
-    def _service_line_from_catalog(
-        item: RequestedService,
-        service: ServiceOrderCatalogService,
-    ) -> ServiceOrderServiceLine:
-        return ServiceOrderServiceLine(
-            id=None,
-            service_order_id=None,
-            service_id=service.id,
-            quantity=item.quantity,
-            unit_price=service.base_price,
-        )
-
-    def _build_catalog_product_lines(
-        self,
-        service: ServiceOrderCatalogService,
-        service_quantity: int,
-    ) -> list[ServiceOrderProductLine]:
-        return [
-            self._build_product_line(
-                RequestedPart(
-                    product_id=requirement.product_id,
-                    quantity=requirement.quantity * service_quantity,
-                )
-            )
-            for requirement in service.product_requirements
-        ]
-
-    def _build_product_line(self, item: RequestedPart) -> ServiceOrderProductLine:
-        product = self.openings.get_product(item.product_id)
-        if not product:
-            raise NotFoundError("Part not found")
-        return ServiceOrderProductLine(
-            id=None,
-            service_order_id=None,
-            product_id=product.id,
-            quantity=item.quantity,
-            unit_price=product.unit_price,
-        )
+        self.budgets = budgets
 
     def get_by_id(self, service_order_id: int) -> ServiceOrder:
         service_order = self.service_orders.get_by_id(service_order_id)
@@ -117,13 +35,11 @@ class ServiceOrderService:
     def list_all(self, status: ServiceOrderStatus | None = None) -> list[ServiceOrder]:
         return self.service_orders.list_all(status)
 
-    def get_by_customer_document(self, service_order_id: int, document: str) -> ServiceOrder:
-        cleaned = DocumentValidator.validate(document)
-        service_order = self.get_by_id(service_order_id)
-        customer = self.contacts.get_customer(service_order.customer_id)
-        if not customer or cleaned not in customer.documents:
-            raise NotFoundError("OS não encontrada para este documento")
-        return service_order
+    def list_operational(
+        self,
+        query: ServiceOrderListQuery,
+    ) -> Page[ServiceOrderListItem]:
+        return self.service_orders.list_operational(query)
 
     def get_by_tracking_token(self, token: str) -> ServiceOrder:
         token_fingerprint = self.tracking_tokens.fingerprint(token)
@@ -134,9 +50,22 @@ class ServiceOrderService:
             raise NotFoundError("Link de acompanhamento inválido")
         return service_order
 
-    def assign_mechanic(self, service_order_id: int, mechanic_name: str) -> ServiceOrder:
+    def assign_mechanic(
+        self,
+        service_order_id: int,
+        mechanic_name: str,
+        reason: str | None = None,
+        *,
+        actor_id: int | None = None,
+        request_id: str | None = None,
+    ) -> ServiceOrder:
         service_order = self.get_by_id(service_order_id)
-        service_order.assign_mechanic(mechanic_name)
+        service_order.assign_mechanic(
+            mechanic_name,
+            reason,
+            actor_id=actor_id,
+            request_id=request_id,
+        )
         updated = self.service_orders.save(service_order)
         self.uow.commit()
         return updated
@@ -146,12 +75,20 @@ class ServiceOrderService:
         service_order_id: int,
         mechanic_name: str | None = None,
         priority: Priority | None = None,
+        mechanic_reason: str | None = None,
+        actor_id: int | None = None,
+        request_id: str | None = None,
     ) -> ServiceOrder:
         service_order = self.get_by_id(service_order_id)
         if priority is not None:
             service_order.set_priority(priority)
         if mechanic_name is not None:
-            service_order.assign_mechanic(mechanic_name)
+            service_order.assign_mechanic(
+                mechanic_name,
+                mechanic_reason,
+                actor_id=actor_id,
+                request_id=request_id,
+            )
         updated = self.service_orders.save(service_order)
         self.uow.commit()
         return updated
@@ -161,9 +98,33 @@ class ServiceOrderService:
         service_order_id: int,
         status: ServiceOrderStatus,
         reason: str,
+        *,
+        actor_role: UserRole | str | None = None,
+        actor_id: int | None = None,
+        request_id: str | None = None,
     ) -> ServiceOrder:
+        if actor_role not in (UserRole.ADMIN, UserRole.ADMIN.value):
+            raise ForbiddenError("Apenas administradores podem usar o override de status")
         service_order = self.get_by_id(service_order_id)
-        service_order.override_status(status, reason)
+        previous_status = service_order.status
+        service_order.override_status(
+            status,
+            reason,
+            actor_id=actor_id,
+            request_id=request_id,
+        )
+        if (
+            previous_status == ServiceOrderStatus.AGUARDANDO_APROVACAO
+            and self.budgets is not None
+            and service_order.budget_id is not None
+        ):
+            related = self.budgets.list_revision_family(service_order.budget_id)
+            candidates = [
+                budget for budget in related if budget.status == BudgetStatus.SENT
+            ]
+            for pending in sorted(candidates, key=lambda item: item.revision_number, reverse=True)[:1]:
+                pending.supersede()
+                self.budgets.save(pending)
         updated = self.service_orders.save(service_order)
         self.uow.commit()
         return updated

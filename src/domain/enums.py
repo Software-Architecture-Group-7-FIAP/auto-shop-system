@@ -5,6 +5,8 @@ class ServiceOrderStatus(StrEnum):
     RECEBIDA = "Recebida"
     EM_DIAGNOSTICO = "Em diagnóstico"
     AGUARDANDO_APROVACAO = "Aguardando aprovação"
+    AGUARDANDO_INICIO = "Aguardando início"
+    AGUARDANDO_COMPRA = "Aguardando compra"
     EM_EXECUCAO = "Em execução"
     FINALIZADA = "Finalizada"
     ENTREGUE = "Entregue"
@@ -15,12 +17,14 @@ class BudgetStatus(StrEnum):
     SENT = "Enviado"
     APPROVED = "Aprovado"
     REJECTED = "Recusado"
+    SUPERSEDED = "Substituído"
 
 
 class PurchaseRequestStatus(StrEnum):
     PENDING = "Pendente"
     ORDERED = "Pedido"
     RECEIVED = "Recebido"
+    CANCELLED = "Cancelada"
 
 
 class ReservationStatus(StrEnum):
@@ -37,7 +41,15 @@ class StockWithdrawalStatus(StrEnum):
 
 class InvoiceStatus(StrEnum):
     PENDING = "Pendente"
+    PARTIALLY_PAID = "Parcialmente paga"
     PAID = "Paga"
+
+
+class PaymentMethod(StrEnum):
+    DINHEIRO = "DINHEIRO"
+    CARTAO = "CARTAO"
+    PIX = "PIX"
+    TRANSFERENCIA = "TRANSFERENCIA"
 
 
 class Priority(StrEnum):

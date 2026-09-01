@@ -1,29 +1,39 @@
 from datetime import datetime
+from decimal import Decimal
+from urllib.parse import urlparse
+from uuid import uuid4
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     Float,
     ForeignKey,
     Integer,
+    Index,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
     create_engine,
+    text,
 )
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 from src.config import settings
 from src.domain.enums import (
     BudgetStatus,
     InvoiceStatus,
+    PaymentMethod,
     Priority,
     PurchaseRequestStatus,
     ReservationStatus,
     ServiceOrderStatus,
     StockWithdrawalStatus,
 )
+from src.domain.auth.entity import UserRole
 
 
 class Base(DeclarativeBase):
@@ -46,7 +56,22 @@ class UserModel(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    role: Mapped[UserRole] = mapped_column(db_enum(UserRole), default=UserRole.OPERATOR)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class RefreshSessionModel(Base):
+    __tablename__ = "refresh_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    family_id: Mapped[str] = mapped_column(String(36), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    replaced_by_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class CustomerDocumentModel(Base):
@@ -162,7 +187,18 @@ class BudgetModel(Base):
     status: Mapped[BudgetStatus] = mapped_column(db_enum(BudgetStatus), default=BudgetStatus.DRAFT)
     total_price: Mapped[float] = mapped_column(Float, default=0.0)
     estimated_delivery: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    approval_token: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+    # Only a keyed fingerprint is persisted.  The bearer token exists in
+    # memory while the approval email is being rendered and is never exposed
+    # through an API response or persisted in this table.
+    approval_token_hash: Mapped[str | None] = mapped_column(
+        String(64), unique=True, nullable=True, index=True
+    )
+    approval_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    approval_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revision_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    supersedes_budget_id: Mapped[int | None] = mapped_column(
+        ForeignKey("budgets.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -204,6 +240,22 @@ class BudgetProductLineModel(Base):
 
 class ServiceOrderModel(Base):
     __tablename__ = "service_orders"
+    __table_args__ = (
+        UniqueConstraint("budget_id", name="uq_service_orders_budget_id"),
+        Index(
+            "uq_service_orders_active_vehicle",
+            "vehicle_id",
+            unique=True,
+            sqlite_where=text(
+                "status IN ('Recebida', 'Em diagnóstico', 'Aguardando aprovação', "
+                "'Aguardando início', 'Aguardando compra', 'Em execução', 'Finalizada')"
+            ),
+            postgresql_where=text(
+                "status IN ('Recebida', 'Em diagnóstico', 'Aguardando aprovação', "
+                "'Aguardando início', 'Aguardando compra', 'Em execução', 'Finalizada')"
+            ),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     budget_id: Mapped[int | None] = mapped_column(ForeignKey("budgets.id"), nullable=True)
@@ -220,6 +272,12 @@ class ServiceOrderModel(Base):
     tracking_token_hash: Mapped[str | None] = mapped_column(
         String(64), unique=True, nullable=True, index=True
     )
+    tracking_token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+    tracking_token_revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -231,6 +289,38 @@ class ServiceOrderModel(Base):
     product_lines: Mapped[list["ServiceOrderProductLineModel"]] = relationship(
         back_populates="service_order", cascade="all, delete-orphan"
     )
+    status_history: Mapped[list["ServiceOrderStatusHistoryModel"]] = relationship(
+        back_populates="service_order",
+        cascade="all, delete-orphan",
+        order_by="ServiceOrderStatusHistoryModel.occurred_at",
+    )
+
+
+class ServiceOrderStatusHistoryModel(Base):
+    """Append-only audit trail for every OS status transition."""
+
+    __tablename__ = "service_order_status_history"
+    __table_args__ = (
+        UniqueConstraint(
+            "service_order_id",
+            "request_id",
+            name="uq_service_order_status_history_request",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    service_order_id: Mapped[int] = mapped_column(
+        ForeignKey("service_orders.id", ondelete="CASCADE"), index=True
+    )
+    from_status: Mapped[ServiceOrderStatus] = mapped_column(db_enum(ServiceOrderStatus))
+    to_status: Mapped[ServiceOrderStatus] = mapped_column(db_enum(ServiceOrderStatus))
+    transition_type: Mapped[str] = mapped_column(String(80))
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    request_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+    service_order: Mapped["ServiceOrderModel"] = relationship(back_populates="status_history")
 
 
 class ServiceOrderServiceLineModel(Base):
@@ -314,16 +404,64 @@ class InvoiceModel(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     service_order_id: Mapped[int] = mapped_column(ForeignKey("service_orders.id"), unique=True)
-    amount: Mapped[float] = mapped_column(Float)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     status: Mapped[InvoiceStatus] = mapped_column(
         db_enum(InvoiceStatus), default=InvoiceStatus.PENDING
     )
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    payments: Mapped[list["PaymentModel"]] = relationship(
+        back_populates="invoice",
+        cascade="all, delete-orphan",
+        order_by="PaymentModel.paid_at",
+    )
 
 
-engine = create_engine(settings.database_url, pool_pre_ping=True)
+class PaymentModel(Base):
+    __tablename__ = "payments"
+    __table_args__ = (
+        UniqueConstraint(
+            "invoice_id",
+            "idempotency_key",
+            name="uq_payments_invoice_idempotency_key",
+        ),
+        CheckConstraint("amount > 0", name="ck_payments_positive_amount"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    invoice_id: Mapped[int] = mapped_column(
+        ForeignKey("invoices.id", ondelete="CASCADE"), index=True
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    method: Mapped[PaymentMethod] = mapped_column(db_enum(PaymentMethod), nullable=False)
+    paid_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+
+    invoice: Mapped["InvoiceModel"] = relationship(back_populates="payments")
+
+
+def _engine_connect_args() -> dict[str, int]:
+    if urlparse(settings.database_url).scheme.startswith("postgres"):
+        return {"connect_timeout": settings.database_health_check_timeout_seconds}
+    return {}
+
+
+engine = create_engine(
+    settings.database_url,
+    connect_args=_engine_connect_args(),
+    pool_pre_ping=True,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def check_database_connection() -> bool:
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except (SQLAlchemyError, OSError, TimeoutError):
+        return False
+    return True
 
 
 def get_db():

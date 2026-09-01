@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 
 from src.domain.budget.entity import Budget
@@ -35,6 +36,12 @@ class BudgetApprovalTokenService(Protocol):
     def validate(self, token: str) -> int:
         ...
 
+    def fingerprint(self, token: str) -> str:
+        ...
+
+    def expires_at(self, token: str) -> datetime:
+        ...
+
 
 class BudgetApprovalUrlBuilder(Protocol):
     def approve_url(self, token: str) -> str:
@@ -68,6 +75,27 @@ class EmailSender(Protocol):
         ...
 
 
+class ServiceOrderReservationReconciler(Protocol):
+    def reconcile_for_service_order(self, service_order_id: int) -> None:
+        ...
+
+    def release_for_service_order(self, service_order_id: int) -> None:
+        ...
+
+
 class ApprovedBudgetServiceOrderCreator(Protocol):
     def create_from_budget(self, budget: Budget) -> CreatedServiceOrder:
+        ...
+
+    def get_by_budget_id(self, budget_id: int) -> CreatedServiceOrder | None:
+        ...
+
+    def apply_approved_revision(self, budget: Budget, *, actor_id: int | None = None, request_id: str | None = None) -> CreatedServiceOrder:
+        """Atomically update the existing OS snapshot for a new revision."""
+        ...
+
+    def return_to_diagnosis(self, budget_id: int, *, actor_id: int | None = None, request_id: str | None = None) -> None:
+        ...
+
+    def submit_for_approval(self, budget_id: int, *, actor_id: int | None = None, request_id: str | None = None) -> None:
         ...

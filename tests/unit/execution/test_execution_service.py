@@ -123,11 +123,28 @@ class FakeProductGateway:
 
 
 class FakeReservationGateway:
-    def __init__(self):
+    def __init__(self, active_quantities: dict[tuple[int, int], int] | None = None):
+        self.active_quantities = active_quantities or {}
         self.consumed: list[tuple[int, int]] = []
+        self.withdrawal_consumptions: list[tuple[int, int, int]] = []
+        self.released: list[int] = []
+
+    def active_quantity_for_product(self, service_order_id: int, product_id: int) -> int:
+        return self.active_quantities.get((service_order_id, product_id), 0)
+
+    def consume_for_withdrawal(
+        self,
+        service_order_id: int,
+        product_id: int,
+        quantity: int,
+    ) -> None:
+        self.withdrawal_consumptions.append((service_order_id, product_id, quantity))
 
     def consume_active_for_product(self, service_order_id: int, product_id: int) -> None:
         self.consumed.append((service_order_id, product_id))
+
+    def release_active_for_service_order(self, service_order_id: int) -> None:
+        self.released.append(service_order_id)
 
 
 class FakeClock:
@@ -177,7 +194,7 @@ def make_service_order(**overrides) -> ServiceOrder:
         budget_id=2,
         customer_id=3,
         vehicle_id=4,
-        status=ServiceOrderStatus.AGUARDANDO_APROVACAO,
+        status=ServiceOrderStatus.AGUARDANDO_INICIO,
         product_lines=[
             ServiceOrderProductLine(
                 id=1,
@@ -216,8 +233,13 @@ def test_execution_service_starts_service_order_without_sqlalchemy():
     repository = InMemoryServiceOrderRepository(
         [make_service_order(mechanic_name="Carlos")]
     )
+    reservations = FakeReservationGateway({(1, 10): 2})
     uow = FakeUnitOfWork()
-    service = make_service(service_orders=repository, uow=uow)
+    service = make_service(
+        service_orders=repository,
+        reservations=reservations,
+        uow=uow,
+    )
 
     updated = service.start_service(1)
 
@@ -260,6 +282,18 @@ def test_execution_service_rejects_invalid_start_status():
         service.start_service(1)
 
 
+def test_execution_service_rejects_start_without_all_active_reservations():
+    service = make_service(
+        service_orders=InMemoryServiceOrderRepository(
+            [make_service_order(mechanic_name="Carlos")]
+        ),
+        reservations=FakeReservationGateway({(1, 10): 1}),
+    )
+
+    with pytest.raises(ValidationError, match="Estoque não reservado"):
+        service.start_service(1)
+
+
 def test_execution_service_finishes_order_and_consumes_inventory():
     products = FakeProductGateway()
     reservations = FakeReservationGateway()
@@ -287,7 +321,7 @@ def test_execution_service_finishes_order_and_consumes_inventory():
     assert updated.status == ServiceOrderStatus.FINALIZADA
     assert updated.finished_at == datetime(2026, 1, 1, 8, 0, 0)
     assert products.decrements == []
-    assert reservations.consumed == [(1, 10)]
+    assert reservations.released == [1]
 
 
 def test_execution_service_blocks_finish_when_withdrawal_not_fulfilled():
@@ -341,12 +375,12 @@ def test_execution_service_lists_execution_queue_ordered_by_priority():
             [
                 make_service_order(
                     id=1,
-                    status=ServiceOrderStatus.AGUARDANDO_APROVACAO,
+                    status=ServiceOrderStatus.AGUARDANDO_INICIO,
                     priority=Priority.LOW,
                 ),
                 make_service_order(
                     id=2,
-                    status=ServiceOrderStatus.AGUARDANDO_APROVACAO,
+                    status=ServiceOrderStatus.AGUARDANDO_INICIO,
                     priority=Priority.URGENT,
                 ),
                 make_service_order(id=3, status=ServiceOrderStatus.EM_EXECUCAO),

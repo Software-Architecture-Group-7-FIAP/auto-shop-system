@@ -2,6 +2,8 @@ __pycache__/
 *.py[cod]
 .venv/
 .env
+*.env.local
+.env.*.local
 *.egg-info/
 .pytest_cache/
 .coverage
@@ -12,3 +14,16 @@ pdf-extract.txt
 .cursor/
 debug-*.log
 .claude
+
+# Kubernetes Secrets
+k8s/secrets.yaml
+k8s/secret.yaml
+k8s/overlays/**/secrets.env
+k8s/overlays/**/.env
+
+# Terraform local state and generated files
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+infra/terraform.tfvars
