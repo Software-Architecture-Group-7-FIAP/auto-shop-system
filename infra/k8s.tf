@@ -42,9 +42,8 @@ resource "kubernetes_job_v1" "migration" {
   wait_for_completion = true
 
   spec {
-    backoff_limit              = 1
-    active_deadline_seconds    = 300
-    ttl_seconds_after_finished = 600
+    backoff_limit           = 1
+    active_deadline_seconds = 300
 
     template {
       metadata {

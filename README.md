@@ -246,7 +246,15 @@ Interface vanilla servida pelo FastAPI em `/app/`:
 
 ## Deploy por ambiente
 
-O fluxo operacional seguro está documentado em [docs/deployment.md](docs/deployment.md). O deploy Kubernetes usa as fases independentes `foundation -> migration -> app -> ingress`; a API só recebe tráfego depois que a migration termina e o readiness check confirma o PostgreSQL.
+O fluxo operacional seguro está documentado em [docs/deployment.md](docs/deployment.md). O projeto possui dois caminhos alternativos para Kubernetes:
+
+- [Kustomize](docs/deployment.md): fluxo existente com as fases independentes `foundation -> migration -> app -> ingress`.
+- [Terraform](infra/README.md): alternativa declarativa para gerenciar a stack completa em um cluster já existente.
+
+Escolha um único proprietário por ambiente. Não aplique Terraform e Kustomize no
+mesmo namespace, pois os dois mecanismos gerenciam recursos com os mesmos nomes.
+Em ambos os fluxos, a API só recebe tráfego depois que a migration termina e o
+readiness check confirma o PostgreSQL.
 
 ## Hardening de OS e links publicos
 

@@ -1,6 +1,10 @@
 resource "kubernetes_persistent_volume_claim_v1" "postgres" {
   count = var.enable_local_database ? 1 : 0
 
+  # WaitForFirstConsumer requires the database Pod to exist before the claim
+  # can be bound. The Deployment below is the first consumer of this PVC.
+  wait_until_bound = false
+
   metadata {
     name      = "postgres-pvc"
     namespace = kubernetes_namespace_v1.auto_shop.metadata[0].name
