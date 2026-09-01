@@ -6,6 +6,19 @@ from src.domain.enums import Priority, ServiceOrderStatus
 from src.domain.exceptions import ValidationError
 
 
+ACTIVE_SERVICE_ORDER_STATUSES = frozenset(
+    {
+        ServiceOrderStatus.RECEBIDA,
+        ServiceOrderStatus.EM_DIAGNOSTICO,
+        ServiceOrderStatus.AGUARDANDO_APROVACAO,
+        ServiceOrderStatus.AGUARDANDO_INICIO,
+        ServiceOrderStatus.AGUARDANDO_COMPRA,
+        ServiceOrderStatus.EM_EXECUCAO,
+        ServiceOrderStatus.FINALIZADA,
+    }
+)
+
+
 @dataclass(frozen=True)
 class ServiceOrderStatusTransition:
     """Append-only audit record for a service-order status transition."""
@@ -109,6 +122,10 @@ class ServiceOrder:
     @property
     def is_terminal(self) -> bool:
         return self.status == ServiceOrderStatus.ENTREGUE
+
+    @property
+    def is_active(self) -> bool:
+        return self.status in ACTIVE_SERVICE_ORDER_STATUSES
 
     def transition_to(
         self,

@@ -26,11 +26,34 @@ class InMemoryInvoiceRepository:
     def get_by_id(self, invoice_id: int) -> Invoice | None:
         return self.invoices.get(invoice_id)
 
+    def get_by_id_for_update(self, invoice_id: int) -> Invoice | None:
+        return self.get_by_id(invoice_id)
+
     def get_by_service_order_id(self, service_order_id: int) -> Invoice | None:
         for invoice in self.invoices.values():
             if invoice.service_order_id == service_order_id:
                 return invoice
         return None
+
+    def get_payment_by_idempotency_key(
+        self,
+        invoice_id: int,
+        idempotency_key: str,
+    ):
+        invoice = self.get_by_id(invoice_id)
+        if invoice is None:
+            return None
+        return next(
+            (
+                payment
+                for payment in invoice.payments
+                if payment.idempotency_key == idempotency_key
+            ),
+            None,
+        )
+
+    def add_payment(self, payment):
+        return payment
 
     def save(self, invoice: Invoice) -> Invoice:
         assert invoice.id is not None

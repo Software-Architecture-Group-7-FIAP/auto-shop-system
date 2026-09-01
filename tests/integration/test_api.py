@@ -784,7 +784,7 @@ def test_full_flow(client, auth_headers, captured_emails):
         headers=auth_headers,
     )
     assert invoice.status_code == 201
-    assert invoice.json()["amount"] == 160.0
+    assert invoice.json()["amount"] == "160.00"
 
     invoice_lookup = client.get(
         f"/api/v1/admin/service-orders/{os_id}/invoice",

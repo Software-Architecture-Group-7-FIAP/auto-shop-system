@@ -1,6 +1,7 @@
 from datetime import datetime
 from urllib.parse import quote
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.application.ports.budget_approval import (
@@ -11,7 +12,8 @@ from src.application.ports.budget_approval import (
 from src.config import settings
 from src.domain.budget.entity import Budget
 from src.domain.enums import ServiceOrderStatus
-from src.domain.exceptions import ValidationError
+from src.domain.exceptions import ConflictError, ValidationError
+from src.domain.service_order.entity import ACTIVE_SERVICE_ORDER_STATUSES
 from src.infrastructure.auth.tokens import (
     approval_token_expires_at,
     approval_token_fingerprint,
@@ -125,6 +127,11 @@ class SqlAlchemyApprovedBudgetServiceOrderCreator:
         if existing is not None:
             return CreatedServiceOrder(id=existing.id)
 
+        self._ensure_vehicle_has_no_active_order(budget.vehicle_id)
+        existing = self._find_order_for_budget(budget.id)
+        if existing is not None:
+            return CreatedServiceOrder(id=existing.id)
+
         root_budget_id = self._root_budget_id(budget.id)
 
         service_order = ServiceOrderModel(
@@ -135,7 +142,13 @@ class SqlAlchemyApprovedBudgetServiceOrderCreator:
             total_price=budget.total_price,
         )
         self.db.add(service_order)
-        self.db.flush()
+        try:
+            self.db.flush()
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise ConflictError(
+                "O veículo já possui uma OS ativa; aguarde a entrega da OS atual"
+            ) from exc
 
         for line in budget.service_lines:
             self.db.add(
@@ -159,6 +172,29 @@ class SqlAlchemyApprovedBudgetServiceOrderCreator:
         self.db.flush()
         self.db.refresh(service_order)
         return CreatedServiceOrder(id=service_order.id)
+
+    def _ensure_vehicle_has_no_active_order(self, vehicle_id: int) -> None:
+        vehicle = (
+            self.db.query(VehicleModel)
+            .filter(VehicleModel.id == vehicle_id)
+            .with_for_update()
+            .first()
+        )
+        if vehicle is None:
+            raise ValidationError("Veículo não encontrado")
+        active_order = (
+            self.db.query(ServiceOrderModel)
+            .filter(
+                ServiceOrderModel.vehicle_id == vehicle_id,
+                ServiceOrderModel.status.in_(ACTIVE_SERVICE_ORDER_STATUSES),
+            )
+            .with_for_update()
+            .first()
+        )
+        if active_order is not None:
+            raise ConflictError(
+                f"O veículo já possui a OS ativa #{active_order.id}; aguarde a entrega"
+            )
 
     def apply_approved_revision(self, budget: Budget, *, actor_id: int | None = None, request_id: str | None = None) -> CreatedServiceOrder:
         """Create the first OS or atomically apply a later budget snapshot."""
