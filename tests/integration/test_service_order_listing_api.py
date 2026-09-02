@@ -103,7 +103,7 @@ def test_default_listing_excludes_closed_and_returns_joined_fields(
     assert body["total_pages"] == 1
 
 
-def test_default_ordering_uses_created_at_ascending(
+def test_default_ordering_uses_status_priority_and_creation_date_within_status(
     client,
     auth_headers,
     db_session,
@@ -121,7 +121,13 @@ def test_default_ordering_uses_created_at_ascending(
 
     body = client.get(LISTING_URL, headers=auth_headers).json()
 
-    assert [item["id"] for item in body["items"]] == [item["id"] for item in seeded]
+    assert [item["id"] for item in body["items"]] == [
+        seeded[2]["id"],
+        seeded[4]["id"],
+        seeded[1]["id"],
+        seeded[3]["id"],
+        seeded[0]["id"],
+    ]
 
 
 def test_explicit_status_priority_ordering_is_supported(client, auth_headers, db_session):
@@ -144,9 +150,9 @@ def test_explicit_status_priority_ordering_is_supported(client, auth_headers, db
 
     assert [item["id"] for item in body["items"]] == [
         seeded[2]["id"],
+        seeded[4]["id"],
         seeded[1]["id"],
         seeded[3]["id"],
-        seeded[4]["id"],
         seeded[0]["id"],
     ]
 
