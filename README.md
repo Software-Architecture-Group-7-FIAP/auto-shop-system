@@ -21,26 +21,9 @@ status, testes automatizados, imagem de container e deploy Kubernetes.
 
 ### Arquitetura e fluxo de deploy
 
-```mermaid
-flowchart LR
-    Client[Angular admin / API client] --> API[FastAPI REST]
-    API --> App[Application services]
-    App --> Domain[Domain aggregates and rules]
-    App --> Ports[Application ports]
-    Ports --> DBAdapter[SQLAlchemy adapters]
-    Ports --> MailAdapter[SMTP / MailHog adapter]
-    DBAdapter --> DB[(PostgreSQL)]
-    API --> Redis[(Redis rate limit)]
+![Diagrama da arquitetura da solução](docs/architecture/fase2-architecture.png)
 
-    Actions[GitHub Actions] --> Tests[Tests, Bandit, pip-audit]
-    Actions --> Image[Build immutable Docker image]
-    Actions --> Manifests[Render Kustomize manifests]
-    Terraform[Terraform] --> Cluster[(Existing local Kubernetes cluster)]
-    Manifests --> Cluster
-    Image --> Cluster
-    Terraform --> Cluster
-    Cluster --> K8s[Deployment, Service, HPA, Ingress, migration Job]
-```
+Arquivos do diagrama: [PNG para o PDF](docs/architecture/fase2-architecture.png), [SVG vetorial](docs/architecture/fase2-architecture.svg) e [fonte Mermaid editável](docs/architecture/fase2-architecture.mmd).
 
 O Terraform desta entrega gerencia os recursos da aplicação em um cluster
 Kubernetes local já existente (Kind ou Docker Desktop). O cluster deve ser

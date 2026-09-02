@@ -1,0 +1,39 @@
+flowchart LR
+    User["Admin / cliente<br/>navegador ou API client"] --> Ingress["Ingress NGINX"]
+    Ingress --> Service["Service ClusterIP"]
+    Service --> API["Deployment API<br/>FastAPI - 2 a 10 pods"]
+
+    subgraph APP["Aplicação - Clean Architecture / DDD-light"]
+        Routers["API routers<br/>schemas e autenticação"] --> UseCases["Application services<br/>casos de uso"]
+        UseCases --> Domain["Domain<br/>agregados, regras e estados"]
+        UseCases --> Ports["Ports"]
+        Ports --> Adapters["Adapters<br/>SQLAlchemy, SMTP, PDF e integrações"]
+    end
+    API --> Routers
+
+    Adapters --> PostgreSQL[("PostgreSQL 16<br/>PVC no local")]
+    API --> Redis[("Redis<br/>rate limit")]
+    Adapters --> SMTP["SMTP / MailHog<br/>MailHog no local"]
+    Adapters --> External["Invertexto / Brasil API<br/>validações externas"]
+
+    subgraph K8S["Cluster Kubernetes local existente (Kind ou Docker Desktop)"]
+        Ingress
+        Service
+        API
+        HPA["HPA<br/>CPU 70% / memória 80%"] -. escala .-> API
+        Migration["Job de migrations<br/>Alembic antes do rollout"] --> PostgreSQL
+        Config["ConfigMap<br/>configuração não sensível"] --> API
+        Secret["Secret criado fora do Terraform<br/>credenciais e DATABASE_URL"] --> API
+        PostgreSQL
+    end
+
+    Redis
+    SMTP
+    External
+
+    Actions["GitHub Actions<br/>Testes + cobertura 80%<br/>Bandit + pip-audit<br/>frontend build + Docker build"] --> Image["Imagem Docker<br/>tag SHA / local"]
+    Image --> Kustomize["Kustomize\nfoundation → migration → app → ingress"]
+    Kustomize --> K8S
+    Terraform["Terraform Kubernetes provider"] -. "gerencia a stack dentro do cluster\n(não cria Kind/EKS/VPC/IAM/RDS)" .-> K8S
+
+    Compose["Docker Compose - desenvolvimento\nAPI + PostgreSQL + Redis + MailHog"] -. alternativa local .-> API
