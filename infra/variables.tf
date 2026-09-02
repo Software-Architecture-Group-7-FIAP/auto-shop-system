@@ -43,9 +43,9 @@ variable "image_reference" {
     condition = (
       can(regex("^.+@sha256:[0-9a-f]{64}$", var.image_reference)) ||
       can(regex("^.+:[0-9a-f]{7,64}$", var.image_reference)) ||
-      can(regex("^.+:local([-.a-zA-Z0-9_]+)?$", var.image_reference))
+      (var.environment == "local" && can(regex("^.+:local([-.a-zA-Z0-9_]+)?$", var.image_reference)))
     ) && !can(regex("registry\\.example\\.com", var.image_reference))
-    error_message = "image_reference deve usar uma tag SHA, digest sha256 ou uma tag local válida."
+    error_message = "image_reference deve usar uma tag SHA, digest sha256 ou, somente em local, uma tag local."
   }
 }
 
@@ -61,8 +61,11 @@ variable "app_env" {
   default     = "development"
 
   validation {
-    condition     = contains(["development", "dev", "local", "staging", "production"], var.app_env)
-    error_message = "app_env deve ser development, dev, local, staging ou production."
+    condition = (
+      (var.environment == "local" && contains(["development", "dev", "local"], var.app_env)) ||
+      (var.environment != "local" && var.app_env == var.environment)
+    )
+    error_message = "app_env deve ser development/dev/local no ambiente local e igual ao ambiente em staging/production."
   }
 }
 
@@ -72,8 +75,8 @@ variable "app_base_url" {
   default     = "http://localhost:8000"
 
   validation {
-    condition     = can(regex("^https?://[^[:space:]]+$", var.app_base_url))
-    error_message = "app_base_url deve ser uma URL HTTP ou HTTPS válida."
+    condition     = var.environment == "local" || can(regex("^https://", var.app_base_url))
+    error_message = "app_base_url deve usar HTTPS fora do ambiente local."
   }
 }
 
@@ -83,8 +86,8 @@ variable "frontend_public_url" {
   default     = "http://localhost:4200"
 
   validation {
-    condition     = can(regex("^https?://[^[:space:]]+$", var.frontend_public_url))
-    error_message = "frontend_public_url deve ser uma URL HTTP ou HTTPS válida."
+    condition     = var.environment == "local" || can(regex("^https://", var.frontend_public_url))
+    error_message = "frontend_public_url deve usar HTTPS fora do ambiente local."
   }
 }
 
@@ -94,7 +97,7 @@ variable "cors_allowed_origins" {
   default     = "http://localhost:4200"
 
   validation {
-    condition     = length(trimspace(var.cors_allowed_origins)) > 0
+    condition     = var.environment == "local" || !can(regex("http://|localhost|127\\.0\\.0\\.1", var.cors_allowed_origins))
     error_message = "cors_allowed_origins não pode apontar para HTTP ou localhost fora do ambiente local."
   }
 }
@@ -123,7 +126,7 @@ variable "security_hsts_enabled" {
   default     = false
 
   validation {
-    condition     = var.security_hsts_enabled == true || var.security_hsts_enabled == false
+    condition     = var.environment == "local" || var.security_hsts_enabled
     error_message = "security_hsts_enabled deve ser true fora do ambiente local."
   }
 }
@@ -134,7 +137,7 @@ variable "smtp_host" {
   default     = "mailhog"
 
   validation {
-    condition     = length(trimspace(var.smtp_host)) > 0
+    condition     = var.environment == "local" || lower(var.smtp_host) != "mailhog"
     error_message = "smtp_host não pode ser mailhog fora do ambiente local."
   }
 }
@@ -163,7 +166,7 @@ variable "smtp_starttls" {
   default     = false
 
   validation {
-    condition     = var.smtp_starttls == true || var.smtp_starttls == false
+    condition     = var.environment == "local" || var.smtp_starttls
     error_message = "smtp_starttls deve ser true fora do ambiente local."
   }
 }
@@ -174,7 +177,7 @@ variable "smtp_require_tls" {
   default     = false
 
   validation {
-    condition     = var.smtp_require_tls == true || var.smtp_require_tls == false
+    condition     = var.environment == "local" || var.smtp_require_tls
     error_message = "smtp_require_tls deve ser true fora do ambiente local."
   }
 }
@@ -185,7 +188,7 @@ variable "skip_cpf_external_validation" {
   default     = true
 
   validation {
-    condition     = var.skip_cpf_external_validation == true || var.skip_cpf_external_validation == false
+    condition     = var.environment == "local" || !var.skip_cpf_external_validation
     error_message = "A validação externa de CPF não pode ser ignorada fora do ambiente local."
   }
 }
@@ -207,7 +210,7 @@ variable "enable_local_database" {
   default     = false
 
   validation {
-    condition     = var.enable_local_database == true || var.enable_local_database == false
+    condition     = !var.enable_local_database || var.environment == "local"
     error_message = "enable_local_database=true só é permitido quando environment=local."
   }
 }
@@ -243,7 +246,10 @@ variable "ingress_host" {
   nullable    = true
 
   validation {
-    condition     = var.ingress_host == null || can(regex("^[a-z0-9.-]+$", var.ingress_host))
+    condition = (
+      (var.environment == "local" && (var.ingress_host == null || can(regex("^[a-z0-9.-]+$", var.ingress_host)))) ||
+      (var.environment != "local" && var.ingress_host != null && can(regex("^[a-z0-9.-]+$", var.ingress_host)))
+    )
     error_message = "ingress_host é opcional apenas em local e deve ser um hostname válido nos demais ambientes."
   }
 }

@@ -21,12 +21,9 @@ k8s/secret.yaml
 k8s/overlays/**/secrets.env
 k8s/overlays/**/.env
 
-# Terraform generated state, plans and local provider cache
-infra/.terraform/
-infra/*.tfstate
-infra/*.tfstate.*
-infra/*.tfplan
+# Terraform local state and generated files
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
 infra/terraform.tfvars
-
-# Worktrees auxiliares locais nunca fazem parte da entrega
-.isolated-*/

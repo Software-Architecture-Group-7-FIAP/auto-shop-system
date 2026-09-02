@@ -75,6 +75,118 @@ jobs:
             done
           done
 
+  terraform-plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: helm/kind-action@v1.12.0
+        with:
+          version: v0.30.0
+          node_image: kindest/node:v1.34.0
+          cluster_name: kind
+      - name: Configure kubeconfig for Terraform
+        run: |
+          set -euo pipefail
+          kubeconfig_path="$RUNNER_TEMP/kind-kubeconfig"
+          kind get kubeconfig --name kind > "$kubeconfig_path"
+          echo "KUBECONFIG=$kubeconfig_path" >> "$GITHUB_ENV"
+          kubectl --kubeconfig="$kubeconfig_path" config get-contexts
+          kubectl --kubeconfig="$kubeconfig_path" config use-context kind-kind
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.0"
+      - name: Validate Terraform formatting and configuration
+        run: |
+          set -euo pipefail
+          terraform -chdir=infra init -backend=false -input=false
+          terraform -chdir=infra fmt -check -recursive
+          terraform -chdir=infra validate
+      - name: Plan and verify every Terraform environment
+        run: |
+          set -euo pipefail
+          secure_image="ghcr.io/example/auto-shop-system@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+          plan_and_check() {
+            environment="$1"
+            shift
+            plan_file="$(mktemp)"
+            plan_json="$(mktemp)"
+            trap 'rm -f "$plan_file" "$plan_json"' RETURN
+
+            terraform -chdir=infra plan \
+              -input=false \
+              -refresh=false \
+              -var-file=terraform.tfvars.example \
+              -var=kubeconfig_path="$KUBECONFIG" \
+              -var=kube_context=kind-kind \
+              "$@" \
+              -out="$plan_file"
+            terraform -chdir=infra show -json "$plan_file" > "$plan_json"
+
+            jq -e '
+              [.resource_changes[].address] as $addresses
+              | [
+                  "kubernetes_namespace_v1.auto_shop",
+                  "kubernetes_config_map_v1.app",
+                  "kubernetes_job_v1.migration",
+                  "kubernetes_deployment_v1.backend",
+                  "kubernetes_service_v1.backend",
+                  "kubernetes_horizontal_pod_autoscaler_v2.backend",
+                  "kubernetes_ingress_v1.backend[0]"
+                ]
+              | all(. as $address | $addresses | index($address) != null)
+            ' "$plan_json"
+
+            postgres_count="$(jq '[.resource_changes[].address | select(test("^kubernetes_(persistent_volume_claim_v1|deployment_v1|service_v1)\\.postgres\\[0\\]$"))] | length' "$plan_json")"
+            if [[ "$environment" == "local" ]]; then
+              [[ "$postgres_count" -eq 3 ]] || {
+                echo "Local plan must contain PVC, Deployment, and Service for PostgreSQL; found $postgres_count"
+                exit 1
+              }
+            else
+              [[ "$postgres_count" -eq 0 ]] || {
+                echo "$environment plan must not contain local PostgreSQL resources; found $postgres_count"
+                exit 1
+              }
+            fi
+          }
+
+          plan_and_check local \
+            -var=environment=local \
+            -var=enable_local_database=true
+
+          plan_and_check staging \
+            -var=environment=staging \
+            -var=app_env=staging \
+            -var=image_reference="$secure_image" \
+            -var=app_base_url=https://api.staging.example.com \
+            -var=frontend_public_url=https://staging.example.com \
+            -var=cors_allowed_origins=https://staging.example.com \
+            -var=security_hsts_enabled=true \
+            -var=smtp_host=smtp.staging.example.com \
+            -var=smtp_use_tls=true \
+            -var=smtp_starttls=true \
+            -var=smtp_require_tls=true \
+            -var=skip_cpf_external_validation=false \
+            -var=ingress_host=api.staging.example.com \
+            -var=enable_local_database=false
+
+          plan_and_check production \
+            -var=environment=production \
+            -var=app_env=production \
+            -var=image_reference="$secure_image" \
+            -var=app_base_url=https://api.example.com \
+            -var=frontend_public_url=https://example.com \
+            -var=cors_allowed_origins=https://example.com \
+            -var=security_hsts_enabled=true \
+            -var=smtp_host=smtp.example.com \
+            -var=smtp_use_tls=true \
+            -var=smtp_starttls=true \
+            -var=smtp_require_tls=true \
+            -var=skip_cpf_external_validation=false \
+            -var=ingress_host=api.example.com \
+            -var=enable_local_database=false
+
   cluster-smoke:
     runs-on: ubuntu-latest
     needs: [test-and-security, manifests]
