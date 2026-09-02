@@ -21,9 +21,9 @@ def test_operational_and_closed_statuses_partition_every_status():
 def test_status_ranking_matches_operational_priority():
     assert STATUS_RANKING[:6] == (
         ServiceOrderStatus.EM_EXECUCAO,
+        ServiceOrderStatus.AGUARDANDO_APROVACAO,
         ServiceOrderStatus.AGUARDANDO_INICIO,
         ServiceOrderStatus.AGUARDANDO_COMPRA,
-        ServiceOrderStatus.AGUARDANDO_APROVACAO,
         ServiceOrderStatus.EM_DIAGNOSTICO,
         ServiceOrderStatus.RECEBIDA,
     )
@@ -33,8 +33,8 @@ def test_default_query_only_exposes_operational_statuses():
     assert ServiceOrderListQuery().visible_statuses() == OPERATIONAL_STATUSES
 
 
-def test_default_query_orders_by_creation_date():
-    assert ServiceOrderListQuery().order_by is ServiceOrderOrdering.CREATED_AT_ASC
+def test_default_query_orders_by_status_priority():
+    assert ServiceOrderListQuery().order_by is ServiceOrderOrdering.STATUS_PRIORITY
 
 
 def test_include_closed_query_exposes_every_status():

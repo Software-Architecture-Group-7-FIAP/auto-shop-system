@@ -46,7 +46,7 @@ def list_service_orders(
     include_closed: bool = False,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
-    order_by: ServiceOrderOrdering = ServiceOrderOrdering.CREATED_AT_ASC,
+    order_by: ServiceOrderOrdering = ServiceOrderOrdering.STATUS_PRIORITY,
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
