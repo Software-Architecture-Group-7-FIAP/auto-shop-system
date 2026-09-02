@@ -2,7 +2,7 @@
 
 Backend MVP para gestão de ordens de serviço (OS), clientes, veículos, peças/insumos e faturamento.
 
-**FIAP 15SOAT — Tech Challenge Fase 1**
+**FIAP 15SOAT — Tech Challenge Fase 2**
 
 ## Stack
 
@@ -12,6 +12,22 @@ Backend MVP para gestão de ordens de serviço (OS), clientes, veículos, peças
 - JWT de curta duracao em cookie HttpOnly + refresh token opaco rotativo em cookie HttpOnly
 - Docker + docker-compose
 - MailHog para email em desenvolvimento
+
+## Fase 2 - qualidade, resiliência e escala
+
+Esta fase evolui o MVP com Clean Architecture/DDD-light, ports and adapters,
+fluxo completo de OS, reserva transacional de estoque, fila operacional por
+status, testes automatizados, imagem de container e deploy Kubernetes.
+
+### Arquitetura e fluxo de deploy
+
+![Diagrama da arquitetura da solução](docs/architecture/fase2-architecture.png)
+
+Arquivos do diagrama: [PNG para o PDF](docs/architecture/fase2-architecture.png), [SVG vetorial](docs/architecture/fase2-architecture.svg) e [fonte Mermaid editável](docs/architecture/fase2-architecture.mmd).
+
+O Terraform desta entrega gerencia os recursos da aplicação em um cluster
+Kubernetes local já existente (Kind ou Docker Desktop). O cluster deve ser
+iniciado previamente; o Terraform não cria Kind, EKS, VPC, IAM ou RDS.
 
 ## Arquitetura
 
@@ -41,6 +57,7 @@ docker compose up api
 - API (local `poetry run uvicorn`): http://localhost:8000
 - Swagger: http://localhost:8000/docs
 - MailHog UI: http://localhost:8025
+- Coleção completa da API: [docs/api/auto-shop.postman_collection.json](docs/api/auto-shop.postman_collection.json)
 
 O container `api` inicia apenas o Uvicorn; migrations são uma etapa explícita e única. Rode `docker compose run --rm api alembic upgrade head` **antes** do seed e da API.
 
@@ -255,6 +272,31 @@ Escolha um único proprietário por ambiente. Não aplique Terraform e Kustomize
 mesmo namespace, pois os dois mecanismos gerenciam recursos com os mesmos nomes.
 Em ambos os fluxos, a API só recebe tráfego depois que a migration termina e o
 readiness check confirma o PostgreSQL.
+
+### Terraform em cluster local
+
+O diretório [`infra/`](infra/) oferece uma alternativa declarativa ao Kustomize
+para gerenciar a stack em um cluster Kubernetes já existente. Para uma execução
+local, inicie Kind ou Docker Desktop e confirme o contexto antes de aplicar:
+
+```bash
+kind create cluster --name auto-shop
+kubectl config use-context kind-auto-shop
+terraform -chdir=infra init
+terraform -chdir=infra validate
+terraform -chdir=infra plan -var-file=terraform.tfvars.example \
+  -var=environment=local -var=enable_local_database=true \
+  -var=kube_context=kind-auto-shop
+terraform -chdir=infra apply -var-file=terraform.tfvars.example \
+  -var=environment=local -var=enable_local_database=true \
+  -var=kube_context=kind-auto-shop
+```
+
+O Secret `auto-shop-secrets` deve ser criado por mecanismo externo e seguro;
+use [`k8s/examples/secret.example.yaml`](k8s/examples/secret.example.yaml)
+somente como referência. Não aplique o exemplo sem substituir os placeholders.
+
+Vídeo da entrega: **inserir o link fornecido pelo participante responsável antes do envio**.
 
 ## Hardening de OS e links publicos
 

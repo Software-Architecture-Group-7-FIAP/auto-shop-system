@@ -1,0 +1,2297 @@
+{
+  "info": {
+    "name": "Auto Shop System - API completa",
+    "description": "Coleção gerada a partir do OpenAPI da aplicação. A autenticação usa cookies HttpOnly; execute o login primeiro e mantenha o cookie oficina_csrf em csrfToken. Os valores de exemplo são placeholders.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const csrf = pm.cookies.get('oficina_csrf');",
+          "if (csrf) pm.collectionVariables.set('csrfToken', csrf);"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "adminPassword",
+      "value": "<set-dev-admin-password>",
+      "type": "string",
+      "description": "Senha definida em DEV_ADMIN_PASSWORD; não versionar a senha real."
+    },
+    {
+      "key": "csrfToken",
+      "value": "",
+      "type": "string",
+      "description": "Atualizado após POST /api/v1/auth/login."
+    },
+    {
+      "key": "approvalToken",
+      "value": "<cole-o-token-de-aprovacao-aqui>",
+      "type": "string"
+    },
+    {
+      "key": "trackingToken",
+      "value": "<cole-o-token-de-acompanhamento-aqui>",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Budgets",
+      "item": [
+        {
+          "name": "GET /api/v1/admin/budgets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/budgets",
+              "variables": []
+            },
+            "description": "List Budgets"
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/budgets",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/budgets",
+              "variables": []
+            },
+            "description": "Create Budget",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": 1,\n  \"vehicle_id\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/budgets/{budget_id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/budgets/:budget_id",
+              "variables": [
+                {
+                  "key": "budget_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Get Budget"
+          }
+        },
+        {
+          "name": "PATCH /api/v1/admin/budgets/{budget_id}/approve",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/budgets/:budget_id/approve",
+              "variables": [
+                {
+                  "key": "budget_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Approve Budget Admin"
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/budgets/{budget_id}/availability",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/budgets/:budget_id/availability",
+              "variables": [
+                {
+                  "key": "budget_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Check Availability"
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/budgets/{budget_id}/estimated-delivery",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/budgets/:budget_id/estimated-delivery",
+              "variables": [
+                {
+                  "key": "budget_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Get Estimated Delivery"
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/budgets/{budget_id}/product-lines",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/budgets/:budget_id/product-lines",
+              "variables": [
+                {
+                  "key": "budget_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "List Product Lines"
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/budgets/{budget_id}/product-lines",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/budgets/:budget_id/product-lines",
+              "variables": [
+                {
+                  "key": "budget_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Add Product Line",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"product_id\": 1,\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/v1/admin/budgets/{budget_id}/product-lines/{line_id}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/budgets/:budget_id/product-lines/:line_id",
+              "variables": [
+                {
+                  "key": "budget_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                },
+                {
+                  "key": "line_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Remove Product Line"
+          }
+        },
+        {
+          "name": "PUT /api/v1/admin/budgets/{budget_id}/product-lines/{line_id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/budgets/:budget_id/product-lines/:line_id",
+              "variables": [
+                {
+                  "key": "budget_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                },
+                {
+                  "key": "line_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Update Product Line",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/budgets/{budget_id}/revisions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/budgets/:budget_id/revisions",
+              "variables": [
+                {
+                  "key": "budget_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Create Budget Revision"
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/budgets/{budget_id}/send-email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/budgets/:budget_id/send-email",
+              "variables": [
+                {
+                  "key": "budget_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Send Budget Email"
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/budgets/{budget_id}/service-lines",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/budgets/:budget_id/service-lines",
+              "variables": [
+                {
+                  "key": "budget_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "List Service Lines"
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/budgets/{budget_id}/service-lines",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/budgets/:budget_id/service-lines",
+              "variables": [
+                {
+                  "key": "budget_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Add Service Line",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_id\": 1,\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/v1/admin/budgets/{budget_id}/service-lines/{line_id}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/budgets/:budget_id/service-lines/:line_id",
+              "variables": [
+                {
+                  "key": "budget_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                },
+                {
+                  "key": "line_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Remove Service Line"
+          }
+        },
+        {
+          "name": "PUT /api/v1/admin/budgets/{budget_id}/service-lines/{line_id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/budgets/:budget_id/service-lines/:line_id",
+              "variables": [
+                {
+                  "key": "budget_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                },
+                {
+                  "key": "line_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Update Service Line",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Customers",
+      "item": [
+        {
+          "name": "GET /api/v1/admin/customers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/customers?skip=1&limit=1",
+              "variables": [],
+              "query": [
+                {
+                  "key": "skip",
+                  "value": "1",
+                  "description": "Parâmetro da consulta."
+                },
+                {
+                  "key": "limit",
+                  "value": "1",
+                  "description": "Parâmetro da consulta."
+                }
+              ]
+            },
+            "description": "List Customers"
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/customers",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/customers",
+              "variables": []
+            },
+            "description": "Create Customer",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Exemplo\",\n  \"document\": \"529.982.247-25\",\n  \"email\": \"example@test.local\",\n  \"phone\": \"11999999999\",\n  \"address\": \"Rua Exemplo, 100\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/v1/admin/customers/{customer_id}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/customers/:customer_id",
+              "variables": [
+                {
+                  "key": "customer_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Delete Customer"
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/customers/{customer_id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/customers/:customer_id",
+              "variables": [
+                {
+                  "key": "customer_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Get Customer"
+          }
+        },
+        {
+          "name": "PUT /api/v1/admin/customers/{customer_id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/customers/:customer_id",
+              "variables": [
+                {
+                  "key": "customer_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Update Customer",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Exemplo\",\n  \"email\": \"example@test.local\",\n  \"phone\": \"11999999999\",\n  \"address\": \"Rua Exemplo, 100\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/customers/{customer_id}/documents",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/customers/:customer_id/documents",
+              "variables": [
+                {
+                  "key": "customer_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Add Customer Document",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"document\": \"529.982.247-25\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/customers/{customer_id}/vehicles",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/customers/:customer_id/vehicles",
+              "variables": [
+                {
+                  "key": "customer_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "List Customer Vehicles"
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/customers/by-document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/customers/by-document",
+              "variables": []
+            },
+            "description": "Get Customer By Document Admin",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"document\": \"529.982.247-25\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/customers/validate-cnpj",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/customers/validate-cnpj",
+              "variables": []
+            },
+            "description": "Validate Cnpj",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"document\": \"529.982.247-25\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/customers/validate-cpf",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/customers/validate-cpf",
+              "variables": []
+            },
+            "description": "Validate Cpf",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"document\": \"529.982.247-25\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invoices",
+      "item": [
+        {
+          "name": "PATCH /api/v1/admin/invoices/{invoice_id}/pay",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/invoices/:invoice_id/pay",
+              "variables": [
+                {
+                  "key": "invoice_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Pay Invoice"
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/invoices/{invoice_id}/payments",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/invoices/:invoice_id/payments",
+              "variables": [
+                {
+                  "key": "invoice_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Record Payment",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10,\n  \"method\": \"DINHEIRO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/v1/admin/service-orders/{service_order_id}/deliver",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/service-orders/:service_order_id/deliver",
+              "variables": [
+                {
+                  "key": "service_order_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Deliver Service Order"
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/service-orders/{service_order_id}/invoice",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/service-orders/:service_order_id/invoice",
+              "variables": [
+                {
+                  "key": "service_order_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Get Invoice By Service Order"
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/service-orders/{service_order_id}/invoice",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/service-orders/:service_order_id/invoice",
+              "variables": [
+                {
+                  "key": "service_order_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Create Invoice"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "GET /api/v1/admin/me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/me",
+              "variables": []
+            },
+            "description": "Me"
+          }
+        },
+        {
+          "name": "POST /api/v1/auth/login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/login",
+              "variables": []
+            },
+            "description": "Login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const csrf = pm.cookies.get('oficina_csrf');",
+                  "if (csrf) pm.collectionVariables.set('csrfToken', csrf);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/v1/auth/logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/logout",
+              "variables": []
+            },
+            "description": "Logout"
+          }
+        },
+        {
+          "name": "POST /api/v1/auth/refresh",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/refresh",
+              "variables": []
+            },
+            "description": "Refresh"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "GET /api/v1/admin/products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/products",
+              "variables": []
+            },
+            "description": "List Products"
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/products",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/products",
+              "variables": []
+            },
+            "description": "Create Product",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Exemplo\",\n  \"sku\": \"\",\n  \"unit_price\": 10,\n  \"stock_quantity\": 1,\n  \"description\": \"\",\n  \"supplier_id\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/v1/admin/products/{product_id}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/products/:product_id",
+              "variables": [
+                {
+                  "key": "product_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Delete Product"
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/products/{product_id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/products/:product_id",
+              "variables": [
+                {
+                  "key": "product_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Get Product"
+          }
+        },
+        {
+          "name": "PUT /api/v1/admin/products/{product_id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/products/:product_id",
+              "variables": [
+                {
+                  "key": "product_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Update Product",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Exemplo\",\n  \"unit_price\": 10,\n  \"description\": \"\",\n  \"supplier_id\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/v1/admin/products/{product_id}/stock",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/products/:product_id/stock",
+              "variables": [
+                {
+                  "key": "product_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Update Stock",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Inventory",
+      "item": [
+        {
+          "name": "GET /api/v1/admin/products/{product_id}/pending-receipts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/products/:product_id/pending-receipts",
+              "variables": [
+                {
+                  "key": "product_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Get Pending Receipts"
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/purchase-requests",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/purchase-requests",
+              "variables": []
+            },
+            "description": "List Purchase Requests"
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/purchase-requests",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/purchase-requests",
+              "variables": []
+            },
+            "description": "Create Purchase Request",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"product_id\": 1,\n  \"quantity\": 1,\n  \"service_order_id\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/purchase-requests/{purchase_request_id}/receipt",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/purchase-requests/:purchase_request_id/receipt",
+              "variables": [
+                {
+                  "key": "purchase_request_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Register Receipt",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/reservations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/reservations",
+              "variables": []
+            },
+            "description": "List Reservations"
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/reservations",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/reservations",
+              "variables": []
+            },
+            "description": "Create Reservations",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_order_id\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/reservations/os/{service_order_id}",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/reservations/os/:service_order_id",
+              "variables": [
+                {
+                  "key": "service_order_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Create Reservations For Os"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Service Orders",
+      "item": [
+        {
+          "name": "GET /api/v1/admin/service-orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/service-orders?status=&include_closed=false&page=1&page_size=1&order_by=status_priority",
+              "variables": [],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "",
+                  "description": "Parâmetro da consulta."
+                },
+                {
+                  "key": "include_closed",
+                  "value": "false",
+                  "description": "Parâmetro da consulta."
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Parâmetro da consulta."
+                },
+                {
+                  "key": "page_size",
+                  "value": "1",
+                  "description": "Parâmetro da consulta."
+                },
+                {
+                  "key": "order_by",
+                  "value": "status_priority",
+                  "description": "Parâmetro da consulta."
+                }
+              ]
+            },
+            "description": "List Service Orders"
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/service-orders/{service_order_id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/service-orders/:service_order_id",
+              "variables": [
+                {
+                  "key": "service_order_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Get Service Order"
+          }
+        },
+        {
+          "name": "PUT /api/v1/admin/service-orders/{service_order_id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/service-orders/:service_order_id",
+              "variables": [
+                {
+                  "key": "service_order_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Update Service Order",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mechanic_name\": \"Exemplo\",\n  \"reason\": \"Atualização administrativa\",\n  \"priority\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/v1/admin/service-orders/{service_order_id}/assign-mechanic",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/service-orders/:service_order_id/assign-mechanic",
+              "variables": [
+                {
+                  "key": "service_order_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Assign Mechanic",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mechanic_name\": \"Exemplo\",\n  \"reason\": \"Atualização administrativa\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/v1/admin/service-orders/{service_order_id}/priority",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/service-orders/:service_order_id/priority",
+              "variables": [
+                {
+                  "key": "service_order_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Set Priority",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priority\": \"Baixa\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/service-orders/{service_order_id}/send-email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/service-orders/:service_order_id/send-email",
+              "variables": [
+                {
+                  "key": "service_order_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Send Os Email"
+          }
+        },
+        {
+          "name": "PATCH /api/v1/admin/service-orders/{service_order_id}/status-override",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/service-orders/:service_order_id/status-override",
+              "variables": [
+                {
+                  "key": "service_order_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Override Status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"Recebida\",\n  \"reason\": \"Atualização administrativa\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/service-orders/in-progress/with-withdrawals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/service-orders/in-progress/with-withdrawals",
+              "variables": []
+            },
+            "description": "List Os With Withdrawals"
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/service-orders/metrics/average-execution-time",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/service-orders/metrics/average-execution-time",
+              "variables": []
+            },
+            "description": "Average Execution Time"
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/service-orders/queue",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/service-orders/queue",
+              "variables": []
+            },
+            "description": "List Execution Queue"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Execution",
+      "item": [
+        {
+          "name": "POST /api/v1/admin/service-orders/{service_order_id}/enqueue",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/service-orders/:service_order_id/enqueue",
+              "variables": [
+                {
+                  "key": "service_order_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Enqueue Service Order"
+          }
+        },
+        {
+          "name": "PATCH /api/v1/admin/service-orders/{service_order_id}/finish",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/service-orders/:service_order_id/finish",
+              "variables": [
+                {
+                  "key": "service_order_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Finish Service"
+          }
+        },
+        {
+          "name": "PATCH /api/v1/admin/service-orders/{service_order_id}/start",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/service-orders/:service_order_id/start",
+              "variables": [
+                {
+                  "key": "service_order_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Start Service"
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/stock-withdrawals",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/stock-withdrawals",
+              "variables": []
+            },
+            "description": "Request Stock Withdrawal",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"service_order_id\": 1,\n  \"product_id\": 1,\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/v1/admin/stock-withdrawals/{withdrawal_id}/fulfill",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/stock-withdrawals/:withdrawal_id/fulfill",
+              "variables": [
+                {
+                  "key": "withdrawal_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Fulfill Withdrawal"
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/stock-withdrawals/pending",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/stock-withdrawals/pending",
+              "variables": []
+            },
+            "description": "List Pending Withdrawals"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Services",
+      "item": [
+        {
+          "name": "GET /api/v1/admin/services",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/services",
+              "variables": []
+            },
+            "description": "List Services"
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/services",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/services",
+              "variables": []
+            },
+            "description": "Create Service",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Exemplo\",\n  \"description\": \"\",\n  \"base_price\": 10,\n  \"estimated_hours\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/v1/admin/services/{service_id}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/services/:service_id",
+              "variables": [
+                {
+                  "key": "service_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Delete Service"
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/services/{service_id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/services/:service_id",
+              "variables": [
+                {
+                  "key": "service_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Get Service"
+          }
+        },
+        {
+          "name": "PUT /api/v1/admin/services/{service_id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/services/:service_id",
+              "variables": [
+                {
+                  "key": "service_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Update Service",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Exemplo\",\n  \"description\": \"\",\n  \"base_price\": 10,\n  \"estimated_hours\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/services/{service_id}/product-lines",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/services/:service_id/product-lines",
+              "variables": [
+                {
+                  "key": "service_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Add Product Line",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"product_id\": 1,\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/v1/admin/services/{service_id}/product-lines/{line_id}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/services/:service_id/product-lines/:line_id",
+              "variables": [
+                {
+                  "key": "service_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                },
+                {
+                  "key": "line_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Remove Product Line"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Suppliers",
+      "item": [
+        {
+          "name": "GET /api/v1/admin/suppliers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/suppliers",
+              "variables": []
+            },
+            "description": "List Suppliers"
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/suppliers",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/suppliers",
+              "variables": []
+            },
+            "description": "Create Supplier",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Exemplo\",\n  \"document\": \"529.982.247-25\",\n  \"email\": \"example@test.local\",\n  \"phone\": \"11999999999\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/v1/admin/suppliers/{supplier_id}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/suppliers/:supplier_id",
+              "variables": [
+                {
+                  "key": "supplier_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Delete Supplier"
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/suppliers/{supplier_id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/suppliers/:supplier_id",
+              "variables": [
+                {
+                  "key": "supplier_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Get Supplier"
+          }
+        },
+        {
+          "name": "PUT /api/v1/admin/suppliers/{supplier_id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/suppliers/:supplier_id",
+              "variables": [
+                {
+                  "key": "supplier_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Update Supplier",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Exemplo\",\n  \"email\": \"example@test.local\",\n  \"phone\": \"11999999999\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Vehicles",
+      "item": [
+        {
+          "name": "GET /api/v1/admin/vehicles",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/vehicles",
+              "variables": []
+            },
+            "description": "List Vehicles"
+          }
+        },
+        {
+          "name": "POST /api/v1/admin/vehicles",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/vehicles",
+              "variables": []
+            },
+            "description": "Create Vehicle",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": 1,\n  \"plate\": \"ABC1D23\",\n  \"state\": \"SP\",\n  \"city\": \"São Paulo\",\n  \"color\": \"\",\n  \"brand\": \"\",\n  \"model\": \"\",\n  \"year\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/v1/admin/vehicles/{vehicle_id}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/vehicles/:vehicle_id",
+              "variables": [
+                {
+                  "key": "vehicle_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Delete Vehicle"
+          }
+        },
+        {
+          "name": "GET /api/v1/admin/vehicles/{vehicle_id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/vehicles/:vehicle_id",
+              "variables": [
+                {
+                  "key": "vehicle_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Get Vehicle"
+          }
+        },
+        {
+          "name": "PUT /api/v1/admin/vehicles/{vehicle_id}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}",
+                "description": "Valor do cookie oficina_csrf após o login."
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/vehicles/:vehicle_id",
+              "variables": [
+                {
+                  "key": "vehicle_id",
+                  "value": "1",
+                  "description": "Substitua pelo identificador real."
+                }
+              ]
+            },
+            "description": "Update Vehicle",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"state\": \"SP\",\n  \"city\": \"São Paulo\",\n  \"color\": \"\",\n  \"brand\": \"\",\n  \"model\": \"\",\n  \"year\": 2021\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Public Customers",
+      "item": [
+        {
+          "name": "POST /api/v1/customers/lookup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/customers/lookup",
+              "variables": []
+            },
+            "description": "Lookup Customer",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"document\": \"529.982.247-25\",\n  \"email\": \"example@test.local\",\n  \"phone\": \"11999999999\",\n  \"plate\": \"ABC1D23\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Public Budgets",
+      "item": [
+        {
+          "name": "POST /api/v1/public/budgets/decisions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/budgets/decisions",
+              "variables": []
+            },
+            "description": "Decide Budget",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{approvalToken}}\",\n  \"decision\": \"approve\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Public Service Orders",
+      "item": [
+        {
+          "name": "POST /api/v1/public/service-orders/track",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/public/service-orders/track",
+              "variables": []
+            },
+            "description": "Track Service Order",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{approvalToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health/live",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/live",
+              "variables": []
+            },
+            "description": "Liveness Check"
+          }
+        },
+        {
+          "name": "GET /health/ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/ready",
+              "variables": []
+            },
+            "description": "Readiness Check"
+          }
+        }
+      ]
+    }
+  ]
+}
