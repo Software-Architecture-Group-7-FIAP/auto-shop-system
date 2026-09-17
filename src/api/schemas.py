@@ -28,6 +28,14 @@ class SessionResponse(BaseModel):
     role: UserRole
 
 
+class GatewayTokenResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int
+    username: str
+    role: UserRole
+
+
 class LoginRequest(BaseModel):
     username: str
     password: str
