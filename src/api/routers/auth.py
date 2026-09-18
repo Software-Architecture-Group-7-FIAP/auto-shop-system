@@ -12,13 +12,42 @@ from src.api.rate_limit import (
     login_rate_limiter,
     login_throttle_keys,
 )
-from src.api.schemas import LoginRequest, SessionResponse
+from src.config import settings
+from src.api.schemas import GatewayTokenResponse, LoginRequest, SessionResponse
 from src.domain.auth.entity import UserRole
 from src.domain.exceptions import DomainError, UnauthorizedError
 from src.infrastructure.database import get_db
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 admin_router = APIRouter(prefix="/admin", tags=["Auth"])
+
+
+@router.post("/gateway-login", response_model=GatewayTokenResponse)
+def gateway_login(
+    data: LoginRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    throttle_keys = login_throttle_keys(request, data.username)
+    enforce_login_rate_limit(throttle_keys)
+
+    service = compose_auth_service(db)
+    try:
+        user = service.authenticate(data.username, data.password)
+    except DomainError:
+        login_rate_limiter.register_failure(throttle_keys)
+        raise
+
+    login_rate_limiter.register_success(throttle_keys)
+    session = compose_refresh_session_service(db).issue(user.id or 0)
+    access_token = service.issue_access_token(user, session.session_id)
+    db.commit()
+    return GatewayTokenResponse(
+        access_token=access_token,
+        expires_in=settings.access_token_expire_minutes * 60,
+        username=user.username,
+        role=user.role,
+    )
 
 
 @router.post("/login", response_model=SessionResponse)

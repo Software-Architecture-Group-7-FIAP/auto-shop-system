@@ -27,3 +27,5 @@ k8s/overlays/**/.env
 *.tfstate.*
 *.tfplan
 infra/terraform.tfvars
+infra/aws/terraform.tfvars
+infra/aws/build/
