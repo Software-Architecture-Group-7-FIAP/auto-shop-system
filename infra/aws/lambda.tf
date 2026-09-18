@@ -45,10 +45,10 @@ resource "aws_lambda_function" "auth_login" {
 
   environment {
     variables = {
-      BACKEND_BASE_URL         = local.backend_uri
-      BACKEND_LOGIN_PATH       = "/api/v1/auth/gateway-login"
-      REQUEST_TIMEOUT_SECONDS  = "10"
-      MAX_RETRIES              = "2"
+      BACKEND_BASE_URL        = local.backend_uri
+      BACKEND_LOGIN_PATH      = "/api/v1/auth/gateway-login"
+      REQUEST_TIMEOUT_SECONDS = "10"
+      MAX_RETRIES             = "2"
     }
   }
 }

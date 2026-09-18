@@ -114,9 +114,9 @@ resource "aws_api_gateway_integration" "admin_http" {
   integration_http_method = "ANY"
 
   request_parameters = {
-    "integration.request.path.proxy"             = "method.request.path.proxy"
-    "integration.request.header.X-Correlation-ID" = "context.requestId"
-    "integration.request.header.X-Gateway-User"   = "context.authorizer.username"
+    "integration.request.path.proxy"               = "method.request.path.proxy"
+    "integration.request.header.X-Correlation-ID"  = "context.requestId"
+    "integration.request.header.X-Gateway-User"    = "context.authorizer.username"
     "integration.request.header.X-Gateway-Session" = "context.authorizer.sessionId"
   }
 }
@@ -207,16 +207,16 @@ resource "aws_api_gateway_stage" "main" {
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_gateway_access.arn
     format = jsonencode({
-      requestId      = "$context.requestId"
-      ip             = "$context.identity.sourceIp"
-      requestTime    = "$context.requestTime"
-      httpMethod     = "$context.httpMethod"
-      resourcePath   = "$context.resourcePath"
-      path           = "$context.path"
-      status         = "$context.status"
-      protocol       = "$context.protocol"
-      responseLength = "$context.responseLength"
-      latencyMs      = "$context.responseLatency"
+      requestId       = "$context.requestId"
+      ip              = "$context.identity.sourceIp"
+      requestTime     = "$context.requestTime"
+      httpMethod      = "$context.httpMethod"
+      resourcePath    = "$context.resourcePath"
+      path            = "$context.path"
+      status          = "$context.status"
+      protocol        = "$context.protocol"
+      responseLength  = "$context.responseLength"
+      latencyMs       = "$context.responseLatency"
       authorizerError = "$context.authorizer.error"
     })
   }
@@ -230,9 +230,9 @@ resource "aws_api_gateway_method_settings" "main" {
   method_path = "*/*"
 
   settings {
-    metrics_enabled    = true
-    logging_level      = "INFO"
-    data_trace_enabled = false
+    metrics_enabled        = true
+    logging_level          = "INFO"
+    data_trace_enabled     = false
     throttling_burst_limit = var.throttle_burst_limit
     throttling_rate_limit  = var.throttle_rate_limit
   }
