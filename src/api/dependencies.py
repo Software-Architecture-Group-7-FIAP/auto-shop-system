@@ -7,7 +7,7 @@ from src.api.csrf import enforce_csrf
 from src.domain.auth.entity import User
 from src.domain.auth.entity import UserRole
 from src.domain.exceptions import DomainError, UnauthorizedError
-from src.infrastructure.auth.jwt import JWT_AUD_GATEWAY, JWT_AUD_WEB
+from src.domain.auth.jwt_audience import JWT_AUD_GATEWAY, JWT_AUD_WEB
 from src.infrastructure.database import get_db
 
 

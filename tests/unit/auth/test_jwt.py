@@ -5,7 +5,8 @@ import pytest
 
 from src.config import settings
 from src.domain.exceptions import UnauthorizedError
-from src.infrastructure.auth.jwt import JWT_AUD_GATEWAY, JWT_AUD_WEB, JwtAccessTokenService
+from src.domain.auth.jwt_audience import JWT_AUD_GATEWAY, JWT_AUD_WEB
+from src.infrastructure.auth.jwt import JwtAccessTokenService
 
 
 def test_access_token_round_trip_uses_hs256():

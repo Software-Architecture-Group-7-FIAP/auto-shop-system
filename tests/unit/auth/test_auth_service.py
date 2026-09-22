@@ -34,7 +34,14 @@ class FakeTokenService:
     def __init__(self):
         self.decoded_subject = "admin"
 
-    def create_access_token(self, subject: str, session_id: str | None = None) -> str:
+    def create_access_token(
+        self,
+        subject: str,
+        session_id: str | None = None,
+        *,
+        audience: str = "web",
+    ) -> str:
+        _ = audience
         return f"token:{subject}" if session_id is None else f"token:{subject}:{session_id}"
 
     def decode_token(self, token: str) -> str:

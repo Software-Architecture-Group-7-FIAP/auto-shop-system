@@ -5,11 +5,10 @@ import jwt
 from jwt.exceptions import PyJWTError as JWTError
 
 from src.config import settings
+from src.domain.auth.jwt_audience import JWT_AUD_WEB
 from src.domain.exceptions import UnauthorizedError
 
 JWT_ALGORITHM = "HS256"
-JWT_AUD_WEB = "web"
-JWT_AUD_GATEWAY = "gateway"
 
 
 class BcryptPasswordHasher:

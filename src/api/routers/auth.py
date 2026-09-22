@@ -16,7 +16,7 @@ from src.config import settings
 from src.api.schemas import GatewayTokenResponse, LoginRequest, SessionResponse
 from src.domain.auth.entity import UserRole
 from src.domain.exceptions import DomainError, UnauthorizedError
-from src.infrastructure.auth.jwt import JWT_AUD_GATEWAY
+from src.domain.auth.jwt_audience import JWT_AUD_GATEWAY
 from src.infrastructure.database import get_db
 
 router = APIRouter(prefix="/auth", tags=["Auth"])

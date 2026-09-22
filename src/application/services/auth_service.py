@@ -3,7 +3,7 @@ from src.application.ports.auth import (
     AccessTokenIssuer,
     PasswordHasher,
 )
-from src.infrastructure.auth.jwt import JWT_AUD_WEB
+from src.domain.auth.jwt_audience import JWT_AUD_WEB
 from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.auth.entity import User
 from src.domain.auth.repository import UserRepository
