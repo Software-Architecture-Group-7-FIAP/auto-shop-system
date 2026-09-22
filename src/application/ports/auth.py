@@ -10,7 +10,13 @@ class PasswordHasher(Protocol):
 
 
 class AccessTokenIssuer(Protocol):
-    def create_access_token(self, subject: str, session_id: str | None = None) -> str:
+    def create_access_token(
+        self,
+        subject: str,
+        session_id: str | None = None,
+        *,
+        audience: str = "web",
+    ) -> str:
         ...
 
 

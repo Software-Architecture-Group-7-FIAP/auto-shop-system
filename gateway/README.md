@@ -8,6 +8,8 @@ Proxy de autenticação pública:
 
 - Entrada: `POST /auth/login` `{ "username", "password" }`
 - Saída: resposta JSON do backend (`access_token`, `token_type`, `expires_in`, ...)
+- O JWT emitido por `/api/v1/auth/gateway-login` inclui `aud: "gateway"` (Bearer sem CSRF)
+- Tokens de login web usam `aud: "web"` e só funcionam via cookie + CSRF
 - Retry configurável para erros 5xx do backend
 
 Variáveis:

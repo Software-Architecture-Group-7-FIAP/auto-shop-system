@@ -7,6 +7,7 @@ from src.api.csrf import enforce_csrf
 from src.domain.auth.entity import User
 from src.domain.auth.entity import UserRole
 from src.domain.exceptions import DomainError, UnauthorizedError
+from src.infrastructure.auth.jwt import JWT_AUD_GATEWAY, JWT_AUD_WEB
 from src.infrastructure.database import get_db
 
 
@@ -33,11 +34,23 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Autenticação necessária",
         )
-    if bearer_token is None:
-        enforce_csrf(request, csrf_token)
     try:
         auth = compose_auth_service(db)
         claims = auth.token_decoder.decode_claims(token)
+        audience = claims.get("aud")
+        if bearer_token is not None:
+            if audience != JWT_AUD_GATEWAY:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token inválido para autenticação Bearer",
+                )
+        else:
+            if audience != JWT_AUD_WEB:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token inválido para sessão web",
+                )
+            enforce_csrf(request, csrf_token)
         session_id = claims.get("sid")
         user = auth.get_current_user(token)
         sessions = compose_refresh_session_service(db)

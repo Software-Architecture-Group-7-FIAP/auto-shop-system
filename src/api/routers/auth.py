@@ -16,6 +16,7 @@ from src.config import settings
 from src.api.schemas import GatewayTokenResponse, LoginRequest, SessionResponse
 from src.domain.auth.entity import UserRole
 from src.domain.exceptions import DomainError, UnauthorizedError
+from src.infrastructure.auth.jwt import JWT_AUD_GATEWAY
 from src.infrastructure.database import get_db
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -40,7 +41,11 @@ def gateway_login(
 
     login_rate_limiter.register_success(throttle_keys)
     session = compose_refresh_session_service(db).issue(user.id or 0)
-    access_token = service.issue_access_token(user, session.session_id)
+    access_token = service.issue_access_token(
+        user,
+        session.session_id,
+        audience=JWT_AUD_GATEWAY,
+    )
     db.commit()
     return GatewayTokenResponse(
         access_token=access_token,
