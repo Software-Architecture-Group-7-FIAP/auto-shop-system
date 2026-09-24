@@ -1,0 +1,18 @@
+aws_region       = "us-east-1"
+project_name     = "auto-shop"
+environment      = "staging"
+backend_base_url = "https://staging-api.autoshop.com"
+
+# Provide via TF_VAR_jwt_secret or a secure tfvars file ignored by git.
+# jwt_secret = "replace-with-the-same-secret-used-by-the-backend"
+
+domain_name     = "gateway-staging.autoshop.com"
+route53_zone_id = "Z0123456789ABCDEFGHIJ"
+
+throttle_burst_limit = 100
+throttle_rate_limit  = 50
+waf_rate_limit       = 2000
+
+tags = {
+  Team = "platform"
+}
