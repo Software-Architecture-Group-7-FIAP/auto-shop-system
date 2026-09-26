@@ -1,23 +1,41 @@
-name: Build, security, and Kubernetes validation
+name: CI
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, develop]
 
 permissions:
   contents: read
 
 concurrency:
-  group: auto-shop-deploy-${{ github.ref }}
-  cancel-in-progress: false
-
-env:
-  IMAGE_REFERENCE: ghcr.io/${{ github.repository }}:${{ github.sha }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      image_reference: ${{ steps.tags.outputs.image_reference }}
+      image_tag: ${{ steps.tags.outputs.image_tag }}
+    steps:
+      - name: Resolve immutable image coordinates
+        id: tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          short="${GITHUB_SHA::7}"
+          tag="sha-${short}"
+          reference="ghcr.io/${GITHUB_REPOSITORY}:${tag}"
+          echo "image_reference=${reference,,}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Release image tag: ${tag} (commit ${GITHUB_SHA})"
+
   test-and-security:
     runs-on: ubuntu-latest
+    needs: metadata
+    env:
+      IMAGE_REFERENCE: ${{ needs.metadata.outputs.image_reference }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -38,8 +56,25 @@ jobs:
       - name: Check unsafe defaults and release image
         run: poetry run python scripts/check_unsafe_defaults.py --image-reference "$IMAGE_REFERENCE"
 
+  gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Poetry
+        run: pipx install poetry
+      - name: Install dependencies
+        run: poetry install --no-interaction --sync
+      - name: Run gateway Lambda unit tests
+        run: poetry run pytest tests/unit/gateway -q
+
   manifests:
     runs-on: ubuntu-latest
+    needs: metadata
+    env:
+      IMAGE_REFERENCE: ${{ needs.metadata.outputs.image_reference }}
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-kubectl@v4
@@ -49,7 +84,11 @@ jobs:
         run: docker compose --env-file .env.example config
       - name: Build immutable release image
         shell: bash
-        run: docker build --tag "${IMAGE_REFERENCE,,}" .
+        run: |
+          set -euo pipefail
+          image_reference="${IMAGE_REFERENCE,,}"
+          docker build --tag "${image_reference}" .
+          echo "Built ${image_reference}"
       - name: Render and validate every environment phase
         shell: bash
         run: |
@@ -75,7 +114,7 @@ jobs:
             done
           done
 
-  terraform-plan:
+  terraform-k8s:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -95,7 +134,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.16.0"
-      - name: Validate Terraform formatting and configuration
+      - name: Validate Kubernetes Terraform (fmt, validate, plan)
         run: |
           set -euo pipefail
           terraform -chdir=infra init -backend=false -input=false
@@ -186,6 +225,20 @@ jobs:
             -var=skip_cpf_external_validation=false \
             -var=ingress_host=api.example.com \
             -var=enable_local_database=false
+
+  terraform-aws:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.0"
+      - name: Validate AWS API Gateway Terraform (fmt, validate)
+        run: |
+          set -euo pipefail
+          terraform -chdir=infra/aws init -backend=false -input=false
+          terraform -chdir=infra/aws fmt -check -recursive
+          terraform -chdir=infra/aws validate
 
   cluster-smoke:
     runs-on: ubuntu-latest

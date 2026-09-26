@@ -1,0 +1,32 @@
+# Copiar para: .github/workflows/ci.yml (repositório infraestrutura / IaC)
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.0"
+      - name: Format and validate
+        run: |
+          set -euo pipefail
+          terraform init -backend=false -input=false
+          terraform fmt -check -recursive
+          terraform validate
+      - name: Plan (optional — requires cloud credentials or mocked backend)
+        if: false
+        run: terraform plan -input=false

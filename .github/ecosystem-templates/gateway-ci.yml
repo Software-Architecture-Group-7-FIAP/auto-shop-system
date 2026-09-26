@@ -1,0 +1,52 @@
+# Copiar para: .github/workflows/ci.yml (repositório gateway / Lambda)
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tags.outputs.image_tag }}
+    steps:
+      - id: tags
+        shell: bash
+        run: |
+          short="${GITHUB_SHA::7}"
+          echo "image_tag=sha-${short}" >> "$GITHUB_OUTPUT"
+
+  gateway-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: pip install pytest
+      - name: Run Lambda handler tests
+        run: pytest tests -q
+
+  gateway-terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.0"
+      - name: Validate gateway IaC
+        run: |
+          set -euo pipefail
+          terraform -chdir=infra init -backend=false -input=false
+          terraform -chdir=infra fmt -check -recursive
+          terraform -chdir=infra validate

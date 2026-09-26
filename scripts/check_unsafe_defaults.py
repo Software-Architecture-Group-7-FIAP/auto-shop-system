@@ -23,7 +23,10 @@ PRODUCTION_MANIFEST_ROOTS = (
     Path("k8s/overlays/production"),
 )
 
-IMMUTABLE_IMAGE = re.compile(r"(?:@sha256:[0-9a-f]{64}|:[0-9a-f]{7,64})$")
+IMMUTABLE_IMAGE = re.compile(
+    r"(?:@sha256:[0-9a-f]{64}|:(?:sha-)?[0-9a-f]{7,64})$",
+    re.IGNORECASE,
+)
 
 
 def production_manifest_findings(image_reference: str | None) -> list[str]:

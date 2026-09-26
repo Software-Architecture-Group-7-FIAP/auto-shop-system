@@ -1,0 +1,24 @@
+name: CD Staging
+
+# Deploy automático para staging — implementação completa na issue #90.
+# Este workflow existe para manter a estrutura acordada na #89 sem acoplar repos.
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_reference:
+        description: "Imagem imutável (ex.: ghcr.io/org/auto-shop-system:sha-a1b2c3d)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Placeholder — deploy staging (#90)
+        run: |
+          echo "CD staging será implementado na issue #90 (build/push, OIDC, smoke test)."
+          echo "Imagem informada: ${{ inputs.image_reference }}"
