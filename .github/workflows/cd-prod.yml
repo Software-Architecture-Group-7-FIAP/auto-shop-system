@@ -1,0 +1,23 @@
+name: CD Production
+
+# Deploy para produção — implementação completa na issue #90 (approval + OIDC).
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_reference:
+        description: "Imagem imutável (ex.: ghcr.io/org/auto-shop-system:sha-a1b2c3d)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Placeholder — deploy production (#90)
+        run: |
+          echo "CD produção será implementado na issue #90."
+          echo "Imagem informada: ${{ inputs.image_reference }}"
