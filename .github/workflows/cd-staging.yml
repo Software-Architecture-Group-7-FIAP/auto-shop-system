@@ -1,0 +1,60 @@
+name: CD Staging
+
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+concurrency:
+  group: cd-staging-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-push:
+    uses: ./.github/workflows/reusable-build-push.yml
+    secrets: inherit
+
+  deploy-staging:
+    needs: build-push
+    if: vars.DEPLOY_ENABLED == 'true' && vars.EKS_CLUSTER_NAME != ''
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.34.1
+
+      - name: Connect to EKS
+        run: |
+          set -euo pipefail
+          aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
+
+      - name: Deploy to staging
+        run: ./k8s/scripts/deploy.sh staging "${IMAGE_REFERENCE}"
+
+  deploy-staging-skipped:
+    needs: build-push
+    if: vars.DEPLOY_ENABLED != 'true' || vars.EKS_CLUSTER_NAME == ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy gated until staging infra (#87)
+        run: |
+          echo "Imagem publicada: ${{ needs.build-push.outputs.image_reference }}"
+          echo "Deploy staging ignorado: defina DEPLOY_ENABLED=true, EKS_CLUSTER_NAME, AWS_DEPLOY_ROLE_ARN e GitHub Environment staging."
+          echo "Ver .github/CD.md"
