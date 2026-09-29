@@ -14,6 +14,7 @@ from src.domain.service_order.entity import (
     ServiceOrderStatusTransition,
 )
 from src.domain.service_order.rules import (
+    PRIORITY_RANKING,
     STATUS_RANKING,
     ServiceOrderListItem,
     ServiceOrderListQuery,
@@ -144,6 +145,20 @@ class SqlAlchemyServiceOrderRepository:
             )
         if ordering is ServiceOrderOrdering.CREATED_AT_ASC:
             return query.order_by(
+                ServiceOrderModel.created_at.asc(),
+                ServiceOrderModel.id.asc(),
+            )
+
+        if ordering is ServiceOrderOrdering.PRIORITY:
+            priority_rank = case(
+                *(
+                    (ServiceOrderModel.priority == priority, rank)
+                    for rank, priority in enumerate(PRIORITY_RANKING)
+                ),
+                else_=len(PRIORITY_RANKING),
+            )
+            return query.order_by(
+                priority_rank.asc(),
                 ServiceOrderModel.created_at.asc(),
                 ServiceOrderModel.id.asc(),
             )
