@@ -69,3 +69,8 @@ Propague `X-Correlation-ID` usando `$context.requestId` nas integrações HTTP.
 - `infra/` continua gerenciando recursos **dentro** do cluster
 - `infra/aws/` gerencia a **borda pública** na AWS
 - O backend aceita `Authorization: Bearer` nas rotas admin apenas para JWT com `aud: "gateway"` (emitido por `/api/v1/auth/gateway-login`); sessões web (`aud: "web"`) continuam exigindo cookie + CSRF
+
+## GitHub Actions OIDC (#90)
+
+Com `enable_github_oidc=true`, o arquivo `github_oidc.tf` cria provider OIDC do GitHub e roles `staging` / `production` restritas por environment.  
+Outputs → secrets `AWS_DEPLOY_ROLE_ARN` no GitHub. Detalhes: [`.github/CD.md`](../../.github/CD.md).

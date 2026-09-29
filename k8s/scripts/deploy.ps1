@@ -57,6 +57,9 @@ function Test-ReleaseImage {
     if ($Reference -match "@sha256:[0-9a-f]{64}$") {
         return $true
     }
+    if ($Reference -match ":sha-[0-9a-f]{7,40}$") {
+        return $true
+    }
     return $Reference -match ":[0-9a-f]{7,64}$"
 }
 
