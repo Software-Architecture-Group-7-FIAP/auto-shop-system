@@ -143,9 +143,17 @@ terraform -chdir=infra plan `
   -var "enable_local_database=true"
 ```
 
-Após um apply bem-sucedido, o segundo plano deve retornar `No changes`. Em Kind,
-os campos de métricas do HPA podem aparecer como `unknown` se o Metrics Server
-não estiver instalado; o recurso ainda estará criado com as metas configuradas.
+Após um apply bem-sucedido, o segundo plano deve retornar `No changes`. O
+Terraform usa `replicas = 2` apenas na criação do Deployment e ignora alterações
+posteriores desse campo, que pertence ao HPA. Em Kind, instale o Metrics Server
+antes de validar a escala e confirme que `kubectl top pods --namespace $namespace`
+retorna CPU e memória. Valores `unknown` no HPA indicam que a escala automática
+não foi validada; investigue a Metrics API antes de considerar o deploy concluído.
+
+Os alvos atuais de 70% de CPU e 80% de memória são valores de configuração,
+não resultados de calibração. Ajustar esses percentuais, requests, limits ou
+limites de réplicas exige um perfil de carga de homologação com medições de CPU,
+memória, latência e taxa de erros.
 
 ## Recursos existentes
 

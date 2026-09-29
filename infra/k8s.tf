@@ -262,6 +262,10 @@ resource "kubernetes_deployment_v1" "backend" {
     }
   }
 
+  lifecycle {
+    ignore_changes = [spec[0].replicas]
+  }
+
   depends_on = [kubernetes_job_v1.migration]
 }
 
