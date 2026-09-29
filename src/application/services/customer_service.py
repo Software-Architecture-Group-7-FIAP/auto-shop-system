@@ -4,6 +4,7 @@ from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.customer.entity import Customer
 from src.domain.customer.repository import CustomerRepository
 from src.domain.customer.value_objects import Document
+from src.domain.enums import CustomerStatus
 from src.domain.exceptions import ConflictError, NotFoundError, ValidationError
 
 
@@ -85,6 +86,13 @@ class CustomerService:
     ) -> Customer:
         customer = self.get_by_id(customer_id)
         customer.update_contact(name=name, email=email, phone=phone, address=address)
+        updated = self.customers.save(customer)
+        self.uow.commit()
+        return updated
+
+    def change_status(self, customer_id: int, status: CustomerStatus) -> Customer:
+        customer = self.get_by_id(customer_id)
+        customer.change_status(status)
         updated = self.customers.save(customer)
         self.uow.commit()
         return updated

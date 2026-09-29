@@ -30,6 +30,7 @@ from src.domain.enums import (
     Priority,
     PurchaseRequestStatus,
     ReservationStatus,
+    CustomerStatus,
     ServiceOrderStatus,
     StockWithdrawalStatus,
 )
@@ -93,6 +94,12 @@ class CustomerModel(Base):
     email: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str] = mapped_column(String(20), nullable=True)
     address: Mapped[str] = mapped_column(String(500))
+    status: Mapped[CustomerStatus] = mapped_column(
+        db_enum(CustomerStatus),
+        default=CustomerStatus.ACTIVE,
+        server_default=CustomerStatus.ACTIVE.value,
+        nullable=False,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
