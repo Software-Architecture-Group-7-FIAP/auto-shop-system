@@ -1,6 +1,11 @@
 from enum import StrEnum
 
 
+class CustomerStatus(StrEnum):
+    ACTIVE = "Ativo"
+    INACTIVE = "Inativo"
+
+
 class ServiceOrderStatus(StrEnum):
     RECEBIDA = "Recebida"
     EM_DIAGNOSTICO = "Em diagnóstico"

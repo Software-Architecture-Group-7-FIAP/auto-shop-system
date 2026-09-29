@@ -64,6 +64,16 @@ release recebe um Job de migration próprio; Jobs ativos nunca são removidos po
 um deploy posterior. Falhas preservam o código de saída e nunca imprimem a
 connection string.
 
+O HPA controla `spec.replicas` da API, com mínimo de duas réplicas. Os manifests
+Kustomize não fixam mais esse campo; o Metrics Server deve disponibilizar CPU e
+memória pela Metrics API. Antes de aplicar essa mudança em um Deployment já
+gerenciado por `kubectl apply`, remova `spec.replicas` da configuração salva pelo
+comando `kubectl apply edit-last-applied deployment/auto-shop-backend --namespace auto-shop`.
+Assim, a primeira aplicação do novo manifesto não reduz temporariamente a
+contagem atual. Em uma instalação nova, o Deployment inicia com o padrão do
+Kubernetes e o HPA o eleva ao mínimo configurado; confirme duas réplicas prontas
+antes de liberar tráfego.
+
 Produção e staging usam HTTPS, HSTS e redirect de HTTP para HTTPS. O Secret TLS
 deve ser emitido por cert-manager ou provisionado por um processo externo; o
 script não cria certificados automaticamente.

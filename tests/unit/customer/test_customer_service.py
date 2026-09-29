@@ -7,6 +7,7 @@ from src.application.ports.cpf_validator import CpfValidationResult
 from src.application.services.customer_service import CustomerService
 from src.domain.customer.entity import Customer
 from src.domain.customer.value_objects import Document
+from src.domain.enums import CustomerStatus
 from src.domain.exceptions import ConflictError, NotFoundError, ValidationError
 
 
@@ -200,6 +201,40 @@ def test_customer_service_raises_when_customer_is_missing():
 
     with pytest.raises(NotFoundError):
         service.get_by_id(1)
+
+
+def test_customer_service_changes_and_persists_customer_status():
+    customers = InMemoryCustomerRepository()
+    uow = FakeUnitOfWork()
+    service = CustomerService(customers, uow, cpf_validator=FakeCpfValidator())
+    created = service.create(**_pf_payload())
+
+    updated = service.change_status(created.id, CustomerStatus.INACTIVE)
+
+    assert updated.status is CustomerStatus.INACTIVE
+    assert customers.get_by_id(created.id).status is CustomerStatus.INACTIVE
+    assert uow.commits == 2
+
+
+def test_customer_service_reactivates_inactive_customer():
+    customers = InMemoryCustomerRepository()
+    service = CustomerService(customers, FakeUnitOfWork(), cpf_validator=FakeCpfValidator())
+    created = service.create(**_pf_payload())
+    service.change_status(created.id, CustomerStatus.INACTIVE)
+
+    updated = service.change_status(created.id, CustomerStatus.ACTIVE)
+
+    assert updated.status is CustomerStatus.ACTIVE
+
+
+def test_customer_service_does_not_commit_when_customer_is_missing():
+    uow = FakeUnitOfWork()
+    service = CustomerService(InMemoryCustomerRepository(), uow)
+
+    with pytest.raises(NotFoundError):
+        service.change_status(999, CustomerStatus.INACTIVE)
+
+    assert uow.commits == 0
 
 
 def test_customer_service_creates_pj_with_external_cnpj_validation():

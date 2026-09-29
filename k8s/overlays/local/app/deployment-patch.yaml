@@ -1,7 +1,0 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: auto-shop-backend
-  namespace: auto-shop
-spec:
-  replicas: 1

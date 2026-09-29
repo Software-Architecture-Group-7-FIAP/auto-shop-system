@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from src.domain.customer.value_objects import Document
+from src.domain.enums import CustomerStatus
 from src.domain.exceptions import ValidationError
 
 
@@ -13,6 +14,7 @@ class Customer:
     address: str
     phone: str | None = None
     created_at: datetime | None = None
+    status: CustomerStatus = CustomerStatus.ACTIVE
     _documents: list[Document] = field(default_factory=list)
 
     @property
@@ -72,6 +74,11 @@ class Customer:
         if address is not None:
             self._validate_address(address)
             self.address = address.strip()
+
+    def change_status(self, status: CustomerStatus) -> None:
+        if not isinstance(status, CustomerStatus):
+            raise ValidationError("Status de cliente inválido")
+        self.status = status
 
     @staticmethod
     def _validate_address(address: str) -> None:

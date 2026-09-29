@@ -1,12 +1,13 @@
 import pytest
 
-from src.domain.enums import ServiceOrderStatus
+from src.domain.enums import Priority, ServiceOrderStatus
 from src.domain.exceptions import ValidationError
 from src.domain.pagination import Page
 from src.domain.service_order.rules import (
     CLOSED_STATUSES,
     MAX_PAGE_SIZE,
     OPERATIONAL_STATUSES,
+    PRIORITY_RANKING,
     STATUS_RANKING,
     ServiceOrderOrdering,
     ServiceOrderListQuery,
@@ -34,7 +35,16 @@ def test_default_query_only_exposes_operational_statuses():
 
 
 def test_default_query_orders_by_status_priority():
-    assert ServiceOrderListQuery().order_by is ServiceOrderOrdering.STATUS_PRIORITY
+    assert ServiceOrderListQuery().order_by is ServiceOrderOrdering.PRIORITY
+
+
+def test_priority_ranking_matches_operational_urgency():
+    assert PRIORITY_RANKING == (
+        Priority.URGENT,
+        Priority.HIGH,
+        Priority.NORMAL,
+        Priority.LOW,
+    )
 
 
 def test_include_closed_query_exposes_every_status():
