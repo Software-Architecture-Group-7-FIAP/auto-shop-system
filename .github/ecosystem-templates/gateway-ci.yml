@@ -1,4 +1,6 @@
 # Copiar para: .github/workflows/ci.yml (repositório gateway / Lambda)
+# A raiz do repositório precisa de requirements.txt com pytest e PyJWT.
+# Partida: gateway-requirements.txt neste diretório.
 name: CI
 
 on:
@@ -32,8 +34,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install test dependencies
-        run: pip install pytest
+      - name: Install project dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          if [[ ! -f requirements.txt ]]; then
+            echo "requirements.txt is required. Include pytest and PyJWT; handler tests import jwt."
+            exit 1
+          fi
+          pip install -r requirements.txt
       - name: Run Lambda handler tests
         run: pytest tests -q
 

@@ -6,8 +6,8 @@ Modelos para repositórios **independentes** (sem checkout cross-repo). Copie o 
 |-------------|----------|-----------------|
 | Backend (`auto-shop-system`) | Implementado em [../workflows/ci.yml](../workflows/ci.yml) | testes, gateway, manifests, Terraform K8s/AWS, smoke |
 | Frontend | [frontend-ci.yml](./frontend-ci.yml) | lint, build, testes unitários |
-| Infraestrutura / IaC | [infra-ci.yml](./infra-ci.yml) | `terraform fmt`, `validate`, `plan` (sem app) |
-| Gateway / integração | [gateway-ci.yml](./gateway-ci.yml) | testes Lambda, `terraform fmt/validate` em IaC do gateway |
+| Infraestrutura / IaC | [infra-ci.yml](./infra-ci.yml) | `terraform fmt`, `validate` e `plan` com secrets `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY` |
+| Gateway / integração | [gateway-ci.yml](./gateway-ci.yml) | testes Lambda via `requirements.txt` ([partida](./gateway-requirements.txt): `pytest` e `PyJWT`), `terraform fmt/validate` |
 
 ## Tag de artefato (Cenário 5)
 
