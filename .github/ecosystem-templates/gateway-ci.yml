@@ -1,0 +1,61 @@
+# Copiar para: .github/workflows/ci.yml (repositório gateway / Lambda)
+# A raiz do repositório precisa de requirements.txt com pytest e PyJWT.
+# Partida: gateway-requirements.txt neste diretório.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tags.outputs.image_tag }}
+    steps:
+      - id: tags
+        shell: bash
+        run: |
+          short="${GITHUB_SHA::7}"
+          echo "image_tag=sha-${short}" >> "$GITHUB_OUTPUT"
+
+  gateway-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install project dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          if [[ ! -f requirements.txt ]]; then
+            echo "requirements.txt is required. Include pytest and PyJWT; handler tests import jwt."
+            exit 1
+          fi
+          pip install -r requirements.txt
+      - name: Run Lambda handler tests
+        run: pytest tests -q
+
+  gateway-terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.0"
+      - name: Validate gateway IaC
+        run: |
+          set -euo pipefail
+          terraform -chdir=infra init -backend=false -input=false
+          terraform -chdir=infra fmt -check -recursive
+          terraform -chdir=infra validate

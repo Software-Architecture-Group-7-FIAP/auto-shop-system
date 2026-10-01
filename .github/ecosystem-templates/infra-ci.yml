@@ -1,0 +1,53 @@
+# Copiar para: .github/workflows/ci.yml (repositório infraestrutura / IaC)
+# O plan exige os secrets AWS_ACCESS_KEY_ID e AWS_SECRET_ACCESS_KEY.
+# Variáveis sem segredo podem ficar em terraform.tfvars.example.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    env:
+      TF_IN_AUTOMATION: "true"
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.0"
+      - name: Format and validate
+        run: |
+          set -euo pipefail
+          terraform init -backend=false -input=false
+          terraform fmt -check -recursive
+          terraform validate
+      - name: Plan
+        run: |
+          set -euo pipefail
+          if [[ -z "${AWS_ACCESS_KEY_ID}" || -z "${AWS_SECRET_ACCESS_KEY}" ]]; then
+            echo "terraform plan requires repository secrets AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY."
+            exit 1
+          fi
+          if [[ -z "${AWS_SESSION_TOKEN}" ]]; then
+            unset AWS_SESSION_TOKEN
+          fi
+          export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
+          plan_args=(-input=false -lock=false)
+          if [[ -f terraform.tfvars.example ]]; then
+            plan_args+=(-var-file=terraform.tfvars.example)
+          fi
+          terraform plan "${plan_args[@]}"
