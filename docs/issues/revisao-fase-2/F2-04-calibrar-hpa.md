@@ -32,7 +32,7 @@
   - **Quando** ambos forem renderizados/planejados
   - **Então** métricas, limites e comportamento de escala devem ser equivalentes
 
-- [ ] **Cenário 3: HPA recebe métricas utilizáveis**
+- [x] **Cenário 3: HPA recebe métricas utilizáveis**
   - **Dado que** o cluster de validação está pronto
   - **Quando** a aplicação estiver sob carga controlada
   - **Então** CPU/memória devem estar disponíveis pela Metrics API e o HPA não deve permanecer em `unknown` por falta do provedor
@@ -42,7 +42,7 @@
   - **Quando** manifests ou Terraform forem reaplicados
   - **Então** uma contagem declarativa fixa não deve sobrescrever a escala calculada pelo autoscaler
 
-- [ ] **Cenário 5: A política escala para cima e para baixo**
+- [x] **Cenário 5: A política escala para cima e para baixo**
   - **Dado que** a carga controlada ultrapassa e depois fica abaixo das metas por tempo suficiente
   - **Quando** o HPA reconciliar as métricas
   - **Então** a quantidade de réplicas deve subir e descer respeitando limites e janelas de estabilização documentados
@@ -69,9 +69,11 @@
 
 ### 💻 Notas Técnicas
 
-- Os manifests e `infra/k8s.tf` atualmente usam CPU 70% e memória 80%; os valores não vêm acompanhados de medição de carga documentada.
-- `k8s/base/app/deployment.yaml`, o overlay local e Terraform declaram contagens de réplicas enquanto o HPA controla o mesmo campo. Alinhar a propriedade para evitar drift.
-- A documentação atual admite métricas `unknown` sem Metrics Server; a validação não deve tratar essa condição como sucesso.
+- Esta entrega valida a disponibilidade de CPU/memória pela Metrics API e a escala para cima e para baixo no Kind (cenários 3 e 5).
+- O cenário 1 permanece aberto: CPU 70% e memória 80% continuam valores sem calibração por perfil representativo de carga. Medir CPU, memória, latência e erros em homologação e documentar os resultados antes de encerrar a issue #78.
+- Kubernetes e Terraform iniciam Deployments novos com uma réplica; o HPA é dono da contagem após a criação e reconcilia para o mínimo de duas.
+- A validação não deve tratar métricas `unknown` por falta do Metrics Server como sucesso.
 - Manter a política Kubernetes e Terraform coerente; adicionar teste/validação no pipeline de cluster já existente.
 - Não escolher percentuais novos por estimativa. A issue só pode ser concluída com medições e metas aprovadas/documentadas.
 - A validação funcional no Kind pode reduzir temporariamente o alvo de CPU para provar que o controlador escala; esse teste não calibra os alvos de produção.
+- A issue #78 deve permanecer aberta até a execução e documentação do perfil de carga do cenário 1.
