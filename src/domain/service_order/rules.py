@@ -34,11 +34,19 @@ STATUS_RANKING: tuple[ServiceOrderStatus, ...] = (
     ServiceOrderStatus.ENTREGUE,
 )
 
+PRIORITY_RANKING: tuple[Priority, ...] = (
+    Priority.URGENT,
+    Priority.HIGH,
+    Priority.NORMAL,
+    Priority.LOW,
+)
+
 MAX_PAGE_SIZE = 100
 DEFAULT_PAGE_SIZE = 20
 
 
 class ServiceOrderOrdering(StrEnum):
+    PRIORITY = "priority"
     STATUS_PRIORITY = "status_priority"
     CREATED_AT_ASC = "created_at_asc"
     CREATED_AT_DESC = "created_at_desc"
@@ -50,7 +58,7 @@ class ServiceOrderListQuery:
     include_closed: bool = False
     page: int = 1
     page_size: int = DEFAULT_PAGE_SIZE
-    order_by: ServiceOrderOrdering = ServiceOrderOrdering.STATUS_PRIORITY
+    order_by: ServiceOrderOrdering = ServiceOrderOrdering.PRIORITY
 
     def __post_init__(self) -> None:
         if self.page < 1:

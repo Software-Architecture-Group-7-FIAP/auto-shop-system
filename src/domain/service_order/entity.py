@@ -4,6 +4,7 @@ from typing import ClassVar
 
 from src.domain.enums import Priority, ServiceOrderStatus
 from src.domain.exceptions import ValidationError
+from src.domain.service_order.rules import CLOSED_STATUSES
 
 
 ACTIVE_SERVICE_ORDER_STATUSES = frozenset(
@@ -374,6 +375,10 @@ class ServiceOrder:
         self.finished_at = finished_at
 
     def set_priority(self, priority: Priority) -> None:
+        if self.status in CLOSED_STATUSES:
+            raise ValidationError(
+                "Não é permitido alterar a prioridade de uma OS encerrada"
+            )
         self.priority = priority
 
     def override_status(
