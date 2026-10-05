@@ -18,7 +18,7 @@ short="${GITHUB_SHA::7}"
 IMAGE_REFERENCE="ghcr.io/${GITHUB_REPOSITORY}:sha-${short}"
 ```
 
-Deploy automático: ver issue **#90** (`cd-staging.yml`, `cd-prod.yml`).
+Deploy automático (#90): copiar padrão de [`../workflows/cd-staging.yml`](../workflows/cd-staging.yml), [`cd-prod.yml`](../workflows/cd-prod.yml) e [`reusable-build-push.yml`](../workflows/reusable-build-push.yml). Configuração: [`../CD.md`](../CD.md).
 
 ## Regras
 
