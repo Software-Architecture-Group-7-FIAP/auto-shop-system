@@ -1,5 +1,4 @@
 from contextlib import asynccontextmanager
-import logging
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -20,22 +19,13 @@ from src.api.routers import (
     services,
     vehicles,
 )
-from src.domain.exceptions import DomainError
+from src.api.correlation import CorrelationMiddleware
 from src.config import settings
+from src.domain.exceptions import DomainError
 from src.infrastructure import database
+from src.infrastructure.observability.json_logging import configure_json_logging, log_domain_error
 
-
-def _configure_app_logging() -> None:
-    app_logger = logging.getLogger("src")
-    app_logger.setLevel(logging.INFO)
-    if app_logger.handlers:
-        return
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s - %(message)s"))
-    app_logger.addHandler(handler)
-
-
-_configure_app_logging()
+configure_json_logging(settings.app_env)
 
 
 @asynccontextmanager
@@ -56,6 +46,7 @@ app.add_middleware(
     allow_credentials=settings.cors_allow_credentials,
     allow_methods=settings.cors_methods(),
     allow_headers=settings.cors_headers(),
+    expose_headers=["X-Correlation-ID", "X-Request-ID"],
 )
 
 # The bundled pages ship no inline or third-party scripts; only the inline
@@ -101,8 +92,12 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
+app.add_middleware(CorrelationMiddleware)
+
+
 @app.exception_handler(DomainError)
 async def domain_exception_handler(request: Request, exc: DomainError):
+    log_domain_error(exc)
     status_map = {
         "not_found": 404,
         "validation_error": 422,

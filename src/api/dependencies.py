@@ -9,6 +9,7 @@ from src.domain.auth.entity import UserRole
 from src.domain.exceptions import DomainError, UnauthorizedError
 from src.domain.auth.jwt_audience import JWT_AUD_GATEWAY, JWT_AUD_WEB
 from src.infrastructure.database import get_db
+from src.infrastructure.observability.json_logging import log_domain_error
 
 
 def _extract_bearer_token(authorization: str | None) -> str | None:
@@ -74,6 +75,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 
 def domain_error_handler(exc: DomainError) -> HTTPException:
+    log_domain_error(exc)
     status_map = {
         "not_found": status.HTTP_404_NOT_FOUND,
         "validation_error": status.HTTP_422_UNPROCESSABLE_ENTITY,

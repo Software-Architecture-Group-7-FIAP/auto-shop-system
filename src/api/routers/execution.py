@@ -1,9 +1,8 @@
-from uuid import uuid4
-
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from src.api.composition.execution import compose_execution_service
+from src.api.correlation import request_correlation_id
 from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.schemas import MessageResponse, ServiceOrderResponse, StockWithdrawalCreate, StockWithdrawalResponse
 from src.domain.exceptions import DomainError
@@ -21,7 +20,11 @@ def enqueue_service_order(
     current_user=Depends(get_current_user),
 ):
     try:
-        return compose_execution_service(db).enqueue(service_order_id, actor_id=current_user.id, request_id=request.headers.get("x-request-id") or str(uuid4()))
+        return compose_execution_service(db).enqueue(
+            service_order_id,
+            actor_id=current_user.id,
+            request_id=request_correlation_id(request),
+        )
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -34,7 +37,11 @@ def start_service(
     current_user=Depends(get_current_user),
 ):
     try:
-        return compose_execution_service(db).start_service(service_order_id, actor_id=current_user.id, request_id=request.headers.get("x-request-id") or str(uuid4()))
+        return compose_execution_service(db).start_service(
+            service_order_id,
+            actor_id=current_user.id,
+            request_id=request_correlation_id(request),
+        )
     except DomainError as e:
         raise domain_error_handler(e)
 
@@ -47,7 +54,11 @@ def finish_service(
     current_user=Depends(get_current_user),
 ):
     try:
-        return compose_execution_service(db).finish_service(service_order_id, actor_id=current_user.id, request_id=request.headers.get("x-request-id") or str(uuid4()))
+        return compose_execution_service(db).finish_service(
+            service_order_id,
+            actor_id=current_user.id,
+            request_id=request_correlation_id(request),
+        )
     except DomainError as e:
         raise domain_error_handler(e)
 

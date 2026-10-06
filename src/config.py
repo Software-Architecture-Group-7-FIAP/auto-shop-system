@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     frontend_public_url: str = "http://localhost:4200"
     cors_allowed_origins: str = "http://localhost:4200"
     cors_allowed_methods: str = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
-    cors_allowed_headers: str = "Authorization,Content-Type,X-CSRF-Token,X-Request-ID,Accept"
+    cors_allowed_headers: str = "Authorization,Content-Type,X-CSRF-Token,X-Request-ID,X-Correlation-ID,Accept"
     cors_allow_credentials: bool = True
     security_hsts_enabled: bool = False
     invertexto_api_token: str = ""
