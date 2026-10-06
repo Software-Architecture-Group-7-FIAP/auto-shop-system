@@ -1,9 +1,8 @@
-from uuid import uuid4
-
 from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.orm import Session
 
 from src.api.composition.billing import compose_invoice_service
+from src.api.correlation import request_correlation_id
 from src.api.dependencies import domain_error_handler, get_current_user
 from src.api.schemas import InvoiceResponse, PaymentCreate, ServiceOrderResponse
 from src.domain.exceptions import DomainError
@@ -44,9 +43,13 @@ def pay_invoice(
     current_user=Depends(get_current_user),
 ):
     try:
-        return compose_invoice_service(db).pay_invoice(invoice_id, actor_id=current_user.id, request_id=request.headers.get("x-request-id") or str(uuid4()))
+        return compose_invoice_service(db).pay_invoice(
+            invoice_id,
+            actor_id=current_user.id,
+            request_id=request_correlation_id(request),
+        )
     except DomainError as e:
-            raise domain_error_handler(e)
+        raise domain_error_handler(e)
 
 
 @router.post("/admin/invoices/{invoice_id}/payments", response_model=InvoiceResponse)
@@ -87,6 +90,10 @@ def deliver_service_order(
     current_user=Depends(get_current_user),
 ):
     try:
-        return compose_invoice_service(db).deliver(service_order_id, actor_id=current_user.id, request_id=request.headers.get("x-request-id") or str(uuid4()))
+        return compose_invoice_service(db).deliver(
+            service_order_id,
+            actor_id=current_user.id,
+            request_id=request_correlation_id(request),
+        )
     except DomainError as e:
         raise domain_error_handler(e)
