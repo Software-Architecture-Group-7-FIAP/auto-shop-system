@@ -1,4 +1,12 @@
-from src.domain.enums import BudgetStatus, ServiceOrderStatus
+from datetime import datetime, timedelta, timezone
+
+import jwt
+
+from src.config import settings
+from src.domain.enums import BudgetStatus, ReservationStatus, ServiceOrderStatus
+from src.infrastructure.auth.jwt import JWT_ALGORITHM
+from src.infrastructure.auth.tokens import approval_token_fingerprint
+from src.infrastructure.database import BudgetModel
 
 
 DECISIONS_URL = "/api/v1/public/budgets/decisions"
@@ -10,7 +18,9 @@ def _post_success(client, path: str, *, headers: dict[str, str], data: dict) -> 
     return response.json()
 
 
-def _create_sent_budget(client, auth_headers, captured_emails) -> tuple[int, str]:
+def _create_sent_budget(
+    client, auth_headers, captured_emails, *, include_product: bool = False
+) -> tuple[int, str]:
     customer = _post_success(
         client,
         "/api/v1/admin/customers",
@@ -55,6 +65,35 @@ def _create_sent_budget(client, auth_headers, captured_emails) -> tuple[int, str
         headers=auth_headers,
         data={"service_id": service["id"], "quantity": 1},
     )
+    if include_product:
+        supplier = _post_success(
+            client,
+            "/api/v1/admin/suppliers",
+            headers=auth_headers,
+            data={
+                "name": "Fornecedor Decisão",
+                "document": "04.252.011/0001-10",
+                "email": "fornecedor-decisao@test.com",
+            },
+        )
+        product = _post_success(
+            client,
+            "/api/v1/admin/products",
+            headers=auth_headers,
+            data={
+                "name": "Peça reservável",
+                "sku": "PEC-DEC-001",
+                "unit_price": 25.0,
+                "stock_quantity": 3,
+                "supplier_id": supplier["id"],
+            },
+        )
+        _post_success(
+            client,
+            f"/api/v1/admin/budgets/{budget['id']}/product-lines",
+            headers=auth_headers,
+            data={"product_id": product["id"], "quantity": 2},
+        )
     response = client.post(
         f"/api/v1/admin/budgets/{budget['id']}/send-email",
         headers=auth_headers,
@@ -65,6 +104,75 @@ def _create_sent_budget(client, auth_headers, captured_emails) -> tuple[int, str
 
 def _decide(client, token: str, decision: str):
     return client.post(DECISIONS_URL, json={"token": token, "decision": decision})
+
+
+def test_public_approval_creates_order_and_reserves_budget_products(
+    client, auth_headers, captured_emails
+):
+    _, token = _create_sent_budget(
+        client, auth_headers, captured_emails, include_product=True
+    )
+
+    approved = _decide(client, token, "approve")
+    assert approved.status_code == 200, approved.text
+    service_order_id = approved.json()["service_order_id"]
+    assert service_order_id is not None
+
+    products = client.get("/api/v1/admin/products", headers=auth_headers)
+    assert products.status_code == 200
+    product = next(item for item in products.json() if item["sku"] == "PEC-DEC-001")
+
+    reservations = client.get("/api/v1/admin/reservations", headers=auth_headers)
+    assert reservations.status_code == 200
+    assert len(reservations.json()) == 1
+    reservation = reservations.json()[0]
+    assert reservation["service_order_id"] == service_order_id
+    assert reservation["product_id"] == product["id"]
+    assert reservation["quantity"] == 2
+    assert reservation["status"] == ReservationStatus.ACTIVE.value
+
+    service_order = client.get(
+        f"/api/v1/admin/service-orders/{service_order_id}", headers=auth_headers
+    )
+    assert service_order.status_code == 200
+    assert (
+        service_order.json()["status"]
+        == ServiceOrderStatus.AGUARDANDO_INICIO.value
+    )
+
+
+def test_public_decision_rejects_expired_token_without_effects(
+    client, auth_headers, captured_emails, db_session
+):
+    budget_id, _ = _create_sent_budget(client, auth_headers, captured_emails)
+    expired_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    token = jwt.encode(
+        {
+            "budget_id": budget_id,
+            "type": "budget_approval",
+            "exp": expired_at,
+        },
+        settings.budget_approval_secret(),
+        algorithm=JWT_ALGORITHM,
+    )
+    budget = db_session.get(BudgetModel, budget_id)
+    assert budget is not None
+    budget.approval_token_hash = approval_token_fingerprint(token)
+    budget.approval_expires_at = expired_at.replace(tzinfo=None)
+    db_session.commit()
+
+    response = _decide(client, token, "approve")
+
+    assert response.status_code == 404
+    saved_budget = client.get(
+        f"/api/v1/admin/budgets/{budget_id}", headers=auth_headers
+    )
+    assert saved_budget.status_code == 200
+    assert saved_budget.json()["status"] == BudgetStatus.SENT.value
+    assert client.get(
+        "/api/v1/admin/service-orders", headers=auth_headers
+    ).json()["items"] == []
+    assert client.get("/api/v1/admin/reservations", headers=auth_headers).json() == []
 
 
 def test_public_rejection_is_persisted_idempotent_and_cannot_be_flipped(

@@ -128,7 +128,8 @@ resource "kubernetes_deployment_v1" "backend" {
   }
 
   spec {
-    replicas                  = var.replicas
+    # Mantém o estado inicial do manifesto antes da reconciliação do HPA.
+    replicas                  = 1
     revision_history_limit    = 5
     min_ready_seconds         = 5
     progress_deadline_seconds = 600
