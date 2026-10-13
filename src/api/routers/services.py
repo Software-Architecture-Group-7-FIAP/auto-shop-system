@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from src.api.composition.service_catalog import compose_service_catalog_service
-from src.api.dependencies import domain_error_handler, get_current_user
+from src.api.dependencies import get_current_user
 from src.api.schemas import (
     ServiceCreate,
     ServiceProductLineCreate,
@@ -10,7 +10,6 @@ from src.api.schemas import (
     ServiceResponse,
     ServiceUpdate,
 )
-from src.domain.exceptions import DomainError
 from src.infrastructure.database import UserModel, get_db
 
 router = APIRouter(prefix="/admin/services", tags=["Services"])
@@ -22,12 +21,9 @@ def create_service(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_service_catalog_service(db).create(
-            data.name, data.description, data.base_price, data.estimated_hours
-        )
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_service_catalog_service(db).create(
+        data.name, data.description, data.base_price, data.estimated_hours
+    )
 
 
 @router.get("", response_model=list[ServiceResponse])
@@ -44,10 +40,7 @@ def get_service(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_service_catalog_service(db).get_by_id(service_id)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_service_catalog_service(db).get_by_id(service_id)
 
 
 @router.put("/{service_id}", response_model=ServiceResponse)
@@ -57,12 +50,9 @@ def update_service(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_service_catalog_service(db).update(
-            service_id, data.name, data.description, data.base_price, data.estimated_hours
-        )
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_service_catalog_service(db).update(
+        service_id, data.name, data.description, data.base_price, data.estimated_hours
+    )
 
 
 @router.delete("/{service_id}", status_code=204)
@@ -71,10 +61,7 @@ def delete_service(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        compose_service_catalog_service(db).delete(service_id)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    compose_service_catalog_service(db).delete(service_id)
 
 
 @router.post(
@@ -88,14 +75,11 @@ def add_product_line(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_service_catalog_service(db).add_product_line(
-            service_id,
-            data.product_id,
-            data.quantity,
-        )
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_service_catalog_service(db).add_product_line(
+        service_id,
+        data.product_id,
+        data.quantity,
+    )
 
 
 @router.delete("/{service_id}/product-lines/{line_id}", status_code=204)
@@ -105,7 +89,4 @@ def remove_product_line(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        compose_service_catalog_service(db).remove_product_line(service_id, line_id)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    compose_service_catalog_service(db).remove_product_line(service_id, line_id)

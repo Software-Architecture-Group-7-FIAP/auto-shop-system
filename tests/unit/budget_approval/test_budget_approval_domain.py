@@ -106,6 +106,36 @@ def test_budget_reject_changes_status():
     assert budget.status == BudgetStatus.REJECTED
 
 
+@pytest.mark.parametrize(
+    ("source_status", "decision", "expected_status"),
+    [
+        (BudgetStatus.DRAFT, "approve", None),
+        (BudgetStatus.DRAFT, "reject", None),
+        (BudgetStatus.SENT, "approve", BudgetStatus.APPROVED),
+        (BudgetStatus.SENT, "reject", BudgetStatus.REJECTED),
+        (BudgetStatus.APPROVED, "approve", None),
+        (BudgetStatus.APPROVED, "reject", None),
+        (BudgetStatus.REJECTED, "approve", None),
+        (BudgetStatus.REJECTED, "reject", None),
+        (BudgetStatus.SUPERSEDED, "approve", None),
+        (BudgetStatus.SUPERSEDED, "reject", None),
+    ],
+)
+def test_budget_decision_transition_matrix(source_status, decision, expected_status):
+    budget = _sent_budget(status=source_status)
+    apply_decision = budget.approve if decision == "approve" else budget.reject
+
+    if expected_status is None:
+        with pytest.raises(ValidationError):
+            apply_decision(datetime(2025, 1, 1))
+        return
+
+    apply_decision(datetime(2025, 1, 1))
+
+    assert budget.status == expected_status
+    assert budget.approval_used_at == datetime(2025, 1, 1)
+
+
 def test_budget_approval_token_is_single_use():
     budget = _sent_budget()
 
