@@ -2,6 +2,7 @@ import pytest
 
 from src.domain.customer.entity import Customer
 from src.domain.customer.value_objects import Document
+from src.domain.enums import CustomerStatus
 from src.domain.exceptions import ValidationError
 
 
@@ -32,6 +33,22 @@ def test_customer_create_normalizes_document():
     assert customer.email == "maria@test.com"
     assert customer.phone == "11999999999"
     assert customer.address == "Rua A, 100"
+    assert customer.status is CustomerStatus.ACTIVE
+
+
+def test_customer_status_can_be_changed_and_reactivated():
+    customer = Customer.create(
+        name="Maria Silva",
+        document="529.982.247-25",
+        email="maria@test.com",
+        address="Rua A, 100",
+    )
+
+    customer.change_status(CustomerStatus.INACTIVE)
+    assert customer.status is CustomerStatus.INACTIVE
+
+    customer.change_status(CustomerStatus.ACTIVE)
+    assert customer.status is CustomerStatus.ACTIVE
 
 
 def test_customer_create_pj_with_cnpj():

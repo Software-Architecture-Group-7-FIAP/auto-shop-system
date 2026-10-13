@@ -6,6 +6,7 @@ from pydantic import BaseModel, EmailStr, Field, StrictInt, model_validator
 
 from src.domain.enums import (
     BudgetStatus,
+    CustomerStatus,
     InvoiceStatus,
     PaymentMethod,
     Priority,
@@ -60,6 +61,10 @@ class CustomerDocumentAdd(BaseModel):
     document: str
 
 
+class CustomerStatusRequest(BaseModel):
+    status: CustomerStatus
+
+
 class CustomerResponse(BaseModel):
     id: int
     name: str
@@ -68,6 +73,7 @@ class CustomerResponse(BaseModel):
     phone: str | None
     address: str
     created_at: datetime
+    status: CustomerStatus
 
 
 class CustomerPublicResponse(BaseModel):

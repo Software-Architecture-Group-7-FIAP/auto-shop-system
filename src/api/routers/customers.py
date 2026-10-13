@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from src.api.composition.customers import compose_customer_service
 from src.api.composition.vehicles import compose_vehicle_service
-from src.api.dependencies import get_current_user
+from src.api.dependencies import get_current_user, require_admin
 from src.api.mappers.customers import customer_to_response
 from src.api.mappers.vehicles import vehicle_to_response
 from src.api.schemas import (
@@ -13,6 +13,7 @@ from src.api.schemas import (
     CustomerDocumentLookupRequest,
     CustomerDocumentAdd,
     CustomerResponse,
+    CustomerStatusRequest,
     CustomerUpdate,
     DocumentValidationRequest,
     VehicleResponse,
@@ -104,6 +105,17 @@ def get_customer(
     _: User = Depends(get_current_user),
 ):
     customer = compose_customer_service(db).get_by_id(customer_id)
+    return customer_to_response(customer)
+
+
+@router.patch("/{customer_id}/status", response_model=CustomerResponse)
+def change_customer_status(
+    customer_id: int,
+    data: CustomerStatusRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    customer = compose_customer_service(db).change_status(customer_id, data.status)
     return customer_to_response(customer)
 
 
