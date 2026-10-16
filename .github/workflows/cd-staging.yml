@@ -20,13 +20,11 @@ jobs:
 
   deploy-staging:
     needs: build-push
-    if: vars.DEPLOY_ENABLED == 'true' && vars.EKS_CLUSTER_NAME != ''
+    if: vars.DEPLOY_STAGING_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment: staging
     env:
       IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
-      AWS_REGION: ${{ vars.AWS_REGION }}
-      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,8 +39,15 @@ jobs:
           version: v1.34.1
 
       - name: Connect to EKS
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
         run: |
           set -euo pipefail
+          if [[ -z "${EKS_CLUSTER_NAME}" || -z "${AWS_REGION}" ]]; then
+            echo "Environment staging requires EKS_CLUSTER_NAME and AWS_REGION."
+            exit 1
+          fi
           aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
 
       - name: Deploy to staging
@@ -50,11 +55,14 @@ jobs:
 
   deploy-staging-skipped:
     needs: build-push
-    if: vars.DEPLOY_ENABLED != 'true' || vars.EKS_CLUSTER_NAME == ''
+    if: vars.DEPLOY_STAGING_ENABLED != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Deploy gated until staging infra (#87)
+        env:
+          IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
         run: |
-          echo "Imagem publicada: ${{ needs.build-push.outputs.image_reference }}"
-          echo "Deploy staging ignorado: defina DEPLOY_ENABLED=true, EKS_CLUSTER_NAME, AWS_DEPLOY_ROLE_ARN e GitHub Environment staging."
+          echo "Imagem publicada: ${IMAGE_REFERENCE}"
+          echo "Deploy staging ignorado: defina a variável de repositório DEPLOY_STAGING_ENABLED=true."
+          echo "No Environment staging: EKS_CLUSTER_NAME, AWS_REGION e o secret AWS_DEPLOY_ROLE_ARN."
           echo "Ver .github/CD.md"

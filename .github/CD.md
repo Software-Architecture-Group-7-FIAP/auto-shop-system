@@ -27,28 +27,37 @@ Autenticação no GHCR: `GITHUB_TOKEN` com `packages: write` (sem access key AWS
 
 Deploy usa [`k8s/scripts/deploy.sh`](../k8s/scripts/deploy.sh) (foundation → migration → app → ingress + smoke).
 
-**Enquanto o staging (#87) não estiver pronto**, o job de deploy fica **desligado** por padrão (`DEPLOY_ENABLED` ≠ `true`).  
-O job `deploy-*-skipped` ainda publica a imagem e imprime instruções.
+**Enquanto o staging (#87) não estiver pronto**, o deploy fica **desligado**. O gate é variável de **repositório**, porque o `if` do job roda antes de entrar no Environment. O job `deploy-*-skipped` ainda publica a imagem e imprime instruções.
 
 ### Habilitar deploy
 
 1. Criar **GitHub Environments** `staging` e `production`.
-2. Em **production**, marcar **Required reviewers** (≥ 1).
-3. Definir **Variables** (por environment ou repositório):
+2. Em **Deployment branches and tags**:
+   - `staging`: apenas `develop`
+   - `production`: apenas `main`
+3. Em **production**, marcar **Required reviewers** (≥ 1).
+4. Variáveis de **repositório** (ligam o job; não coloque o gate no Environment):
 
 | Variable | Exemplo | Uso |
 |----------|---------|-----|
-| `DEPLOY_ENABLED` | `true` | Liga jobs de deploy |
+| `DEPLOY_STAGING_ENABLED` | `true` | Liga o deploy no push de `develop` |
+| `DEPLOY_PRODUCTION_ENABLED` | `true` | Liga o deploy no push de `main` |
+
+5. Variáveis de **Environment** (lidas depois que o job entra nele):
+
+| Variable | Exemplo | Uso |
+|----------|---------|-----|
 | `AWS_REGION` | `us-east-1` | Região EKS |
 | `EKS_CLUSTER_NAME` | `auto-shop-staging` | Cluster alvo |
 
-4. Definir **Secret** por environment:
+6. **Secret** por environment:
 
 | Secret | Descrição |
 |--------|-----------|
 | `AWS_DEPLOY_ROLE_ARN` | Role IAM assumida via OIDC (`id-token: write`) |
 
-5. Garantir no cluster: Secret `auto-shop-secrets`, TLS e RBAC para a role (issue **#82** / **#87**).
+7. No GHCR, deixar o pacote **público** antes de ligar o deploy. A imagem nasce privada e os manifests não têm `imagePullSecrets`; sem visibilidade pública o kubelet fica em `ImagePullBackOff`.
+8. Garantir no cluster: Secret `auto-shop-secrets`, TLS e RBAC para a role (issue **#82** / **#87**).
 
 ### Produção
 
@@ -68,13 +77,15 @@ terraform -chdir=infra/aws apply \
 
 Outputs: `github_deploy_role_arn_staging`, `github_deploy_role_arn_production` → copiar para secrets do GitHub.
 
-A role criada inclui `eks:DescribeCluster`; **acesso de API ao EKS** (access entry / `aws-auth`) deve ser provisionado pelo repo de infra (**#72**, **#82**).
+A trust policy restringe o subject a `repo:<org>/<repo>:environment:staging` ou `production`. Esse token não inclui a branch. A limitação de branch fica na regra de deployment do Environment (`develop` em staging, `main` em production). A role inclui `eks:DescribeCluster`; **acesso de API ao EKS** (access entry / `aws-auth`) deve ser provisionado pelo repo de infra (**#72**, **#82**).
 
 ## Cenário 6 — checklist GitHub Settings
 
-- [ ] Environment `staging` com vars/secrets acima
-- [ ] Environment `production` com approval + vars/secrets
-- [ ] Pacote GHCR visível para o org (Settings → Actions → General → Workflow permissions: read/write)
+- [ ] Environment `staging`: deployment branch só `develop`, vars `EKS_CLUSTER_NAME` e `AWS_REGION`, secret `AWS_DEPLOY_ROLE_ARN`
+- [ ] Environment `production`: deployment branch só `main`, required reviewers, vars e secret equivalentes
+- [ ] Variáveis de repositório `DEPLOY_STAGING_ENABLED` e `DEPLOY_PRODUCTION_ENABLED` (o `if` do workflow não lê variável de Environment)
+- [ ] Pacote GHCR **público** antes de ligar o deploy
+- [ ] Workflow permissions: read and write (Settings → Actions → General), para o `GITHUB_TOKEN` publicar no GHCR
 
 ## Referências
 

@@ -20,13 +20,11 @@ jobs:
 
   deploy-production:
     needs: build-push
-    if: vars.DEPLOY_ENABLED == 'true' && vars.EKS_CLUSTER_NAME != ''
+    if: vars.DEPLOY_PRODUCTION_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment: production
     env:
       IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
-      AWS_REGION: ${{ vars.AWS_REGION }}
-      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,8 +39,15 @@ jobs:
           version: v1.34.1
 
       - name: Connect to EKS
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
         run: |
           set -euo pipefail
+          if [[ -z "${EKS_CLUSTER_NAME}" || -z "${AWS_REGION}" ]]; then
+            echo "Environment production requires EKS_CLUSTER_NAME and AWS_REGION."
+            exit 1
+          fi
           aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
 
       - name: Deploy to production (rolling via Deployment rollout)
@@ -50,11 +55,14 @@ jobs:
 
   deploy-production-skipped:
     needs: build-push
-    if: vars.DEPLOY_ENABLED != 'true' || vars.EKS_CLUSTER_NAME == ''
+    if: vars.DEPLOY_PRODUCTION_ENABLED != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Deploy gated until production infra is ready
+        env:
+          IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
         run: |
-          echo "Imagem publicada: ${{ needs.build-push.outputs.image_reference }}"
-          echo "Deploy produção ignorado: configure GitHub Environment production (approval) + variáveis OIDC/EKS."
+          echo "Imagem publicada: ${IMAGE_REFERENCE}"
+          echo "Deploy produção ignorado: defina a variável de repositório DEPLOY_PRODUCTION_ENABLED=true."
+          echo "No Environment production: approval, EKS_CLUSTER_NAME, AWS_REGION e o secret AWS_DEPLOY_ROLE_ARN."
           echo "Ver .github/CD.md"
