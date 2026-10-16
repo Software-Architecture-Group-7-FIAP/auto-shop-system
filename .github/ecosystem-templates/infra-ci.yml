@@ -1,5 +1,7 @@
 # Copiar para: .github/workflows/ci.yml (repositório infraestrutura / IaC)
-# O plan exige os secrets AWS_ACCESS_KEY_ID e AWS_SECRET_ACCESS_KEY.
+# pull_request: somente fmt e validate, sem credencial AWS.
+# push em main/develop: terraform plan via OIDC no environment aws-plan.
+# A role de curta duração fica na variável AWS_PLAN_ROLE_ARN.
 # Variáveis sem segredo podem ficar em terraform.tfvars.example.
 name: CI
 
@@ -16,14 +18,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  terraform:
+  terraform-validate:
     runs-on: ubuntu-latest
     env:
       TF_IN_AUTOMATION: "true"
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -35,17 +33,40 @@ jobs:
           terraform init -backend=false -input=false
           terraform fmt -check -recursive
           terraform validate
-      - name: Plan
+
+  terraform-plan:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    runs-on: ubuntu-latest
+    environment: aws-plan
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_IN_AUTOMATION: "true"
+      AWS_PLAN_ROLE_ARN: ${{ vars.AWS_PLAN_ROLE_ARN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.0"
+      - name: Require plan role
         run: |
           set -euo pipefail
-          if [[ -z "${AWS_ACCESS_KEY_ID}" || -z "${AWS_SECRET_ACCESS_KEY}" ]]; then
-            echo "terraform plan requires repository secrets AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY."
+          if [[ -z "${AWS_PLAN_ROLE_ARN}" ]]; then
+            echo "terraform plan requires repository variable AWS_PLAN_ROLE_ARN."
             exit 1
           fi
-          if [[ -z "${AWS_SESSION_TOKEN}" ]]; then
-            unset AWS_SESSION_TOKEN
-          fi
-          export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_DEFAULT_REGION != '' && vars.AWS_DEFAULT_REGION || 'us-east-1' }}
+      - name: Format, validate, and plan
+        run: |
+          set -euo pipefail
+          terraform init -backend=false -input=false
+          terraform fmt -check -recursive
+          terraform validate
           plan_args=(-input=false -lock=false)
           if [[ -f terraform.tfvars.example ]]; then
             plan_args+=(-var-file=terraform.tfvars.example)
