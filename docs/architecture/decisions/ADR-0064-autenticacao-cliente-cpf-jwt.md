@@ -32,7 +32,7 @@ A Lambda não será uma nova autoridade para o schema do cliente. Ela usará um 
 - Cliente ativo recebe resposta `200` com Bearer JWT de validade de 900 segundos. `sub` identifica o cliente por ID interno; o payload contém somente `sub`, `principal_type`, `scope`, `iss`, `aud`, `iat`, `exp` e `jti`.
 - CPF inválido não gera consulta ao banco. Cliente inexistente e cliente inativo têm a mesma resposta pública, sem permitir distinguir os casos.
 - O token é assinado com RS256 usando chave assimétrica no AWS KMS. A chave pública é publicada em `GET /.well-known/jwks.json`; `kid`, emissor e audiência são configurados, não codificados no código.
-- A publicação JWKS mantém as chaves necessárias para validar tokens ainda dentro da validade durante uma rotação. Nenhum CPF, nome, e-mail, telefone, segredo ou token completo deve ser escrito em logs.
+- A implementação atual publica somente a chave KMS configurada; rotação de chave ainda não está implementada. Antes de rotacionar, o JWKS deverá publicar as chaves antiga e nova durante a janela de validade dos tokens. Nenhum CPF, nome, e-mail, telefone, segredo ou token completo deve ser escrito em logs.
 - Falha de dependência retorna erro genérico sem detalhes internos. Limitação de chamadas deve reduzir tentativas abusivas sem registrar o CPF.
 
 Os valores concretos de `iss`, `aud`, `principal_type`, `scope`, política de rate limit e códigos HTTP além do sucesso permanecem pendentes de alinhamento com o grupo. Como comportamento inicial proposto, CPF inválido retorna `422`, cliente inexistente/inativo retorna `401`, falha de banco/assinatura retorna `503` e excesso de chamadas retorna `429`, sempre com mensagens que não revelem dados do cliente.
