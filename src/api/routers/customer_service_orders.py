@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, Path, Request, Response
+from fastapi import APIRouter, Depends, Path, Request
 from sqlalchemy.orm import Session
 
 from src.api.composition.service_orders import compose_service_order_service
@@ -23,7 +23,6 @@ router = APIRouter(prefix="/customer/service-orders", tags=["Customer Service Or
 @router.get("/{service_order_id}", response_model=CustomerServiceOrderResponse)
 def get_customer_service_order(
     request: Request,
-    response: Response,
     service_order_id: int = Path(ge=1),
     db: Session = Depends(get_db),
     principal: CustomerPrincipal = Depends(get_current_customer),
@@ -42,7 +41,6 @@ def get_customer_service_order(
         )
         raise
 
-    response.headers["Cache-Control"] = "no-store"
     return CustomerServiceOrderResponse(
         id=service_order.id,
         status=service_order.status,

@@ -93,7 +93,7 @@ async def add_security_headers(request: Request, call_next):
     )
     if not request.url.path.startswith(CSP_EXEMPT_PATHS):
         response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
-    if request.url.path.startswith("/api/v1/public/"):
+    if request.url.path.startswith(("/api/v1/public/", "/api/v1/customer/")):
         response.headers.setdefault("Cache-Control", "no-store")
     if settings.security_hsts_enabled:
         response.headers.setdefault(

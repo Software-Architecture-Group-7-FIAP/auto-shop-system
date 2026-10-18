@@ -150,6 +150,8 @@ def test_customer_cannot_distinguish_foreign_service_order_from_missing_order(
     assert owner_id != requester_id
     assert foreign_response.status_code == 404
     assert missing_response.status_code == 404
+    assert foreign_response.headers["cache-control"] == "no-store"
+    assert missing_response.headers["cache-control"] == "no-store"
     assert foreign_response.json() == missing_response.json()
     assert foreign_response.json() == {
         "detail": "OS não encontrada",
