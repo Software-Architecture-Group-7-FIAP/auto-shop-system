@@ -11,6 +11,13 @@ class ServiceOrderRepository(Protocol):
     def get_by_id(self, service_order_id: int) -> ServiceOrder | None:
         ...
 
+    def get_by_id_for_customer(
+        self,
+        service_order_id: int,
+        customer_id: int,
+    ) -> ServiceOrder | None:
+        ...
+
     def get_by_budget_id(self, budget_id: int) -> ServiceOrder | None:
         ...
 

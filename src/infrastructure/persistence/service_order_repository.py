@@ -44,6 +44,21 @@ class SqlAlchemyServiceOrderRepository:
             return None
         return self._to_domain(model)
 
+    def get_by_id_for_customer(
+        self,
+        service_order_id: int,
+        customer_id: int,
+    ) -> ServiceOrder | None:
+        model = (
+            self.db.query(ServiceOrderModel)
+            .filter(
+                ServiceOrderModel.id == service_order_id,
+                ServiceOrderModel.customer_id == customer_id,
+            )
+            .first()
+        )
+        return self._to_domain(model) if model else None
+
     def get_by_budget_id(self, budget_id: int) -> ServiceOrder | None:
         model = (
             self.db.query(ServiceOrderModel)

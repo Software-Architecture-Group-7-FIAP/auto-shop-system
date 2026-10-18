@@ -1,10 +1,9 @@
-from uuid import uuid4
-
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from src.api.composition.execution import compose_execution_service
 from src.api.dependencies import get_current_user
+from src.api.request_context import request_correlation_id
 from src.api.schemas import MessageResponse, ServiceOrderResponse, StockWithdrawalCreate, StockWithdrawalResponse
 from src.infrastructure.database import UserModel, get_db
 
@@ -19,7 +18,11 @@ def enqueue_service_order(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return compose_execution_service(db).enqueue(service_order_id, actor_id=current_user.id, request_id=request.headers.get("x-request-id") or str(uuid4()))
+    return compose_execution_service(db).enqueue(
+        service_order_id,
+        actor_id=current_user.id,
+        request_id=request_correlation_id(request),
+    )
 
 
 @execution_router.patch("/{service_order_id}/start", response_model=ServiceOrderResponse)
@@ -29,7 +32,11 @@ def start_service(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return compose_execution_service(db).start_service(service_order_id, actor_id=current_user.id, request_id=request.headers.get("x-request-id") or str(uuid4()))
+    return compose_execution_service(db).start_service(
+        service_order_id,
+        actor_id=current_user.id,
+        request_id=request_correlation_id(request),
+    )
 
 
 @execution_router.patch("/{service_order_id}/finish", response_model=ServiceOrderResponse)
@@ -39,7 +46,11 @@ def finish_service(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return compose_execution_service(db).finish_service(service_order_id, actor_id=current_user.id, request_id=request.headers.get("x-request-id") or str(uuid4()))
+    return compose_execution_service(db).finish_service(
+        service_order_id,
+        actor_id=current_user.id,
+        request_id=request_correlation_id(request),
+    )
 
 
 @withdrawals_router.post("", response_model=StockWithdrawalResponse, status_code=201)

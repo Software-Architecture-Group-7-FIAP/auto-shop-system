@@ -32,6 +32,19 @@ class ServiceOrderService:
             raise NotFoundError("OS não encontrada")
         return service_order
 
+    def get_by_id_for_customer(
+        self,
+        service_order_id: int,
+        customer_id: int,
+    ) -> ServiceOrder:
+        service_order = self.service_orders.get_by_id_for_customer(
+            service_order_id,
+            customer_id,
+        )
+        if not service_order:
+            raise NotFoundError("OS não encontrada")
+        return service_order
+
     def list_all(self, status: ServiceOrderStatus | None = None) -> list[ServiceOrder]:
         return self.service_orders.list_all(status)
 

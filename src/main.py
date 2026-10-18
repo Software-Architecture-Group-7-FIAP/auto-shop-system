@@ -11,6 +11,8 @@ from src.api.routers import (
     auth,
     budgets,
     customers,
+    customer_identity,
+    customer_service_orders,
     execution,
     inventory,
     invoices,
@@ -225,6 +227,8 @@ api_prefix = "/api/v1"
 
 app.include_router(auth.router, prefix=api_prefix)
 app.include_router(auth.admin_router, prefix=api_prefix)
+app.include_router(customer_identity.router, prefix=api_prefix)
+app.include_router(customer_service_orders.router, prefix=api_prefix)
 app.include_router(customers.router, prefix=api_prefix)
 app.include_router(public_customers.router, prefix=api_prefix)
 app.include_router(vehicles.router, prefix=api_prefix)
