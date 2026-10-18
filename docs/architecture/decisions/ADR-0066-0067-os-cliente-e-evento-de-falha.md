@@ -1,6 +1,6 @@
 # ADR-0066/0067: Consulta da OS pelo cliente e evento operacional
 
-- **Status:** Proposta para revisão do grupo
+- **Status:** Aceito para homologação; integração pendente
 - **Data:** 2026-10-18
 - **Issues:** [#66](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/66) e [#67](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/67)
 
@@ -18,8 +18,13 @@ Em uma falha inesperada, a aplicação tenta primeiro desfazer a transação e d
 
 O `X-Correlation-ID` UUID tem precedência sobre o `X-Request-ID`. Valores ausentes ou fora do formato UUID são substituídos por um novo UUID antes de entrarem no log ou no evento. Os adaptadores AWS usam timeout curto e uma tentativa limitada; a aplicação não cria o event bus nem permissões IAM.
 
-## Alinhamentos pendentes
+## Decisões aprovadas para homologação
 
-- O grupo deve revisar a lista de campos da visão do cliente e confirmar o contrato HTTP uniforme de `404`.
-- A pessoa responsável pelo consumidor serverless deve confirmar EventBridge e a semântica best-effort sem outbox.
-- Event bus, permissões IAM e ambiente de homologação dependem das issues de infraestrutura. Nenhum recurso AWS foi criado ou consultado nesta implementação.
+- Foram aprovados para homologação a visão restrita da OS, o mesmo `404` para OS inexistente e alheia, e o contrato de evento best-effort sem outbox.
+- Se o EventBridge ou a permissão de publicação estiver indisponível, o alerta pode se perder; a aplicação registra identificadores técnicos, preserva a falha original e não inclui dados pessoais.
+- A rota de autenticação somente pode ser exposta depois que o API Gateway limitar tentativas. A configuração do limite é responsabilidade da infraestrutura.
+
+## Dependências de integração
+
+- Event bus, permissões IAM, Gateway com limitação configurada, banco e ambiente de homologação dependem das issues de infraestrutura e dos responsáveis por esses repositórios.
+- A issue #68 permanece aberta até executar o fluxo completo e anexar evidências sanitizadas. Nenhum recurso AWS foi criado, consultado ou implantado nesta implementação.
