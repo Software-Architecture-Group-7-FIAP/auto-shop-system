@@ -1,9 +1,9 @@
 # ADR-0064: Autenticação de cliente por CPF com JWT
 
-- **Status:** Proposto
-- **Data:** 2026-10-14
+- **Status:** Aceito para homologação; produção e implantação pendentes
+- **Data:** 2026-10-18
 - **Issue de referência:** [#64 — F3-P1-02: Autenticar cliente por CPF na Function Serverless](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/64)
-- **Escopo:** decisão e implementação da emissão de JWT para clientes e das fronteiras entre repositórios. As pendências de contrato continuam nas issues de implementação.
+- **Escopo:** decisão e implementação da emissão de JWT para clientes e das fronteiras entre repositórios. Os valores de ambiente e a integração de infraestrutura serão validados durante a homologação.
 
 ## Contexto
 
@@ -13,7 +13,7 @@ O projeto atual contém a aplicação FastAPI, seu domínio e as migrations. A i
 
 Os requisitos de entrega descritos em **13SOAT - Fase 3 - Tech Challenge.pdf** pedem repositórios separados para a Lambda, a infraestrutura Kubernetes, a infraestrutura do banco gerenciado e a aplicação principal. Este registro mantém a issue #64 como trilha de trabalho e centraliza as decisões e referências de implementação.
 
-## Decisão proposta
+## Decisão
 
 Separar os artefatos gradualmente, sem duplicar o domínio ou as migrations do cliente:
 
@@ -26,16 +26,17 @@ Separar os artefatos gradualmente, sem duplicar o domínio ou as migrations do c
 
 A Lambda não será uma nova autoridade para o schema do cliente. Ela usará um port de consulta e um adapter de persistência próprio, mantendo dependências de AWS e banco fora das regras de domínio. A aplicação principal continua responsável por validar JWT de cliente nas rotas correspondentes; a autenticação administrativa atual permanece isolada, sem fallback entre os mecanismos.
 
-## Contrato de autenticação planejado
+## Contrato de autenticação aprovado para homologação
 
 - `POST /auth/customer/token` recebe CPF. A Function valida o formato e os dígitos localmente antes de consultar o banco.
-- Cliente ativo recebe resposta `200` com Bearer JWT de validade de 900 segundos. `sub` identifica o cliente por ID interno; o payload contém somente `sub`, `principal_type`, `scope`, `iss`, `aud`, `iat`, `exp` e `jti`.
+- Cliente ativo recebe resposta `200` com Bearer JWT temporário de validade configurada em até 900 segundos. `sub` identifica o cliente por ID interno; o payload contém somente `sub`, `principal_type`, `scope`, `iss`, `aud`, `iat`, `exp` e `jti`.
 - CPF inválido não gera consulta ao banco. Cliente inexistente e cliente inativo têm a mesma resposta pública, sem permitir distinguir os casos.
-- O token é assinado com RS256 usando chave assimétrica no AWS KMS. A chave pública é publicada em `GET /.well-known/jwks.json`; `kid`, emissor e audiência são configurados, não codificados no código.
+- O código preparado para homologação assina o token com RS256 usando chave assimétrica no AWS KMS. A chave pública é publicada em `GET /.well-known/jwks.json`; `kid` e `iss` são configurados por ambiente e devem coincidir entre emissor e validador. A audiência da API é `auto-shop-api` (`aud`).
 - A implementação atual publica somente a chave KMS configurada; rotação de chave ainda não está implementada. Antes de rotacionar, o JWKS deverá publicar as chaves antiga e nova durante a janela de validade dos tokens. Nenhum CPF, nome, e-mail, telefone, segredo ou token completo deve ser escrito em logs.
-- Falha de dependência retorna erro genérico sem detalhes internos. Limitação de chamadas deve reduzir tentativas abusivas sem registrar o CPF.
+- CPF inválido retorna `422`; cliente inexistente ou inativo retorna a mesma resposta `401`; falha de banco ou assinatura retorna `503`. O API Gateway compartilhado deve limitar tentativas e responder `429` quando necessário. A rota só pode ser exposta depois que esse limite estiver configurado; a Lambda não implementa limite distribuído próprio.
+- Falhas de dependência retornam erro genérico sem detalhes internos. CPF, token completo, dados pessoais e segredos não entram em logs.
 
-Os valores concretos de `iss`, `aud`, `principal_type`, `scope`, política de rate limit e códigos HTTP além do sucesso permanecem pendentes de alinhamento com o grupo. Como comportamento inicial proposto, CPF inválido retorna `422`, cliente inexistente/inativo retorna `401`, falha de banco/assinatura retorna `503` e excesso de chamadas retorna `429`, sempre com mensagens que não revelem dados do cliente.
+Para homologação, ficam registrados `principal_type=customer`, `scope=customer`, `aud=auto-shop-api`, TTL máximo de 900 segundos e os códigos HTTP acima. O valor de `iss` é configuração do ambiente e precisa ser o mesmo no emissor e no validador. A política numérica de limitação deve ser definida pelo responsável pelo API Gateway antes da exposição pública.
 
 A inativação impede novas emissões. Tokens já emitidos continuam válidos até expirarem, por no máximo 900 segundos; revogação imediata não faz parte deste fluxo inicial.
 
@@ -47,8 +48,9 @@ Antes de qualquer etapa potencialmente cobrável, apresentar para validação a 
 
 ## Dependências e itens pendentes
 
-- Confirmação pelo grupo do contrato de JWT, em especial valores de emissor/audiência, política de autorização e comportamento HTTP.
-- Alinhamento com os responsáveis pelos repositórios de infraestrutura para integração ao API Gateway compartilhado e acesso ao banco.
+- Configurar e verificar o mesmo `iss`, `aud`, `kid` e chave pública no ambiente integrado; confirmar com os responsáveis pelo banco que a credencial da Lambda tem somente permissão de leitura.
+- Configurar o limite de tentativas no API Gateway compartilhado antes de expor a rota; o valor e a regra de bloqueio pertencem à configuração de infraestrutura.
+- Integrar Lambda, aplicação, banco e eventos em homologação. A issue #68 acompanha essa validação; nenhum recurso AWS foi criado nem implantado por esta implementação.
 - A issue #63/status de cliente é pré-requisito de domínio; #65 integra o validador FastAPI e #68 valida o fluxo integrado.
 - O CPF é identificador público e, por si só, não prova posse de identidade. O uso acadêmico inicial é CPF-only; OTP ou outra prova de posse deve ser avaliada antes de uso em produção.
 
@@ -59,7 +61,7 @@ Manter esta tabela atualizada quando houver implementação. Registrar links de 
 | Data | Issue/PR | Repositório | Marco / resultado |
 | --- | --- | --- | --- |
 | 2026-10-18 | [#1 — bootstrap](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth/issues/1), [PR #4](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth/pull/4), branch `codex/issue-1-bootstrap`, commits `f1827d3` e `a5e7bf0` | `lambda-auth` | Estrutura Python 3.12, handler API Gateway v1/v2, health check, CI de qualidade e testes offline; o segundo commit corrige o pin de checkout do CI. |
-| 2026-10-18 | [#2 — autenticação CPF/JWT](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth/issues/2), [PR #5](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth/pull/5), branch `codex/issue-2-cpf-jwt`, commits `8729fd0` e `da9cfbb` | `lambda-auth` | Validação local de CPF, busca somente cliente ativo, emissão RS256 e JWKS com KMS, credencial PostgreSQL lida do Secrets Manager. Issuer/audience e escolha KMS versus secret externo seguem pendentes de confirmação do grupo. |
+| 2026-10-18 | [#2 — autenticação CPF/JWT](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth/issues/2), [PR #5](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth/pull/5), branch `codex/issue-2-cpf-jwt`, commits `8729fd0` e `da9cfbb` | `lambda-auth` | Validação local de CPF, busca somente cliente ativo, emissão RS256 e JWKS com KMS, credencial PostgreSQL lida do Secrets Manager. Os valores de `iss` e `kid` são configuração por ambiente; a audiência da API é `auto-shop-api`. O uso do KMS no código não autoriza criar chaves ou recursos AWS. |
 | 2026-10-18 | [#3 — preparação de infraestrutura](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth/issues/3), [PR #6](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth/pull/6), branch `codex/issue-3-infra-preparation`, commits `c08012c`, `743edf4` e `2a16319` | `lambda-auth` | Terraform para Lambda/IAM/logs, validação estática no CI e timeouts/retries limitados para clientes AWS. Nenhuma chamada ou recurso AWS foi usado. Validação local: 58 testes, 95,38% de cobertura, Ruff, `terraform fmt`, `init -backend=false` e `terraform validate`. Estimativa numérica de custo aguarda região, conta e volume aprovados. |
 
 ## Critérios de validação da implementação
