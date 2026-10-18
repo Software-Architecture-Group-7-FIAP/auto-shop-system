@@ -11,6 +11,8 @@ from src.api.routers import (
     auth,
     budgets,
     customers,
+    customer_identity,
+    customer_service_orders,
     execution,
     inventory,
     invoices,
@@ -91,7 +93,7 @@ async def add_security_headers(request: Request, call_next):
     )
     if not request.url.path.startswith(CSP_EXEMPT_PATHS):
         response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
-    if request.url.path.startswith("/api/v1/public/"):
+    if request.url.path.startswith(("/api/v1/public/", "/api/v1/customer/")):
         response.headers.setdefault("Cache-Control", "no-store")
     if settings.security_hsts_enabled:
         response.headers.setdefault(
@@ -225,6 +227,8 @@ api_prefix = "/api/v1"
 
 app.include_router(auth.router, prefix=api_prefix)
 app.include_router(auth.admin_router, prefix=api_prefix)
+app.include_router(customer_identity.router, prefix=api_prefix)
+app.include_router(customer_service_orders.router, prefix=api_prefix)
 app.include_router(customers.router, prefix=api_prefix)
 app.include_router(public_customers.router, prefix=api_prefix)
 app.include_router(vehicles.router, prefix=api_prefix)

@@ -81,6 +81,37 @@ class CustomerPublicResponse(BaseModel):
     name: str
 
 
+class CustomerIdentityResponse(BaseModel):
+    customer_id: int
+
+
+class CustomerServiceOrderServiceLineResponse(BaseModel):
+    service_id: int
+    quantity: int
+    unit_price: float
+
+
+class CustomerServiceOrderProductLineResponse(BaseModel):
+    product_id: int
+    quantity: int
+    unit_price: float
+
+
+class CustomerServiceOrderResponse(BaseModel):
+    id: int
+    status: ServiceOrderStatus
+    total_price: float
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    service_lines: list[CustomerServiceOrderServiceLineResponse] = Field(
+        default_factory=list
+    )
+    product_lines: list[CustomerServiceOrderProductLineResponse] = Field(
+        default_factory=list
+    )
+
+
 class CustomerPublicLookupRequest(BaseModel):
     document: str
     email: EmailStr | None = None
