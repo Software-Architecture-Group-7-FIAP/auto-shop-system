@@ -15,7 +15,7 @@ alembic = ">=1.14.0"
 psycopg2-binary = ">=2.9.10"
 pydantic = ">=2.10.0"
 pydantic-settings = "2.14.2"
-PyJWT = { version = ">=2.14.0", extras = ["crypto"] }
+PyJWT = { version = ">=2.15.0", extras = ["crypto"] }
 bcrypt = ">=4.2.0"
 validate-docbr = ">=1.10.0"
 reportlab = ">=4.2.0"
@@ -34,6 +34,7 @@ pytest = ">=8.3.0"
 pytest-asyncio = ">=0.24.0"
 pytest-cov = ">=6.0.0"
 pip-audit = ">=2.7.0"
+urllib3 = ">=2.8.0"
 bandit = ">=1.8.0"
 
 [build-system]
