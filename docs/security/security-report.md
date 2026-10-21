@@ -12,7 +12,7 @@
 | **Bandit** | SAST — padrões inseguros em Python |
 | **pip-audit** | CVEs em dependências |
 | **`scripts/check_unsafe_defaults.py`** | Bloqueia segredos/defaults inseguros versionados |
-| **CI** | `.github/workflows/security.yml` (pytest + bandit + pip-audit + unsafe defaults) |
+| **CI** | `.github/workflows/ci.yml` (pytest + bandit + pip-audit + unsafe defaults) |
 
 ---
 

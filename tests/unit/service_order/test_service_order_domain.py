@@ -44,6 +44,25 @@ def test_service_order_sets_priority():
     assert service_order.priority == Priority.HIGH
 
 
+@pytest.mark.parametrize(
+    "status",
+    [ServiceOrderStatus.FINALIZADA, ServiceOrderStatus.ENTREGUE],
+)
+def test_service_order_rejects_priority_changes_when_closed(status):
+    service_order = ServiceOrder(
+        id=1,
+        budget_id=2,
+        customer_id=3,
+        vehicle_id=4,
+        status=status,
+    )
+
+    with pytest.raises(ValidationError, match="OS encerrada"):
+        service_order.set_priority(Priority.URGENT)
+
+    assert service_order.priority == Priority.NORMAL
+
+
 def test_service_order_assign_mechanic_trims_name():
     service_order = ServiceOrder(
         id=1,
