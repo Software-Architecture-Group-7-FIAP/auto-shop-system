@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from src.api.composition.products import compose_product_service, compose_supplier_service
-from src.api.dependencies import domain_error_handler, get_current_user
+from src.api.dependencies import get_current_user
 from src.api.schemas import (
     ProductCreate,
     ProductResponse,
@@ -12,7 +12,6 @@ from src.api.schemas import (
     SupplierResponse,
     SupplierUpdate,
 )
-from src.domain.exceptions import DomainError
 from src.infrastructure.database import UserModel, get_db
 
 products_router = APIRouter(prefix="/admin/products", tags=["Products"])
@@ -25,17 +24,14 @@ def create_product(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_product_service(db).create(
-            data.name,
-            data.sku,
-            data.unit_price,
-            data.stock_quantity,
-            data.description,
-            data.supplier_id,
-        )
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_product_service(db).create(
+        data.name,
+        data.sku,
+        data.unit_price,
+        data.stock_quantity,
+        data.description,
+        data.supplier_id,
+    )
 
 
 @products_router.get("", response_model=list[ProductResponse])
@@ -52,10 +48,7 @@ def get_product(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_product_service(db).get_by_id(product_id)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_product_service(db).get_by_id(product_id)
 
 
 @products_router.put("/{product_id}", response_model=ProductResponse)
@@ -65,12 +58,9 @@ def update_product(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_product_service(db).update(
-            product_id, data.name, data.unit_price, data.description, data.supplier_id
-        )
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_product_service(db).update(
+        product_id, data.name, data.unit_price, data.description, data.supplier_id
+    )
 
 
 @products_router.patch("/{product_id}/stock", response_model=ProductResponse)
@@ -80,10 +70,7 @@ def update_stock(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_product_service(db).update_stock(product_id, data.quantity)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_product_service(db).update_stock(product_id, data.quantity)
 
 
 @products_router.delete("/{product_id}", status_code=204)
@@ -92,10 +79,7 @@ def delete_product(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        compose_product_service(db).delete(product_id)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    compose_product_service(db).delete(product_id)
 
 
 @suppliers_router.post("", response_model=SupplierResponse, status_code=201)
@@ -104,15 +88,12 @@ def create_supplier(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_supplier_service(db).create(
-            data.name,
-            data.document,
-            data.email,
-            data.phone,
-        )
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_supplier_service(db).create(
+        data.name,
+        data.document,
+        data.email,
+        data.phone,
+    )
 
 
 @suppliers_router.get("", response_model=list[SupplierResponse])
@@ -129,10 +110,7 @@ def get_supplier(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_supplier_service(db).get_by_id(supplier_id)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_supplier_service(db).get_by_id(supplier_id)
 
 
 @suppliers_router.put("/{supplier_id}", response_model=SupplierResponse)
@@ -142,15 +120,12 @@ def update_supplier(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_supplier_service(db).update(
-            supplier_id,
-            data.name,
-            data.email,
-            data.phone,
-        )
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_supplier_service(db).update(
+        supplier_id,
+        data.name,
+        data.email,
+        data.phone,
+    )
 
 
 @suppliers_router.delete("/{supplier_id}", status_code=204)
@@ -159,7 +134,4 @@ def delete_supplier(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        compose_supplier_service(db).delete(supplier_id)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    compose_supplier_service(db).delete(supplier_id)

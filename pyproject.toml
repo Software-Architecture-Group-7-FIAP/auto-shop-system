@@ -27,6 +27,7 @@ tzdata = "^2026.2"
 msgpack = "1.2.1"
 redis = ">=5.0.0"
 anyio = ">=4.3.0"
+boto3 = ">=1.35.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.3.0"

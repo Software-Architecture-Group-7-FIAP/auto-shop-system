@@ -1,12 +1,10 @@
-from uuid import uuid4
-
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from src.api.composition.execution import compose_execution_service
-from src.api.dependencies import domain_error_handler, get_current_user
+from src.api.dependencies import get_current_user
+from src.api.request_context import request_correlation_id
 from src.api.schemas import MessageResponse, ServiceOrderResponse, StockWithdrawalCreate, StockWithdrawalResponse
-from src.domain.exceptions import DomainError
 from src.infrastructure.database import UserModel, get_db
 
 execution_router = APIRouter(prefix="/admin/service-orders", tags=["Execution"])
@@ -20,10 +18,11 @@ def enqueue_service_order(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    try:
-        return compose_execution_service(db).enqueue(service_order_id, actor_id=current_user.id, request_id=request.headers.get("x-request-id") or str(uuid4()))
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_execution_service(db).enqueue(
+        service_order_id,
+        actor_id=current_user.id,
+        request_id=request_correlation_id(request),
+    )
 
 
 @execution_router.patch("/{service_order_id}/start", response_model=ServiceOrderResponse)
@@ -33,10 +32,11 @@ def start_service(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    try:
-        return compose_execution_service(db).start_service(service_order_id, actor_id=current_user.id, request_id=request.headers.get("x-request-id") or str(uuid4()))
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_execution_service(db).start_service(
+        service_order_id,
+        actor_id=current_user.id,
+        request_id=request_correlation_id(request),
+    )
 
 
 @execution_router.patch("/{service_order_id}/finish", response_model=ServiceOrderResponse)
@@ -46,10 +46,11 @@ def finish_service(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    try:
-        return compose_execution_service(db).finish_service(service_order_id, actor_id=current_user.id, request_id=request.headers.get("x-request-id") or str(uuid4()))
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_execution_service(db).finish_service(
+        service_order_id,
+        actor_id=current_user.id,
+        request_id=request_correlation_id(request),
+    )
 
 
 @withdrawals_router.post("", response_model=StockWithdrawalResponse, status_code=201)
@@ -58,12 +59,9 @@ async def request_stock_withdrawal(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return await compose_execution_service(db).request_stock_withdrawal(
-            data.service_order_id, data.product_id, data.quantity
-        )
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return await compose_execution_service(db).request_stock_withdrawal(
+        data.service_order_id, data.product_id, data.quantity
+    )
 
 
 @withdrawals_router.get("/pending", response_model=list[StockWithdrawalResponse])
@@ -80,7 +78,4 @@ def fulfill_withdrawal(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_execution_service(db).fulfill_withdrawal(withdrawal_id)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_execution_service(db).fulfill_withdrawal(withdrawal_id)

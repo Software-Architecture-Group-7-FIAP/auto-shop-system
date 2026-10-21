@@ -9,7 +9,6 @@ metadata:
     app.kubernetes.io/component: backend
     app.kubernetes.io/part-of: auto-shop-platform
 spec:
-  replicas: 2
   revisionHistoryLimit: 5
   minReadySeconds: 5
   progressDeadlineSeconds: 600

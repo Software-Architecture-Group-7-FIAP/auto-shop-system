@@ -205,6 +205,25 @@ def test_production_rejects_http_urls():
         production_settings(app_base_url="http://api.example.com")
 
 
+def test_customer_jwks_url_requires_http_scheme_and_no_credentials():
+    for jwks_url in (
+        "file:///etc/passwd",
+        "https://user:password@auth.example.com/.well-known/jwks.json",
+    ):
+        with pytest.raises(ValidationError, match="CUSTOMER_JWT_JWKS_URL"):
+            Settings(
+                secret_key="strong-test-secret-with-at-least-32-chars",
+                app_env="development",
+                customer_jwt_jwks_url=jwks_url,
+                _env_file=None,
+            )
+
+
+def test_production_requires_https_customer_jwks_url():
+    with pytest.raises(ValidationError, match="CUSTOMER_JWT_JWKS_URL must use HTTPS"):
+        production_settings(customer_jwt_jwks_url="http://auth.example.com/.well-known/jwks.json")
+
+
 def test_production_rejects_placeholder_database_url():
     with pytest.raises(ValidationError, match="DATABASE_URL"):
         production_settings(database_url="postgresql://user:replace-with-password@db:5432/oficina")

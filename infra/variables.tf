@@ -193,17 +193,6 @@ variable "skip_cpf_external_validation" {
   }
 }
 
-variable "replicas" {
-  description = "Réplicas iniciais do Deployment; deve ser compatível com o mínimo do HPA."
-  type        = number
-  default     = 2
-
-  validation {
-    condition     = var.replicas >= 2 && var.replicas <= 10
-    error_message = "replicas deve estar entre 2 e 10 para manter a disponibilidade mínima."
-  }
-}
-
 variable "enable_local_database" {
   description = "Cria PostgreSQL, PVC e Service somente para o ambiente local."
   type        = bool

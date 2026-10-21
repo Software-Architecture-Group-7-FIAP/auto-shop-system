@@ -1,9 +1,10 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from src.domain.enums import Priority, ServiceOrderStatus, StockWithdrawalStatus
+from src.domain.enums import ServiceOrderStatus, StockWithdrawalStatus
 from src.domain.exceptions import ValidationError
 from src.domain.service_order.entity import ServiceOrder
+from src.domain.service_order.rules import PRIORITY_RANKING
 
 
 @dataclass
@@ -39,12 +40,7 @@ class StockWithdrawal:
         self.fulfilled_at = fulfilled_at
 
 
-_QUEUE_PRIORITY_RANK = {
-    Priority.URGENT: 0,
-    Priority.HIGH: 1,
-    Priority.NORMAL: 2,
-    Priority.LOW: 3,
-}
+_QUEUE_PRIORITY_RANK = {priority: rank for rank, priority in enumerate(PRIORITY_RANKING)}
 
 
 def order_execution_queue(service_orders: list[ServiceOrder]) -> list[ServiceOrder]:
