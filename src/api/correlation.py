@@ -81,12 +81,3 @@ class CorrelationMiddleware:
                 )
             correlation_id_var.reset(correlation_token)
             service_order_id_var.reset(order_token)
-
-
-def request_correlation_id(request) -> str:
-    value = getattr(request.state, "correlation_id", None)
-    if isinstance(value, str) and value:
-        return value
-    generated = str(uuid4())
-    request.state.correlation_id = generated
-    return generated

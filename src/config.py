@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     algorithm: Literal["HS256"] = "HS256"
     access_token_expire_minutes: int = 15
     access_token_secret: SecretStr | None = None
+    customer_jwt_jwks_url: str | None = None
+    customer_jwt_issuer: str | None = None
+    customer_jwt_audience: str | None = None
+    customer_jwt_clock_skew_seconds: int = Field(default=0, ge=0, le=60)
+    customer_jwt_jwks_timeout_seconds: int = Field(default=2, ge=1, le=10)
+    customer_jwt_jwks_cache_seconds: int = Field(default=300, ge=1, le=3600)
+    service_order_event_bus_name: str | None = None
     refresh_token_pepper: SecretStr | None = None
     refresh_token_expire_days: int = 7
     login_max_attempts: int = 10
@@ -92,6 +99,30 @@ class Settings(BaseSettings):
             return None
         return value
 
+    @field_validator("customer_jwt_issuer", "customer_jwt_audience", mode="before")
+    @classmethod
+    def normalize_customer_jwt_claim_settings(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+    @field_validator("customer_jwt_jwks_url", mode="before")
+    @classmethod
+    def validate_customer_jwt_jwks_url(cls, value: str | None) -> str | None:
+        if value is None or not str(value).strip():
+            return None
+        normalized = str(value).strip()
+        parsed = urlparse(normalized)
+        if (
+            parsed.scheme not in {"https", "http"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            raise ValueError("CUSTOMER_JWT_JWKS_URL must be an HTTP(S) URL without credentials")
+        return normalized
+
     @field_validator(
         "access_token_secret",
         "refresh_token_pepper",
@@ -111,6 +142,13 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_security_sensitive_settings(self) -> "Settings":
         if self.is_production_like():
+            if (
+                self.customer_jwt_jwks_url
+                and urlparse(self.customer_jwt_jwks_url).scheme != "https"
+            ):
+                raise ValueError(
+                    "CUSTOMER_JWT_JWKS_URL must use HTTPS in production-like environments"
+                )
             if not self.cors_origins() or "*" in self.cors_origins():
                 raise ValueError("Production-like CORS requires an explicit origin allowlist")
             if "*" in self.cors_methods() or "*" in self.cors_headers():

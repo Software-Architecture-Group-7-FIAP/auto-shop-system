@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from src.api.composition.execution import compose_execution_service
-from src.api.correlation import request_correlation_id
 from src.api.dependencies import domain_error_handler, get_current_user
-from src.api.schemas import MessageResponse, ServiceOrderResponse, StockWithdrawalCreate, StockWithdrawalResponse
+from src.api.request_context import request_correlation_id
 from src.domain.exceptions import DomainError
+from src.api.schemas import MessageResponse, ServiceOrderResponse, StockWithdrawalCreate, StockWithdrawalResponse
 from src.infrastructure.database import UserModel, get_db
 
 execution_router = APIRouter(prefix="/admin/service-orders", tags=["Execution"])
@@ -69,12 +69,9 @@ async def request_stock_withdrawal(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return await compose_execution_service(db).request_stock_withdrawal(
-            data.service_order_id, data.product_id, data.quantity
-        )
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return await compose_execution_service(db).request_stock_withdrawal(
+        data.service_order_id, data.product_id, data.quantity
+    )
 
 
 @withdrawals_router.get("/pending", response_model=list[StockWithdrawalResponse])
@@ -91,7 +88,4 @@ def fulfill_withdrawal(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_execution_service(db).fulfill_withdrawal(withdrawal_id)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_execution_service(db).fulfill_withdrawal(withdrawal_id)

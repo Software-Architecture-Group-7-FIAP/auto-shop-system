@@ -111,7 +111,7 @@ variable "cors_allowed_methods" {
 variable "cors_allowed_headers" {
   description = "Headers permitidos pelo CORS."
   type        = string
-  default     = "Authorization,Content-Type,X-CSRF-Token,X-Request-ID,Accept"
+  default     = "Authorization,Content-Type,X-CSRF-Token,X-Request-ID,X-Correlation-ID,Accept"
 }
 
 variable "cors_allow_credentials" {
@@ -190,17 +190,6 @@ variable "skip_cpf_external_validation" {
   validation {
     condition     = var.environment == "local" || !var.skip_cpf_external_validation
     error_message = "A validação externa de CPF não pode ser ignorada fora do ambiente local."
-  }
-}
-
-variable "replicas" {
-  description = "Réplicas iniciais do Deployment; deve ser compatível com o mínimo do HPA."
-  type        = number
-  default     = 2
-
-  validation {
-    condition     = var.replicas >= 2 && var.replicas <= 10
-    error_message = "replicas deve estar entre 2 e 10 para manter a disponibilidade mínima."
   }
 }
 

@@ -39,7 +39,7 @@ export interface BudgetProductLine { id: number; product_id: number; product_nam
 export interface ServiceOrder { id: number; budget_id: number | null; customer_id: number; vehicle_id: number; status: ServiceOrderStatus; priority: Priority; mechanic_name: string | null; total_price: number; started_at: string | null; finished_at: string | null; created_at: string; }
 export interface ServiceOrderListItem { id: number; budget_id: number | null; customer_id: number; vehicle_id: number; status: ServiceOrderStatus; priority: Priority; mechanic_name: string | null; total_price: number; started_at: string | null; finished_at: string | null; customer_name: string; vehicle_plate: string; created_at: string; updated_at: string; }
 export interface Paginated<T> { items: T[]; page: number; page_size: number; total: number; total_pages: number; }
-export interface ServiceOrderListParams { status?: string; includeClosed?: boolean; page?: number; pageSize?: number; orderBy?: 'created_at_asc' | 'created_at_desc' | 'status_priority'; }
+export interface ServiceOrderListParams { status?: string; includeClosed?: boolean; page?: number; pageSize?: number; orderBy?: 'priority' | 'created_at_asc' | 'created_at_desc' | 'status_priority'; }
 export interface ServiceOrderPublic { id: number; status: ServiceOrderStatus; started_at: string | null; finished_at: string | null; created_at: string; }
 export interface ServiceOrderUpdate { mechanic_name?: string; priority?: Priority; reason?: string; }
 export interface ServiceOrderStatusOverride { status: ServiceOrderStatus; reason: string; }

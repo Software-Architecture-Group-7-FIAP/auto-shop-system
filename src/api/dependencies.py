@@ -6,8 +6,14 @@ from src.api.composition.auth import compose_auth_service, compose_refresh_sessi
 from src.api.csrf import enforce_csrf
 from src.domain.auth.entity import User
 from src.domain.auth.entity import UserRole
+from src.domain.auth.principal import CustomerPrincipal
 from src.domain.exceptions import DomainError, UnauthorizedError
 from src.domain.auth.jwt_audience import JWT_AUD_GATEWAY, JWT_AUD_WEB
+from src.infrastructure.auth.customer_jwt import (
+    CustomerJwtConfigurationError,
+    CustomerJwtVerifier,
+    CustomerJwksUnavailableError,
+)
 from src.infrastructure.database import get_db
 from src.infrastructure.observability.json_logging import log_domain_error
 
@@ -35,34 +41,52 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Autenticação necessária",
         )
+    auth = compose_auth_service(db)
+    claims = auth.token_decoder.decode_claims(token)
+    audience = claims.get("aud")
+    if bearer_token is not None:
+        if audience != JWT_AUD_GATEWAY:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token inválido para autenticação Bearer",
+            )
+    else:
+        if audience != JWT_AUD_WEB:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token inválido para sessão web",
+            )
+        enforce_csrf(request, csrf_token)
+    session_id = claims.get("sid")
+    user = auth.get_current_user(token)
+    sessions = compose_refresh_session_service(db)
+    if not isinstance(session_id, str) or not sessions.belongs_to_user(session_id, user.id):
+        raise UnauthorizedError("Sessão inválida")
+    return user
+
+
+def get_current_customer(
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> CustomerPrincipal:
+    bearer_token = _extract_bearer_token(authorization)
+    if not bearer_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciais inv\u00e1lidas",
+        )
+
     try:
-        auth = compose_auth_service(db)
-        claims = auth.token_decoder.decode_claims(token)
-        audience = claims.get("aud")
-        if bearer_token is not None:
-            if audience != JWT_AUD_GATEWAY:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Token inválido para autenticação Bearer",
-                )
-        else:
-            if audience != JWT_AUD_WEB:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Token inválido para sessão web",
-                )
-            enforce_csrf(request, csrf_token)
-        session_id = claims.get("sid")
-        user = auth.get_current_user(token)
-        sessions = compose_refresh_session_service(db)
-        if not isinstance(session_id, str) or not sessions.belongs_to_user(session_id, user.id):
-            raise UnauthorizedError("Sessão inválida")
-        return user
+        return CustomerJwtVerifier().verify(bearer_token)
+    except (CustomerJwtConfigurationError, CustomerJwksUnavailableError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Autentica\u00e7\u00e3o temporariamente indispon\u00edvel",
+        ) from exc
     except UnauthorizedError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=exc.message,
-        )
+            detail="Credenciais inv\u00e1lidas",
+        ) from exc
 
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:

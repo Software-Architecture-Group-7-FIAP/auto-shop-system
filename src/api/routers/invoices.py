@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.orm import Session
 
 from src.api.composition.billing import compose_invoice_service
-from src.api.correlation import request_correlation_id
 from src.api.dependencies import domain_error_handler, get_current_user
-from src.api.schemas import InvoiceResponse, PaymentCreate, ServiceOrderResponse
+from src.api.request_context import request_correlation_id
 from src.domain.exceptions import DomainError
+from src.api.schemas import InvoiceResponse, PaymentCreate, ServiceOrderResponse
 from src.infrastructure.database import UserModel, get_db
 
 router = APIRouter(tags=["Invoices"])
@@ -17,10 +17,7 @@ def create_invoice(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_invoice_service(db).create_invoice(service_order_id)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_invoice_service(db).create_invoice(service_order_id)
 
 
 @router.get("/admin/service-orders/{service_order_id}/invoice", response_model=InvoiceResponse)
@@ -29,10 +26,7 @@ def get_invoice_by_service_order(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_invoice_service(db).get_by_service_order_id(service_order_id)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_invoice_service(db).get_by_service_order_id(service_order_id)
 
 
 @router.patch("/admin/invoices/{invoice_id}/pay", response_model=InvoiceResponse)
@@ -78,8 +72,6 @@ def record_payment(
         from fastapi import HTTPException
 
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except DomainError as e:
-        raise domain_error_handler(e)
 
 
 @router.patch("/admin/service-orders/{service_order_id}/deliver", response_model=ServiceOrderResponse)

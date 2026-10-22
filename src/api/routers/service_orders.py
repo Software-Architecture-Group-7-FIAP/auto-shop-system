@@ -6,8 +6,9 @@ from src.api.composition.service_orders import (
     compose_service_order_service,
 )
 from src.api.composition.execution import compose_execution_service
-from src.api.correlation import request_correlation_id
 from src.api.dependencies import domain_error_handler, get_current_user, require_admin
+from src.api.request_context import request_correlation_id
+from src.domain.exceptions import DomainError
 from src.api.rate_limit import enforce_public_rate_limit
 from src.api.mappers.service_orders import service_order_with_withdrawals_to_response
 from src.api.schemas import (
@@ -25,7 +26,6 @@ from src.api.schemas import (
     SetPriorityRequest,
 )
 from src.domain.enums import ServiceOrderStatus
-from src.domain.exceptions import DomainError
 from src.domain.service_order.rules import (
     DEFAULT_PAGE_SIZE,
     MAX_PAGE_SIZE,
@@ -45,7 +45,7 @@ def list_service_orders(
     include_closed: bool = False,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
-    order_by: ServiceOrderOrdering = ServiceOrderOrdering.STATUS_PRIORITY,
+    order_by: ServiceOrderOrdering = ServiceOrderOrdering.PRIORITY,
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
@@ -101,10 +101,7 @@ def get_service_order(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_service_order_service(db).get_by_id(service_order_id)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_service_order_service(db).get_by_id(service_order_id)
 
 
 @admin_router.put("/{service_order_id}", response_model=ServiceOrderResponse)
@@ -176,10 +173,7 @@ def set_priority(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_service_order_service(db).set_priority(service_order_id, data.priority)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_service_order_service(db).set_priority(service_order_id, data.priority)
 
 
 @admin_router.post("/{service_order_id}/send-email", response_model=MessageResponse)
@@ -188,11 +182,8 @@ async def send_os_email(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        await compose_service_order_email_service(db).send_os_email(service_order_id)
-        return MessageResponse(message="Email da OS enviado.")
-    except DomainError as e:
-        raise domain_error_handler(e)
+    await compose_service_order_email_service(db).send_os_email(service_order_id)
+    return MessageResponse(message="Email da OS enviado.")
 
 
 @public_router.post("/track", response_model=ServiceOrderPublicResponse)
@@ -208,7 +199,4 @@ def track_service_order(
         HmacServiceOrderTrackingTokenService().fingerprint(data.token),
         "service_order_tracking",
     )
-    try:
-        return compose_service_order_service(db).get_by_tracking_token(data.token)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_service_order_service(db).get_by_tracking_token(data.token)

@@ -178,7 +178,7 @@ Resposta de erro sempre genérica (`404` — `"Cliente não encontrado"`) para e
 | Security headers | Middleware em `src/main.py` |
 | HSTS | `SECURITY_HSTS_ENABLED=true` em produção com HTTPS |
 | Docker secrets | Variáveis obrigatórias com sintaxe `${VAR:?mensagem}` |
-| CI | `.github/workflows/security.yml` — pytest + bandit + pip-audit + unsafe defaults |
+| CI | `.github/workflows/ci.yml` — pytest + bandit + pip-audit + unsafe defaults |
 
 ---
 
@@ -285,7 +285,7 @@ docker compose up --build
 
 ### Já implementado no PR #26
 
-- [x] Pipeline `.github/workflows/security.yml` (PR + push main)
+- [x] Pipeline `.github/workflows/ci.yml` (PR + push main/develop)
 - [x] Script `scripts/check_unsafe_defaults.py` no CI
 - [x] Testes de configuração: `tests/unit/test_config.py`, `tests/unit/test_seed_dev_admin.py`
 - [x] Testes de tokens: `tests/unit/auth/test_approval_tokens.py`
