@@ -1,6 +1,6 @@
 # ADR-0064: Autenticação de cliente por CPF com JWT
 
-- **Status:** Aceito para homologação; produção e implantação pendentes
+- **Status:** Aceito e implementado em código; implantação e homologação pendentes
 - **Data:** 2026-10-18
 - **Issue de referência:** [#64 — F3-P1-02: Autenticar cliente por CPF na Function Serverless](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/64)
 - **Escopo:** decisão e implementação da emissão de JWT para clientes e das fronteiras entre repositórios. Os valores de ambiente e a integração de infraestrutura serão validados durante a homologação.
@@ -32,7 +32,7 @@ A Lambda não será uma nova autoridade para o schema do cliente. Ela usará um 
 - Cliente ativo recebe resposta `200` com Bearer JWT temporário de validade configurada em até 900 segundos. `sub` identifica o cliente por ID interno; o payload contém somente `sub`, `principal_type`, `scope`, `iss`, `aud`, `iat`, `exp` e `jti`.
 - CPF inválido não gera consulta ao banco. Cliente inexistente e cliente inativo têm a mesma resposta pública, sem permitir distinguir os casos.
 - O código preparado para homologação assina o token com RS256 usando chave assimétrica no AWS KMS. A chave pública é publicada em `GET /.well-known/jwks.json`; `kid` e `iss` são configurados por ambiente e devem coincidir entre emissor e validador. A audiência da API é `auto-shop-api` (`aud`).
-- A implementação atual publica somente a chave KMS configurada; rotação de chave ainda não está implementada. Antes de rotacionar, o JWKS deverá publicar as chaves antiga e nova durante a janela de validade dos tokens. Nenhum CPF, nome, e-mail, telefone, segredo ou token completo deve ser escrito em logs.
+- O contrato de rotação publica a chave ativa e chaves públicas adicionais durante a sobreposição; somente a ativa assina. A implantação deve manter a chave anterior pelo TTL máximo, tolerância de relógio, cache JWKS e propagação acordados. Nenhum CPF, nome, e-mail, telefone, segredo ou token completo deve ser escrito em logs.
 - CPF inválido retorna `422`; cliente inexistente ou inativo retorna a mesma resposta `401`; falha de banco ou assinatura retorna `503`. O API Gateway compartilhado deve limitar tentativas e responder `429` quando necessário. A rota só pode ser exposta depois que esse limite estiver configurado; a Lambda não implementa limite distribuído próprio.
 - Falhas de dependência retornam erro genérico sem detalhes internos. CPF, token completo, dados pessoais e segredos não entram em logs.
 
@@ -53,6 +53,8 @@ Antes de qualquer etapa potencialmente cobrável, apresentar para validação a 
 - Integrar Lambda, aplicação, banco e eventos em homologação. A issue #68 acompanha essa validação; nenhum recurso AWS foi criado nem implantado por esta implementação.
 - A issue #63/status de cliente é pré-requisito de domínio; #65 integra o validador FastAPI e #68 valida o fluxo integrado.
 - O CPF é identificador público e, por si só, não prova posse de identidade. O uso acadêmico inicial é CPF-only; OTP ou outra prova de posse deve ser avaliada antes de uso em produção.
+
+O fechamento das issues #63–#67 comprova implementação em código. Deploy, configuração integrada e execução dos cenários permanecem rastreados separadamente pela #68.
 
 ## Histórico de implementação
 

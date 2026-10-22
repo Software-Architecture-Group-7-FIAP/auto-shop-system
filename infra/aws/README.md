@@ -23,6 +23,9 @@ Terraform para a camada operacional descrita na issue **#88**:
 | Rota Gateway | Destino | Auth |
 |--------------|---------|------|
 | `POST /auth/login` | Lambda → backend `/api/v1/auth/gateway-login` | Pública |
+| `POST /auth/customer/token` | Lambda de identidade de cliente | Pública, com throttling/WAF |
+| `GET /.well-known/jwks.json` | Lambda de identidade de cliente | Pública |
+| `/api/v1/customer/*` | HTTP proxy → backend | Bearer RS256 validado na aplicação |
 | `/api/v1/admin/*` | HTTP proxy → backend | JWT authorizer |
 | `/api/v1/public/*` | HTTP proxy → backend | Pública |
 | `/health/*` | HTTP proxy → backend | Pública |
@@ -62,6 +65,7 @@ Propague `X-Correlation-ID` usando `$context.requestId` nas integrações HTTP.
 - WAF bloqueia SQLi e aplica rate limit por IP
 - Throttling retorna `429` no API Gateway
 - Authorizer rejeita JWT inválido/expirado com `401` antes do backend
+- Rotas de cliente não reutilizam o authorizer administrativo HS256; a aplicação valida RS256/JWKS
 - Segredos **não** devem ser versionados — use `TF_VAR_jwt_secret` ou arquivo local ignorado
 
 ## Relação com `infra/` (Kubernetes)

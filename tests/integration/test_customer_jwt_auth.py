@@ -34,7 +34,7 @@ def customer_token_factory(monkeypatch):
     monkeypatch.setattr(settings, "customer_jwt_jwks_timeout_seconds", 2)
     monkeypatch.setattr(settings, "customer_jwt_jwks_cache_seconds", 300)
 
-    def create_token(_headers=None, **overrides):
+    def create_token(_headers=None, _missing_claim: str | None = None, **overrides):
         now = datetime.now(timezone.utc)
         claims = {
             "sub": "42",
@@ -47,6 +47,8 @@ def customer_token_factory(monkeypatch):
             "jti": "test-token-id",
         }
         claims.update(overrides)
+        if _missing_claim is not None:
+            claims.pop(_missing_claim)
         return jwt.encode(
             claims,
             private_key,
@@ -152,6 +154,26 @@ def test_customer_me_rejects_missing_and_non_bearer_tokens(client, customer_toke
     assert wrong_scheme.status_code == 401
 
 
+@pytest.mark.parametrize(
+    "missing_claim",
+    ("sub", "principal_type", "scope", "iss", "aud", "iat", "exp", "jti"),
+)
+def test_customer_me_rejects_each_missing_required_claim(
+    client,
+    customer_token_factory,
+    missing_claim,
+):
+    token = customer_token_factory(_missing_claim=missing_claim)
+
+    response = client.get(
+        "/api/v1/customer/me",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Credenciais inv\u00e1lidas"
+
+
 def test_customer_me_does_not_accept_admin_cookie_as_customer_identity(client):
     login = client.post(
         "/api/v1/auth/login",
@@ -210,6 +232,17 @@ def test_admin_token_does_not_authenticate_as_customer(client, customer_token_fa
     response = client.get(
         "/api/v1/customer/me",
         headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_customer_token_does_not_authenticate_as_admin(client, customer_token_factory):
+    customer_token = customer_token_factory()
+
+    response = client.get(
+        "/api/v1/admin/customers",
+        headers={"Authorization": f"Bearer {customer_token}"},
     )
 
     assert response.status_code == 401
