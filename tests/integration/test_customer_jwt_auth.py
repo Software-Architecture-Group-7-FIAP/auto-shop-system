@@ -9,6 +9,9 @@ from jwt import PyJWKClient
 from jwt.exceptions import PyJWKClientConnectionError
 
 from src.config import settings
+from src.domain.exceptions import UnauthorizedError
+from src.infrastructure.auth import customer_jwt as customer_jwt_module
+from src.infrastructure.auth.customer_jwt import CustomerJwtVerifier
 
 ISSUER = "https://auth.example.invalid"
 AUDIENCE = "auto-shop-api"
@@ -57,6 +60,102 @@ def customer_token_factory(monkeypatch):
         )
 
     return create_token
+
+
+@pytest.fixture
+def multikey_customer_tokens(monkeypatch):
+    private_keys = {
+        "A": rsa.generate_private_key(public_exponent=65537, key_size=2048),
+        "B": rsa.generate_private_key(public_exponent=65537, key_size=2048),
+    }
+    key_ids = {"A": "rotation-key-a", "B": "rotation-key-b"}
+    public_jwks = {}
+    for label, private_key in private_keys.items():
+        jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private_key.public_key()))
+        jwk.update({"kid": key_ids[label], "use": "sig", "alg": "RS256"})
+        public_jwks[label] = jwk
+
+    jwks_state = {"keys": [public_jwks["A"], public_jwks["B"]]}
+    monkeypatch.setattr(PyJWKClient, "fetch_data", lambda _client: jwks_state)
+    monkeypatch.setattr(
+        settings,
+        "customer_jwt_jwks_url",
+        "https://auth.example.invalid/rotation-jwks",
+    )
+    monkeypatch.setattr(settings, "customer_jwt_issuer", ISSUER)
+    monkeypatch.setattr(settings, "customer_jwt_audience", AUDIENCE)
+    monkeypatch.setattr(settings, "customer_jwt_clock_skew_seconds", 0)
+    monkeypatch.setattr(settings, "customer_jwt_jwks_timeout_seconds", 2)
+    monkeypatch.setattr(settings, "customer_jwt_jwks_cache_seconds", 300)
+    customer_jwt_module._jwks_client.cache_clear()
+
+    def create_token(label: str, *, header_kid: str | None = None) -> str:
+        now = datetime.now(timezone.utc)
+        return jwt.encode(
+            {
+                "sub": "42",
+                "principal_type": "customer",
+                "scope": "customer",
+                "iss": ISSUER,
+                "aud": AUDIENCE,
+                "iat": int(now.timestamp()),
+                "exp": int((now + timedelta(minutes=10)).timestamp()),
+                "jti": f"rotation-token-{label.lower()}",
+            },
+            private_keys[label],
+            algorithm="RS256",
+            headers={"kid": header_kid or key_ids[label]},
+        )
+
+    def publish(*labels: str) -> None:
+        jwks_state["keys"] = [public_jwks[label] for label in labels]
+
+    yield create_token, publish
+    customer_jwt_module._jwks_client.cache_clear()
+
+
+def test_customer_jwt_verifier_accepts_a_and_b_while_both_keys_are_published(
+    multikey_customer_tokens,
+):
+    create_token, _publish = multikey_customer_tokens
+    verifier = CustomerJwtVerifier()
+
+    assert verifier.verify(create_token("A")).customer_id == 42
+    assert verifier.verify(create_token("B")).customer_id == 42
+
+
+def test_customer_jwt_verifier_rejects_valid_token_with_unknown_kid_uniformly(
+    multikey_customer_tokens,
+):
+    create_token, _publish = multikey_customer_tokens
+    token = create_token("B", header_kid="rotation-key-unknown")
+
+    with pytest.raises(UnauthorizedError, match="^Credenciais inválidas$"):
+        CustomerJwtVerifier().verify(token)
+
+
+def test_customer_jwt_verifier_rejects_a_after_key_removal_and_cache_refresh(
+    multikey_customer_tokens,
+):
+    create_token, publish = multikey_customer_tokens
+    token_a = create_token("A")
+    assert CustomerJwtVerifier().verify(token_a).customer_id == 42
+
+    publish("B")
+    customer_jwt_module._jwks_client.cache_clear()
+
+    with pytest.raises(UnauthorizedError, match="^Credenciais inválidas$"):
+        CustomerJwtVerifier().verify(token_a)
+
+
+def test_customer_jwt_verifier_keeps_accepting_b_after_a_is_removed(
+    multikey_customer_tokens,
+):
+    create_token, publish = multikey_customer_tokens
+    publish("B")
+    customer_jwt_module._jwks_client.cache_clear()
+
+    assert CustomerJwtVerifier().verify(create_token("B")).customer_id == 42
 
 
 def test_customer_me_returns_only_the_authenticated_internal_id(
