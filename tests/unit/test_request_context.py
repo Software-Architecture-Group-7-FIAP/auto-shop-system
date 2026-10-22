@@ -33,10 +33,10 @@ def test_correlation_header_takes_precedence_over_legacy_request_id():
 
 
 def test_invalid_correlation_value_is_replaced_with_a_generated_uuid():
-    cpf = "52998224725"
-    request = make_request([(b"x-correlation-id", cpf.encode())])
+    unsafe = "bad\r\ninjected"
+    request = make_request([(b"x-correlation-id", unsafe.encode())])
 
     generated_id = request_correlation_id(request)
 
-    assert generated_id != cpf
+    assert generated_id != unsafe
     assert str(UUID(generated_id)) == generated_id

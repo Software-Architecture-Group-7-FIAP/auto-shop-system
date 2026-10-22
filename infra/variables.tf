@@ -111,7 +111,7 @@ variable "cors_allowed_methods" {
 variable "cors_allowed_headers" {
   description = "Headers permitidos pelo CORS."
   type        = string
-  default     = "Authorization,Content-Type,X-CSRF-Token,X-Request-ID,Accept"
+  default     = "Authorization,Content-Type,X-CSRF-Token,X-Request-ID,X-Correlation-ID,Accept"
 }
 
 variable "cors_allow_credentials" {
