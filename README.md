@@ -29,6 +29,27 @@ O Terraform desta entrega gerencia os recursos da aplicação em um cluster
 Kubernetes local já existente (Kind ou Docker Desktop). O cluster deve ser
 iniciado previamente; o Terraform não cria Kind, EKS, VPC, IAM ou RDS.
 
+## Fase 3 — operacional (API Gateway, CI/CD, observabilidade)
+
+Documentação da trilha [#88–#95](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/95): diagrama ponta a ponta, ADRs e links para os outros repositórios do grupo.
+
+| Recurso | Caminho |
+| --- | --- |
+| Índice de arquitetura | [docs/architecture/README.md](docs/architecture/README.md) |
+| Diagrama operacional (Mermaid) | [docs/architecture/fase-operacional.mmd](docs/architecture/fase-operacional.mmd) |
+| CI no PR | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
+| CD / OIDC / deploy | [.github/CD.md](.github/CD.md) |
+| Proteção de branches | [.github/BRANCH_PROTECTION.md](.github/BRANCH_PROTECTION.md) |
+| Templates CI outros repos | [.github/ecosystem-templates/README.md](.github/ecosystem-templates/README.md) |
+| API Gateway (Terraform AWS) | [infra/aws/README.md](infra/aws/README.md) |
+| Deploy K8s | [k8s/scripts/deploy.sh](k8s/scripts/deploy.sh) |
+
+**Ecossistema (quatro repositórios):** este monorepo (`backend` + `frontend/`), [`lambda-auth`](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth), `database-infra` e `k8s-infra` — papéis descritos no [ADR-0071](docs/architecture/decisions/ADR-0071-infraestrutura-cloud-fase-3.md).
+
+**Pipeline (resumo):** abrir PR → `ci.yml` verde → merge em `develop` → build GHCR (`cd-staging.yml`, gate `DEPLOY_STAGING_ENABLED`) → deploy via script K8s. Produção: merge `develop` → `main` → `cd-prod.yml`. Deploy real aguarda staging ([#87](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/87)).
+
+**Secrets / environments:** segredos de app via Kubernetes Secret e variáveis de Environment GitHub (OIDC); não commitar `.env`. Lista operacional: [.github/CD.md](.github/CD.md).
+
 ## Arquitetura
 
 Monolito em camadas:
