@@ -86,8 +86,11 @@ variable "customer_jwt_jwks_url" {
   default     = ""
 
   validation {
-    condition     = var.customer_jwt_jwks_url == "" || var.environment == "local" || can(regex("^https://", var.customer_jwt_jwks_url))
-    error_message = "customer_jwt_jwks_url deve usar HTTPS fora do ambiente local."
+    condition = (
+      var.environment == "local" ||
+      (trimspace(var.customer_jwt_jwks_url) != "" && can(regex("^https://", var.customer_jwt_jwks_url)))
+    )
+    error_message = "customer_jwt_jwks_url deve ser HTTPS e não pode ficar vazio fora do ambiente local."
   }
 }
 
@@ -95,12 +98,22 @@ variable "customer_jwt_issuer" {
   description = "Issuer público esperado nos JWTs de cliente."
   type        = string
   default     = ""
+
+  validation {
+    condition     = var.environment == "local" || trimspace(var.customer_jwt_issuer) != ""
+    error_message = "customer_jwt_issuer não pode ficar vazio fora do ambiente local."
+  }
 }
 
 variable "customer_jwt_audience" {
   description = "Audience esperada nos JWTs de cliente."
   type        = string
   default     = "auto-shop-api"
+
+  validation {
+    condition     = trimspace(var.customer_jwt_audience) != ""
+    error_message = "customer_jwt_audience não pode ficar vazio."
+  }
 }
 
 variable "customer_jwt_clock_skew_seconds" {
@@ -125,6 +138,11 @@ variable "service_order_event_bus_name" {
   description = "Nome público do event bus de falhas de OS; vazio mantém publisher desabilitado."
   type        = string
   default     = ""
+
+  validation {
+    condition     = var.environment == "local" || trimspace(var.service_order_event_bus_name) != ""
+    error_message = "service_order_event_bus_name não pode ficar vazio fora do ambiente local."
+  }
 }
 
 variable "frontend_public_url" {
