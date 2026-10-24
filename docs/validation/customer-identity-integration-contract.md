@@ -21,6 +21,8 @@ O emissor usa `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_TTL_SECONDS`, `JWT_KID`, `JWT_K
 
 Issuer e audience devem ser idênticos nos dois runtimes. URLs usam HTTPS em staging/produção. Valores públicos ficam em ConfigMap; conexão, credenciais e material privado permanecem em Secret/KMS.
 
+Em staging e produção, a aplicação recusa a inicialização se faltar JWKS HTTPS, issuer, audience ou nome do event bus. A composição do fluxo de execução conecta o publisher EventBridge ao bus configurado.
+
 ## Banco e migration
 
 A aplicação é dona do schema e deve aplicar ao menos a migration Alembic 017. A Lambda recebe usuário próprio com `CONNECT`, `USAGE` e `SELECT` mínimo para `customers(id,status)` e `customer_documents(customer_id,document)`, sem escrita, DDL ou herança privilegiada.

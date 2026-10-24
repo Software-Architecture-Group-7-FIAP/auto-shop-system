@@ -17,6 +17,7 @@ Terraform para a camada operacional descrita na issue **#88**:
 - AWS CLI autenticado
 - Backend FastAPI acessível via HTTPS a partir da internet (Ingress/NLB)
 - Mesmo segredo JWT do backend (`SECRET_KEY` / `ACCESS_TOKEN_SECRET`)
+- Lambda de autenticação de cliente já implantada na mesma conta e região do API Gateway
 
 ## Rotas expostas
 
@@ -41,6 +42,18 @@ export TF_VAR_jwt_secret='your-shared-secret-at-least-32-chars'
 terraform -chdir=infra/aws plan -var-file=terraform.tfvars
 terraform -chdir=infra/aws apply -var-file=terraform.tfvars
 ```
+
+## Integração da Lambda de identidade
+
+As variáveis `customer_auth_lambda_invoke_arn` e `customer_auth_lambda_function_name` são obrigatórias. Copie `terraform.tfvars.example` para `terraform.tfvars`; os valores de exemplo permitem revisar um plano, mas não podem ser aplicados sem substituição.
+
+Antes do `apply`, confirme que:
+
+- [ ] A Lambda de autenticação de cliente está implantada na mesma conta e região do API Gateway.
+- [ ] `customer_auth_lambda_invoke_arn` usa o formato de invoke ARN do API Gateway e aponta para essa Lambda.
+- [ ] `customer_auth_lambda_function_name` é o nome da mesma função referenciada no ARN.
+
+A stack do Gateway concede permissão para invocar a função, mas não cria nem implanta a Lambda.
 
 ## Domínio e HTTPS
 
