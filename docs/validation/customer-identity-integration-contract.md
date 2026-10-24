@@ -23,6 +23,14 @@ Issuer e audience devem ser idênticos nos dois runtimes. URLs usam HTTPS em sta
 
 Em staging e produção, a aplicação recusa a inicialização se faltar JWKS HTTPS, issuer, audience ou nome do event bus. A composição do fluxo de execução conecta o publisher EventBridge ao bus configurado.
 
+## CORS para clientes de navegador — pendente
+
+A Lambda de identidade ainda não atende preflight `OPTIONS` nem inclui cabeçalhos CORS nas respostas de emissão e JWKS. Portanto, o contrato atual não garante chamadas feitas diretamente por navegadores.
+
+Placeholder da configuração da Lambda, a definir por ambiente: `CUSTOMER_AUTH_CORS_ALLOWED_ORIGINS=<origens-do-frontend-a-definir>`. Esse valor não deve ser implantado literalmente.
+
+Antes de habilitar clientes de navegador, retomar este item na homologação #68: definir as origens permitidas para cada ambiente, implementar `OPTIONS` no API Gateway e CORS nas respostas da Lambda, e validar preflight, origem permitida e origem recusada.
+
 ## Banco e migration
 
 A aplicação é dona do schema e deve aplicar ao menos a migration Alembic 017. A Lambda recebe usuário próprio com `CONNECT`, `USAGE` e `SELECT` mínimo para `customers(id,status)` e `customer_documents(customer_id,document)`, sem escrita, DDL ou herança privilegiada.
