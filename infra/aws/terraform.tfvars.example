@@ -2,6 +2,9 @@ aws_region       = "us-east-1"
 project_name     = "auto-shop"
 environment      = "staging"
 backend_base_url = "https://staging-api.autoshop.com"
+# Exemplo para planejar a infraestrutura. Substitua o ID da conta e a função antes do apply.
+customer_auth_lambda_invoke_arn = "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:auto-shop-customer-auth-staging/invocations"
+customer_auth_lambda_function_name = "auto-shop-customer-auth-staging"
 
 # Provide via TF_VAR_jwt_secret or a secure tfvars file ignored by git.
 # jwt_secret = "replace-with-the-same-secret-used-by-the-backend"

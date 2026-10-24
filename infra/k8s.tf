@@ -13,22 +13,29 @@ resource "kubernetes_config_map_v1" "app" {
   }
 
   data = {
-    APP_ENV                      = var.app_env
-    APP_BASE_URL                 = var.app_base_url
-    FRONTEND_PUBLIC_URL          = var.frontend_public_url
-    CORS_ALLOWED_ORIGINS         = var.cors_allowed_origins
-    CORS_ALLOWED_METHODS         = var.cors_allowed_methods
-    CORS_ALLOWED_HEADERS         = var.cors_allowed_headers
-    CORS_ALLOW_CREDENTIALS       = tostring(var.cors_allow_credentials)
-    SECURITY_HSTS_ENABLED        = tostring(var.security_hsts_enabled)
-    SMTP_HOST                    = var.smtp_host
-    SMTP_PORT                    = tostring(var.smtp_port)
-    SMTP_FROM                    = var.smtp_from
-    SMTP_USE_TLS                 = tostring(var.smtp_use_tls)
-    SMTP_STARTTLS                = tostring(var.smtp_starttls)
-    SMTP_REQUIRE_TLS             = tostring(var.smtp_require_tls)
-    AUTO_CREATE_SCHEMA           = "false"
-    SKIP_CPF_EXTERNAL_VALIDATION = tostring(var.skip_cpf_external_validation)
+    APP_ENV                           = var.app_env
+    APP_BASE_URL                      = var.app_base_url
+    FRONTEND_PUBLIC_URL               = var.frontend_public_url
+    CORS_ALLOWED_ORIGINS              = var.cors_allowed_origins
+    CORS_ALLOWED_METHODS              = var.cors_allowed_methods
+    CORS_ALLOWED_HEADERS              = var.cors_allowed_headers
+    CORS_ALLOW_CREDENTIALS            = tostring(var.cors_allow_credentials)
+    SECURITY_HSTS_ENABLED             = tostring(var.security_hsts_enabled)
+    SMTP_HOST                         = var.smtp_host
+    SMTP_PORT                         = tostring(var.smtp_port)
+    SMTP_FROM                         = var.smtp_from
+    SMTP_USE_TLS                      = tostring(var.smtp_use_tls)
+    SMTP_STARTTLS                     = tostring(var.smtp_starttls)
+    SMTP_REQUIRE_TLS                  = tostring(var.smtp_require_tls)
+    AUTO_CREATE_SCHEMA                = "false"
+    SKIP_CPF_EXTERNAL_VALIDATION      = tostring(var.skip_cpf_external_validation)
+    CUSTOMER_JWT_JWKS_URL             = var.customer_jwt_jwks_url
+    CUSTOMER_JWT_ISSUER               = var.customer_jwt_issuer
+    CUSTOMER_JWT_AUDIENCE             = var.customer_jwt_audience
+    CUSTOMER_JWT_CLOCK_SKEW_SECONDS   = tostring(var.customer_jwt_clock_skew_seconds)
+    CUSTOMER_JWT_JWKS_TIMEOUT_SECONDS = tostring(var.customer_jwt_jwks_timeout_seconds)
+    CUSTOMER_JWT_JWKS_CACHE_SECONDS   = tostring(var.customer_jwt_jwks_cache_seconds)
+    SERVICE_ORDER_EVENT_BUS_NAME      = var.service_order_event_bus_name
   }
 }
 

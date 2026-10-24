@@ -203,6 +203,9 @@ jobs:
             -var=app_env=staging \
             -var=image_reference="$secure_image" \
             -var=app_base_url=https://api.staging.example.com \
+            -var=customer_jwt_jwks_url=https://auth.staging.example.com/.well-known/jwks.json \
+            -var=customer_jwt_issuer=https://auth.staging.example.com \
+            -var=service_order_event_bus_name=auto-shop-service-orders-staging \
             -var=frontend_public_url=https://staging.example.com \
             -var=cors_allowed_origins=https://staging.example.com \
             -var=security_hsts_enabled=true \
@@ -219,6 +222,9 @@ jobs:
             -var=app_env=production \
             -var=image_reference="$secure_image" \
             -var=app_base_url=https://api.example.com \
+            -var=customer_jwt_jwks_url=https://auth.example.com/.well-known/jwks.json \
+            -var=customer_jwt_issuer=https://auth.example.com \
+            -var=service_order_event_bus_name=auto-shop-service-orders-production \
             -var=frontend_public_url=https://example.com \
             -var=cors_allowed_origins=https://example.com \
             -var=security_hsts_enabled=true \
