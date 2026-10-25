@@ -9,7 +9,7 @@ data:
   FRONTEND_PUBLIC_URL: "http://localhost:4200"
   CORS_ALLOWED_ORIGINS: "http://localhost:4200"
   CORS_ALLOWED_METHODS: "GET,POST,PUT,PATCH,DELETE,OPTIONS"
-  CORS_ALLOWED_HEADERS: "Authorization,Content-Type"
+  CORS_ALLOWED_HEADERS: "Authorization,Content-Type,X-CSRF-Token,X-Request-ID,X-Correlation-ID,Accept"
   SECURITY_HSTS_ENABLED: "false"
   SMTP_HOST: "mailhog"
   SMTP_PORT: "1025"
