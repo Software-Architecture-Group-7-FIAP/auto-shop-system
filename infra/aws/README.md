@@ -17,12 +17,16 @@ Terraform para a camada operacional descrita na issue **#88**:
 - AWS CLI autenticado
 - Backend FastAPI acessível via HTTPS a partir da internet (Ingress/NLB)
 - Mesmo segredo JWT do backend (`SECRET_KEY` / `ACCESS_TOKEN_SECRET`)
+- Lambda de autenticação de cliente já implantada na mesma conta e região do API Gateway
 
 ## Rotas expostas
 
 | Rota Gateway | Destino | Auth |
 |--------------|---------|------|
 | `POST /auth/login` | Lambda → backend `/api/v1/auth/gateway-login` | Pública |
+| `POST /auth/customer/token` | Lambda de identidade de cliente | Pública, com throttling/WAF |
+| `GET /.well-known/jwks.json` | Lambda de identidade de cliente | Pública |
+| `/api/v1/customer/*` | HTTP proxy → backend | Bearer RS256 validado na aplicação |
 | `/api/v1/admin/*` | HTTP proxy → backend | JWT authorizer |
 | `/api/v1/public/*` | HTTP proxy → backend | Pública |
 | `/health/*` | HTTP proxy → backend | Pública |
@@ -38,6 +42,18 @@ export TF_VAR_jwt_secret='your-shared-secret-at-least-32-chars'
 terraform -chdir=infra/aws plan -var-file=terraform.tfvars
 terraform -chdir=infra/aws apply -var-file=terraform.tfvars
 ```
+
+## Integração da Lambda de identidade
+
+As variáveis `customer_auth_lambda_invoke_arn` e `customer_auth_lambda_function_name` são obrigatórias. Copie `terraform.tfvars.example` para `terraform.tfvars`; os valores de exemplo permitem revisar um plano, mas não podem ser aplicados sem substituição.
+
+Antes do `apply`, confirme que:
+
+- [ ] A Lambda de autenticação de cliente está implantada na mesma conta e região do API Gateway.
+- [ ] `customer_auth_lambda_invoke_arn` usa o formato de invoke ARN do API Gateway e aponta para essa Lambda.
+- [ ] `customer_auth_lambda_function_name` é o nome da mesma função referenciada no ARN.
+
+A stack do Gateway concede permissão para invocar a função, mas não cria nem implanta a Lambda.
 
 ## Domínio e HTTPS
 
@@ -62,6 +78,7 @@ Propague `X-Correlation-ID` usando `$context.requestId` nas integrações HTTP.
 - WAF bloqueia SQLi e aplica rate limit por IP
 - Throttling retorna `429` no API Gateway
 - Authorizer rejeita JWT inválido/expirado com `401` antes do backend
+- Rotas de cliente não reutilizam o authorizer administrativo HS256; a aplicação valida RS256/JWKS
 - Segredos **não** devem ser versionados — use `TF_VAR_jwt_secret` ou arquivo local ignorado
 
 ## Relação com `infra/` (Kubernetes)
