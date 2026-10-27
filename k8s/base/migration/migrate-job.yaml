@@ -19,6 +19,7 @@ spec:
         app.kubernetes.io/component: migrate
     spec:
       restartPolicy: OnFailure
+      serviceAccountName: auto-shop-migration
       terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
@@ -36,31 +37,28 @@ spec:
             - >-
               set -eu;
               attempt=1;
-              until python -c 'import os, psycopg2; connection=psycopg2.connect(os.environ["DATABASE_URL"], connect_timeout=2); connection.close()'; do
-                if [ "$attempt" -ge 5 ]; then
-                  echo "migration preflight failed: database unavailable";
+              while [ "$attempt" -le 5 ]; do
+                migration_status=0;
+                python -m src.scripts.run_migrations || migration_status=$?;
+                if [ "$migration_status" -eq 0 ]; then
+                  exit 0;
+                fi;
+                if [ "$migration_status" -ne 10 ]; then
+                  echo "migration failed";
+                  exit 20;
+                fi;
+                if [ "$attempt" -eq 5 ]; then
+                  echo "migration failed: database unavailable";
                   exit 10;
                 fi;
                 echo "migration preflight: database unavailable, retry $attempt/4";
                 attempt=$((attempt + 1));
                 sleep 5;
               done;
-              echo "migration preflight complete";
-              migration_status=0;
-              python -m src.scripts.run_migrations || migration_status=$?;
-              if [ "$migration_status" -eq 10 ]; then
-                echo "migration failed: database unavailable while acquiring lock";
-                exit 10;
-              fi;
-              if [ "$migration_status" -ne 0 ]; then
-                echo "migration failed";
-                exit 20;
-              fi
+              exit 10
           envFrom:
             - configMapRef:
                 name: auto-shop-config
-            - secretRef:
-                name: auto-shop-secrets
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

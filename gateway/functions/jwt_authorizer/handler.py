@@ -10,8 +10,39 @@ import os
 import time
 from typing import Any
 
+import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+
+_SECRET_CACHE_VALUE: str | None = None
+_SECRET_CACHE_EXPIRY = 0.0
+
+
 def _jwt_secret() -> str:
-    return os.environ["JWT_SECRET"]
+    global _SECRET_CACHE_VALUE, _SECRET_CACHE_EXPIRY
+
+    now = time.monotonic()
+    if _SECRET_CACHE_VALUE and now < _SECRET_CACHE_EXPIRY:
+        return _SECRET_CACHE_VALUE
+
+    secret_arn = os.environ.get("JWT_SECRET_ARN")
+    if not secret_arn:
+        raise RuntimeError("JWT signing secret is not configured")
+
+    try:
+        region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+        response = boto3.client("secretsmanager", region_name=region).get_secret_value(
+            SecretId=secret_arn
+        )
+        secret = response.get("SecretString")
+    except (BotoCoreError, ClientError):
+        raise RuntimeError("JWT signing secret is unavailable") from None
+
+    if not isinstance(secret, str) or len(secret) < 32:
+        raise RuntimeError("JWT signing secret is invalid")
+
+    _SECRET_CACHE_VALUE = secret
+    _SECRET_CACHE_EXPIRY = now + 300
+    return secret
 
 
 def _jwt_algorithm() -> str:

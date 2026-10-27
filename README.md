@@ -49,6 +49,18 @@ Documentação da trilha [#88–#95](https://github.com/Software-Architecture-Gr
 **Pipeline (resumo):** abrir PR → `ci.yml` verde → merge em `develop` → build GHCR (`cd-staging.yml`, gate `DEPLOY_STAGING_ENABLED`) → deploy via script K8s. Produção: merge `develop` → `main` → `cd-prod.yml`. Deploy real aguarda staging ([#87](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/87)).
 
 **Secrets / environments:** segredos de app via Kubernetes Secret e variáveis de Environment GitHub (OIDC); não commitar `.env`. Lista operacional: [.github/CD.md](.github/CD.md).
+### Infraestrutura AWS em andamento
+
+O código de infraestrutura e os workflows desta fase não comprovam que os recursos foram implantados. A homologação (`hml`) e o stage lógico `prd` usam uma única infraestrutura AWS efêmera, com namespaces e bancos lógicos separados, conforme a [ADR-0071](docs/architecture/decisions/ADR-0071-infraestrutura-cloud-fase-3.md).
+
+| Repositório ou diretório | Responsabilidade |
+|---|---|
+| [`infra/aws/`](infra/aws/README.md) | API Gateway, VPC Link, WAF, ACM e frontend em CloudFront/S3 |
+| [`k8s-infra`](https://github.com/Software-Architecture-Group-7-FIAP/k8s-infra) | VPC, EKS e ALB interno |
+| [`database-infra`](https://github.com/Software-Architecture-Group-7-FIAP/database-infra) | RDS e credenciais do banco |
+| [`lambda-auth`](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth) | Emissão de JWT de cliente e JWKS |
+
+As issues [#87](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/87) e [#113](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/113) seguem abertas. A estimativa de custo e a autorização operacional devem ser revistas antes de qualquer sessão AWS; cada `terraform apply` e deploy dependem da validação prevista no [ADR-0064](docs/architecture/decisions/ADR-0064-autenticacao-cliente-cpf-jwt.md). Consulte também o [runbook de deploy](docs/deployment.md) e o [guia de CI/CD](.github/CD.md).
 
 ## Arquitetura
 

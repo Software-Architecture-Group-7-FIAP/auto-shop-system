@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-namespace="auto-shop"
+namespace="${1:-auto-shop}"
 hpa="auto-shop-backend-hpa"
 deployment="auto-shop-backend"
 load_pod="hpa-load"
 
 cleanup() {
   kubectl delete pod "$load_pod" --namespace "$namespace" --ignore-not-found --wait=false >/dev/null 2>&1 || true
-  kubectl apply -f k8s/base/app/hpa.yaml >/dev/null 2>&1 || true
+  local hpa_manifest
+  hpa_manifest="$(mktemp)"
+  sed "s/namespace: auto-shop$/namespace: ${namespace}/" k8s/base/app/hpa.yaml >"$hpa_manifest"
+  kubectl apply -f "$hpa_manifest" >/dev/null 2>&1 || true
+  rm -f "$hpa_manifest"
 }
 trap cleanup EXIT
 

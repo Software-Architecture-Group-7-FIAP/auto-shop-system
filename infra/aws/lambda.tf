@@ -32,6 +32,44 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+resource "aws_iam_role" "jwt_authorizer_execution" {
+  name = "${local.name_prefix}-jwt-authorizer"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "jwt_authorizer_basic" {
+  role       = aws_iam_role.jwt_authorizer_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "jwt_authorizer_secret" {
+  name = "read-jwt-signing-secret"
+  role = aws_iam_role.jwt_authorizer_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = var.jwt_secret_arn
+      }
+    ]
+  })
+}
+
 resource "aws_lambda_function" "auth_login" {
   function_name = "${local.name_prefix}-auth-login"
   role          = aws_iam_role.lambda_execution.arn
@@ -55,7 +93,7 @@ resource "aws_lambda_function" "auth_login" {
 
 resource "aws_lambda_function" "jwt_authorizer" {
   function_name = "${local.name_prefix}-jwt-authorizer"
-  role          = aws_iam_role.lambda_execution.arn
+  role          = aws_iam_role.jwt_authorizer_execution.arn
   handler       = "handler.handler"
   runtime       = "python3.12"
   timeout       = 5
@@ -66,8 +104,8 @@ resource "aws_lambda_function" "jwt_authorizer" {
 
   environment {
     variables = {
-      JWT_SECRET    = var.jwt_secret
-      JWT_ALGORITHM = "HS256"
+      JWT_SECRET_ARN = var.jwt_secret_arn
+      JWT_ALGORITHM  = "HS256"
     }
   }
 }
@@ -77,7 +115,7 @@ resource "aws_lambda_permission" "auth_login_apigw" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.auth_login.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/POST/auth/login"
 }
 
 resource "aws_lambda_permission" "jwt_authorizer_apigw" {
@@ -89,17 +127,31 @@ resource "aws_lambda_permission" "jwt_authorizer_apigw" {
 }
 
 resource "aws_lambda_permission" "customer_auth_token_apigw" {
-  statement_id  = "AllowCustomerTokenFromAPIGateway"
+  for_each = local.api_stages
+
+  statement_id  = "AllowCustomerTokenFromAPIGateway-${each.key}"
   action        = "lambda:InvokeFunction"
-  function_name = var.customer_auth_lambda_function_name
+  function_name = data.aws_ssm_parameter.customer_auth_lambda_arn[each.key].value
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/POST/auth/customer/token"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/${each.key}/POST/auth/customer/token"
+}
+
+resource "aws_lambda_permission" "customer_auth_options_apigw" {
+  for_each = local.api_stages
+
+  statement_id  = "AllowCustomerTokenOptionsFromAPIGateway-${each.key}"
+  action        = "lambda:InvokeFunction"
+  function_name = data.aws_ssm_parameter.customer_auth_lambda_arn[each.key].value
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/${each.key}/OPTIONS/auth/customer/token"
 }
 
 resource "aws_lambda_permission" "customer_jwks_apigw" {
-  statement_id  = "AllowCustomerJwksFromAPIGateway"
+  for_each = local.api_stages
+
+  statement_id  = "AllowCustomerJwksFromAPIGateway-${each.key}"
   action        = "lambda:InvokeFunction"
-  function_name = var.customer_auth_lambda_function_name
+  function_name = data.aws_ssm_parameter.customer_auth_lambda_arn[each.key].value
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/GET/.well-known/jwks.json"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/${each.key}/GET/.well-known/jwks.json"
 }

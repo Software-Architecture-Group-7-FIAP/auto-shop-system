@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql://oficina:replace-with-local-password@localhost:5432/oficina"
     app_env: EnvironmentName = "production"
+    api_root_path: str = ""
     secret_key: SecretStr = Field(..., min_length=32)
     algorithm: Literal["HS256"] = "HS256"
     access_token_expire_minutes: int = 15
@@ -67,6 +68,16 @@ class Settings(BaseSettings):
         if normalized not in {"development", "local", "test", "staging", "production", "prod"}:
             raise ValueError("APP_ENV must be one of development, local, test, staging, production, or prod")
         return normalized
+
+    @field_validator("api_root_path", mode="before")
+    @classmethod
+    def normalize_api_root_path(cls, value: str | None) -> str:
+        normalized = str(value or "").strip()
+        if not normalized:
+            return ""
+        if not normalized.startswith("/") or normalized.startswith("//") or "?" in normalized or "#" in normalized:
+            raise ValueError("API_ROOT_PATH must be an absolute path prefix without a query or fragment")
+        return normalized.rstrip("/")
 
     @field_validator("secret_key", mode="before")
     @classmethod

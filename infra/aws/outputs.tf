@@ -4,13 +4,13 @@ output "api_gateway_id" {
 }
 
 output "api_gateway_invoke_url" {
-  description = "Default invoke URL for the configured stage."
-  value       = aws_api_gateway_stage.main.invoke_url
+  description = "Default invoke URLs by API stage."
+  value       = { for stage, api_stage in aws_api_gateway_stage.main : stage => api_stage.invoke_url }
 }
 
 output "api_gateway_stage_arn" {
-  description = "Stage ARN used for WAF association and monitoring."
-  value       = aws_api_gateway_stage.main.arn
+  description = "Stage ARNs used for WAF association and monitoring."
+  value       = { for stage, api_stage in aws_api_gateway_stage.main : stage => api_stage.arn }
 }
 
 output "auth_login_lambda_arn" {
@@ -35,10 +35,10 @@ output "access_log_group_name" {
 
 output "custom_domain_name" {
   description = "Configured custom domain, when enabled."
-  value       = var.domain_name != "" ? aws_api_gateway_domain_name.main[0].domain_name : null
+  value       = var.enable_custom_domains ? aws_api_gateway_domain_name.main[0].domain_name : null
 }
 
 output "custom_domain_target" {
   description = "Regional domain name target for DNS alias records."
-  value       = var.domain_name != "" ? aws_api_gateway_domain_name.main[0].regional_domain_name : null
+  value       = var.enable_custom_domains ? aws_api_gateway_domain_name.main[0].regional_domain_name : null
 }

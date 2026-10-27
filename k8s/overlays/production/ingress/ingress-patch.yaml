@@ -1,0 +1,15 @@
+- op: replace
+  path: /spec/tls/0
+  value:
+    hosts:
+      - prd.api.internal
+    secretName: auto-shop-tls
+- op: replace
+  path: /spec/rules/0/host
+  value: prd.api.internal
+- op: replace
+  path: /metadata/annotations/nginx.ingress.kubernetes.io~1ssl-redirect
+  value: "false"
+- op: replace
+  path: /metadata/annotations/nginx.ingress.kubernetes.io~1force-ssl-redirect
+  value: "false"

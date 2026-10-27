@@ -1,5 +1,17 @@
 # Terraform para Kubernetes
 
+## Índice de infraestrutura da Fase 3
+
+Este diretório gerencia recursos Kubernetes em um cluster existente; não cria a infraestrutura AWS. Para a topologia cloud e suas dependências, consulte:
+
+- [`infra/aws/README.md`](../infra/aws/README.md): API Gateway, VPC Link, WAF, ACM, CloudFront/S3 e state desta stack.
+- [`ADR-0071`](../docs/architecture/decisions/ADR-0071-infraestrutura-cloud-fase-3.md): contratos atuais, ownership dos repositórios e gates para a sessão AWS.
+- [`k8s-infra`](https://github.com/Software-Architecture-Group-7-FIAP/k8s-infra): rede, EKS e ALB interno.
+- [`database-infra`](https://github.com/Software-Architecture-Group-7-FIAP/database-infra): RDS e credenciais.
+- [`lambda-auth`](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth): autenticação de cliente.
+
+O workflow de CI com Kind valida manifests localmente; isso não é evidência de staging AWS nem conclui a issue [#87](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/87).
+
 Este diretório oferece um caminho declarativo alternativo ao Kustomize para
 gerenciar a stack do Auto Shop em um cluster Kubernetes já existente. Ele não
 cria EKS, VPC, IAM, RDS ou qualquer recurso AWS.

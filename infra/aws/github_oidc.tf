@@ -19,6 +19,13 @@ variable "github_oidc_thumbprint" {
   default     = "6938fd4d98bab03faadb97b34396831e3780aea1"
 }
 
+locals {
+  github_environment_api_stage = {
+    staging    = "hml"
+    production = "prd"
+  }
+}
+
 resource "aws_iam_openid_connect_provider" "github" {
   count = var.enable_github_oidc ? 1 : 0
 
@@ -57,23 +64,69 @@ resource "aws_iam_role" "github_deploy" {
 }
 
 data "aws_iam_policy_document" "github_deploy_eks" {
+  for_each = var.enable_github_oidc ? toset(["staging", "production"]) : toset([])
+
   statement {
     sid    = "DescribeCluster"
     effect = "Allow"
-    actions = [
-      "eks:DescribeCluster",
-      "eks:ListClusters",
+    actions = ["eks:DescribeCluster"]
+    resources = [
+      format(
+        "arn:aws:eks:%s:%s:cluster/%s",
+        var.aws_region,
+        data.aws_caller_identity.current.account_id,
+        data.aws_ssm_parameter.upstream["eks_cluster_name"].value,
+      ),
     ]
-    resources = ["*"]
+  }
+
+  statement {
+    sid       = "ListStageFrontendBucket"
+    effect    = "Allow"
+    actions   = ["s3:GetBucketLocation", "s3:ListBucket"]
+    resources = [aws_s3_bucket.frontend[local.github_environment_api_stage[each.key]].arn]
+  }
+
+  statement {
+    sid    = "DeployStageFrontendObjects"
+    effect = "Allow"
+    actions = [
+      "s3:PutObject",
+      "s3:DeleteObject",
+    ]
+    resources = [
+      "${aws_s3_bucket.frontend[local.github_environment_api_stage[each.key]].arn}/*",
+    ]
+  }
+
+  statement {
+    sid       = "InvalidateStageFrontendDistribution"
+    effect    = "Allow"
+    actions   = ["cloudfront:CreateInvalidation"]
+    resources = [aws_cloudfront_distribution.frontend[local.github_environment_api_stage[each.key]].arn]
+  }
+
+  statement {
+    sid    = "ReadStageDeployParameters"
+    effect = "Allow"
+    actions = [
+      "ssm:GetParameter",
+    ]
+    resources = [
+      data.aws_ssm_parameter.upstream["eks_cluster_name"].arn,
+      data.aws_ssm_parameter.migration_owner_secret_arn.arn,
+      aws_ssm_parameter.frontend_bucket_name[local.github_environment_api_stage[each.key]].arn,
+      aws_ssm_parameter.frontend_distribution_id[local.github_environment_api_stage[each.key]].arn,
+    ]
   }
 }
 
 resource "aws_iam_role_policy" "github_deploy_eks" {
   for_each = var.enable_github_oidc ? toset(["staging", "production"]) : toset([])
 
-  name   = "${each.key}-eks-describe"
+  name   = "${each.key}-deploy"
   role   = aws_iam_role.github_deploy[each.key].id
-  policy = data.aws_iam_policy_document.github_deploy_eks.json
+  policy = data.aws_iam_policy_document.github_deploy_eks[each.key].json
 }
 
 output "github_deploy_role_arn_staging" {
