@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Fase 3 — Revisão de arquitetura, custo e cobertura do Tech Challenge</title>
+<style>
+  :root {
+    --bg: var(--background, #0f1115);
+    --fg: var(--foreground, #e6e8eb);
+    --muted: var(--muted-foreground, #9aa3ad);
+    --line: var(--border, #2a2f37);
+    --acc: var(--primary, #4f8cff);
+    --ok: #2fa86b; --warn: #d99a1e; --bad: #d9534f; --info: #4f8cff; --off: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 24px 20px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 36px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  h3 { font-size: 14px; margin: 18px 0 6px; }
+  p, li { color: var(--fg); }
+  .muted { color: var(--muted); }
+  nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 4px; }
+  nav a { color: var(--fg); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; font-size: 12px; }
+  nav a:hover { border-color: var(--acc); }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+  th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  code { font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; background: rgba(127,127,127,.14); padding: 1px 4px; border-radius: 4px; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; white-space: nowrap; color: #fff; }
+  .ok { background: var(--ok); } .warn { background: var(--warn); } .bad { background: var(--bad); } .info { background: var(--info); } .off { background: var(--off); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .card .big { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .card .lbl { color: var(--muted); font-size: 12px; }
+  .callout { border-left: 3px solid var(--warn); padding: 8px 12px; background: rgba(217,154,30,.08); border-radius: 0 8px 8px 0; margin: 10px 0; }
+  .callout.red { border-color: var(--bad); background: rgba(217,83,79,.08); }
+  .callout.blue { border-color: var(--info); background: rgba(79,140,255,.08); }
+  .mermaid { background: #fff; border-radius: 10px; padding: 12px; margin: 10px 0; overflow-x: auto; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+  .bar { height: 10px; background: var(--acc); border-radius: 3px; }
+  details { border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; margin: 8px 0; }
+  summary { cursor: pointer; font-weight: 600; }
+  ol li, ul li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Fase 3 — Revisão de arquitetura, custo e cobertura do Tech Challenge</h1>
+  <div class="muted">Base: <code>Project_Architecture_Blueprint.md</code>, <code>ADR-0071</code>, <code>advisor-plans/fase-3-pessoa-2-plataforma-e-cicd.md</code>, issues abertas em <code>auto-shop-system</code>, <code>k8s-infra</code>, <code>database-infra</code>, <code>lambda-auth</code> e PDF 13SOAT Fase 3. Data: 2026-10-25. Nenhum recurso AWS foi consultado ou criado nesta revisão.</div>
+
+  <nav>
+    <a href="#resumo">Resumo</a><a href="#cobertura">Cobertura do PDF</a><a href="#aws">Arquitetura AWS</a>
+    <a href="#app">Arquitetura da aplicação</a><a href="#seq">Sequências</a><a href="#cicd">CI/CD e sessão</a>
+    <a href="#achados">Achados</a><a href="#custo">Custo</a><a href="#status">Feito x a fazer</a><a href="#decisoes">Decisões pendentes</a>
+  </nav>
+
+  <!-- ================= RESUMO ================= -->
+  <h2 id="resumo">1. Resumo executivo</h2>
+  <div class="grid">
+    <div class="card"><div class="lbl">Requisitos do PDF prontos em código</div><div class="big">2 / 24</div><div class="muted">11 parciais, 11 pendentes ou com gap</div></div>
+    <div class="card"><div class="lbl">Repos de infra com código</div><div class="big">2 / 2</div><div class="muted"><code>k8s-infra</code> está mergeado; <code>database-infra</code> tem implementação local staged, ainda sem commit</div></div>
+    <div class="card"><div class="lbl">Custo por sessão</div><div class="big">recalcular</div><div class="muted">estimativa anterior não inclui CloudFront, domínio, ACM e ambos os WAFs</div></div>
+    <div class="card"><div class="lbl">Conta AWS atual</div><div class="big">Paid</div><div class="muted">US$ 140 em créditos concedidos; saldo atual desconhecido</div></div>
+  </div>
+
+  <div class="callout red"><b>Estado atualizado em 2026-10-27.</b> A conta agora está no plano Paid e recebeu US$ 140 em créditos; o saldo atual não foi confirmado. <code>STAGING_ACTIVE=false</code>, sem EKS/NAT/RDS/VPC de sessão ativos; oito roles IAM permanecem. Os budgets de US$ 1/5/10 alertam, mas não bloqueiam gasto; Cost Explorer pode atrasar. Cada apply continua sujeito a autorização explícita.</div>
+
+  <div class="callout"><b>Escopo confirmado em 2026-10-27.</b> CloudFront/S3 do Angular, domínio próprio e WAF continuam incluídos. Não há corte automático de 28/10 nem reabertura desta decisão. TLS re-criptografado até o ALB e Cluster Autoscaler continuam como trabalho futuro.</div>
+
+  <div class="callout blue"><b>Gaps reais frente ao PDF:</b> (1) deploy automático de <i>homologação e produção</i> — ADR removeu produção; (2) notificação serverless de falha de OS (EventBridge → alvo/DLQ) sem issue dona; (3) Swagger público exigido no README, mas ADR deixa <code>/docs</code> privado; (4) pipeline de deploy da Lambda e dos 2 repos Terraform inexistente; (5) RFCs inexistentes (<code>docs/rfc/</code> não existe); (6) New Relic selecionado no ADR, integração e limites do plano ainda pendentes.</div>
+
+  <!-- ================= COBERTURA ================= -->
+  <h2 id="cobertura">2. Cobertura dos requisitos do PDF</h2>
+  <table>
+    <thead><tr><th>Requisito do PDF</th><th>Issue(s)</th><th>Estado</th><th>Observação</th></tr></thead>
+    <tbody>
+      <tr><td>API Gateway</td><td>#88 (fechada), #113</td><td><span class="tag warn">parcial</span></td><td>Terraform em <code>infra/aws</code>; falta rota cliente, VPC Link, nunca aplicado na conta nova.</td></tr>
+      <tr><td>Rotas sensíveis protegidas por CPF</td><td>#65, #66</td><td><span class="tag ok">código pronto</span></td><td>Validação RS256/JWKS na API; homologação em #68.</td></tr>
+      <tr><td>Function: validar CPF, consultar cliente/status, emitir JWT</td><td>#63, #64, lambda-auth#3</td><td><span class="tag ok">código pronto</span></td><td>74 testes, 95%. Falta deploy, <code>verify-full</code> (hoje <code>require</code>), PR #11 rotação JWKS aberto.</td></tr>
+      <tr><td>4 repositórios separados</td><td>#89, k8s-infra#1, database-infra#1</td><td><span class="tag warn">infra parcial</span></td><td><code>k8s-infra</code> está mergeado; <code>database-infra</code> tem arquivos staged localmente, sem commit/CI.</td></tr>
+      <tr><td>CI/CD em cada repo com deploy automático na nuvem</td><td>#89, #90</td><td><span class="tag bad">pendente</span></td><td>App: CD com deploy <i>skipped</i>. Lambda: CI sem deploy. Infra: nada.</td></tr>
+      <tr><td>main protegida + PR obrigatório</td><td>#91</td><td><span class="tag warn">parcial</span></td><td>Só app protegida; <code>enforce_admins=false</code>. Lambda sem proteção; infra sem branch.</td></tr>
+      <tr><td><b>Deploy automático de homologação E produção</b></td><td>#90 (contradiz ADR)</td><td><span class="tag bad">gap</span></td><td>ADR-0071 elimina produção. Avaliador lê literalmente. Ver decisão D2.</td></tr>
+      <tr><td>Banco gerenciado</td><td>database-infra#2–#5</td><td><span class="tag bad">pendente</span></td><td>Issue #3 ainda pede Multi-AZ prod, ≥7 dias, snapshot final — contradiz ADR.</td></tr>
+      <tr><td>Kubernetes com escalabilidade</td><td>k8s-infra#2–#6</td><td><span class="tag bad">pendente</span></td><td>HPA já existe em manifest; EKS inexistente.</td></tr>
+      <tr><td>Terraform para provisionamento</td><td>todas infra</td><td><span class="tag warn">parcial</span></td><td><code>infra/</code> (workloads) e <code>infra/aws</code> (gateway) existem; EKS/RDS/VPC não.</td></tr>
+      <tr><td>Observabilidade</td><td>#92</td><td><span class="tag info">decidido</span></td><td>New Relic está selecionado no ADR-0071; validar limites e retenção atuais antes da integração.</td></tr>
+      <tr><td>Latência APIs, CPU/mem K8s, health/uptime</td><td>#93, #94</td><td><span class="tag bad">pendente</span></td><td>Depende de #92.</td></tr>
+      <tr><td>Alerta de falha no processamento de OS</td><td>#67 (produtor), #94</td><td><span class="tag warn">parcial</span></td><td>Evento publicado no código; bus, regra, alvo, DLQ sem issue dona.</td></tr>
+      <tr><td><b>Serverless para notificações</b> (Desafio)</td><td>—</td><td><span class="tag bad">sem issue</span></td><td>Proposta: EventBridge → SNS e-mail (+ SQS DLQ). Grátis no free tier.</td></tr>
+      <tr><td>Logs JSON com correlação</td><td>#93</td><td><span class="tag warn">parcial</span></td><td><code>request_context.py</code> tem correlation ID; formato JSON a confirmar.</td></tr>
+      <tr><td>Dashboard: volume diário de OS, tempo médio por status, erros de integração</td><td>#94</td><td><span class="tag bad">pendente</span></td><td>Tempo por status exige evento/timestamp por transição enviado ao APM.</td></tr>
+      <tr><td>Diagrama de componentes (nuvem, APIs, banco, monitoramento)</td><td>#95</td><td><span class="tag warn">parcial</span></td><td>Este artefato é base; falta monitoramento real.</td></tr>
+      <tr><td>Sequência: autenticação e abertura de OS</td><td>#95</td><td><span class="tag warn">parcial</span></td><td>Rascunho na seção 5.</td></tr>
+      <tr><td><b>RFCs</b> (nuvem, banco, autenticação)</td><td>#95</td><td><span class="tag bad">inexistente</span></td><td><code>docs/rfc/</code> não existe.</td></tr>
+      <tr><td>ADRs (comunicação, HPA)</td><td>#95</td><td><span class="tag warn">parcial</span></td><td>ADR-0064/66/67/71 existem; faltam ADR de HPA e de padrão de comunicação.</td></tr>
+      <tr><td>Justificativa do banco + ER</td><td>#95</td><td><span class="tag warn">parcial</span></td><td><code>database-schema.mermaid</code> existe; falta texto formal da Fase 3.</td></tr>
+      <tr><td>README por repo com diagrama, deploy, <b>link Swagger/Postman</b></td><td>#95</td><td><span class="tag bad">conflito</span></td><td>ADR deixa <code>/docs</code> privado. Proposta: versionar <code>openapi.json</code> + coleção Postman.</td></tr>
+      <tr><td>Links de deploy ativo</td><td>#87</td><td><span class="tag warn">risco</span></td><td>Ambiente efêmero: link estará fora do ar. Documentar e mostrar no vídeo.</td></tr>
+      <tr><td><code>soat-architecture</code> em todos os repos</td><td>#91, #87</td><td><span class="tag warn">parcial</span></td><td>Confirmado em 2 repos; falta infra.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ================= AWS ================= -->
+  <h2 id="aws">3. Arquitetura AWS proposta (staging efêmero, us-east-1)</h2>
+  <div class="legend">
+    <span style="--c:#2fa86b">P0 exigido pelo PDF</span>
+    <span style="--c:#4f8cff">P1 barato, mantém</span>
+    <span style="--c:#d99a1e">P2 adiável / simplificar</span>
+    <span style="--c:#9ca3af">fora da AWS</span>
+  </div>
+  <pre class="mermaid">
+flowchart LR
+  classDef p0 fill:#dcf3e6,stroke:#2fa86b,color:#111
+  classDef p1 fill:#e1ebff,stroke:#4f8cff,color:#111
+  classDef p2 fill:#fbeed3,stroke:#d99a1e,color:#111,stroke-dasharray:4 3
+  classDef ext fill:#f1f2f4,stroke:#9ca3af,color:#111
+
+  User([Cliente / Operador])
+  GH[GitHub Actions + OIDC]:::ext
+  GHCR[(GHCR imagens)]:::ext
+  NR[New Relic free]:::ext
+  DNS[Registro.br DNS]:::ext
+
+  subgraph AWS[AWS conta 035611741563 - us-east-1]
+    CF[CloudFront + S3 OAC\napp.oficina-workshop]:::p2
+    WAF[WAF rate 100/5min\nPOST /auth/customer/token]:::p2
+    APIGW[API Gateway REST Regional\nthrottle 50/100]:::p0
+    L[Lambda lambda-auth\nCPF -> JWT RS256]:::p0
+    KMS[KMS chave RSA\npor sessao]:::p0
+    SM[Secrets Manager\nruntime / lambda / master]:::p1
+    SSM[SSM Parameter Store\ncontratos /auto-shop/staging]:::p1
+    EB[EventBridge bus\nServiceOrderProcessingFailed]:::p0
+    SNS[SNS e-mail + SQS DLQ]:::p0
+    S3S[(S3 tfstate\nuse_lockfile)]:::p1
+
+    subgraph VPC[VPC 10.80.0.0/20 - 2 AZs]
+      NAT[NAT Gateway unico\nou NAT instance]:::p1
+      subgraph PRIV[Subnets privadas workload]
+        VL[VPC Link V2]:::p0
+        ALB[ALB interno\nTerraform + TargetGroupBinding]:::p0
+        subgraph EKS[EKS - managed node group ON-DEMAND t3.medium x2]
+          APP[FastAPI pods\nHPA 1-4]:::p0
+          RED[Redis efemero]:::p1
+          MH[MailHog efemero]:::p1
+          ADD[LB Controller, ESO,\nmetrics-server, NR agent]:::p1
+          CA[Cluster Autoscaler]:::p2
+        end
+        LENI[ENI Lambda]:::p0
+      end
+      subgraph ISO[Subnets isoladas sem rota default]
+        RDS[(RDS PostgreSQL 16\ndb.t4g.micro Single-AZ)]:::p0
+      end
+    end
+  end
+
+  User --> CF
+  User --> APIGW
+  WAF -.-> APIGW
+  APIGW -->|AWS_PROXY| L
+  APIGW --> VL --> ALB --> APP
+  L --- LENI --> RDS
+  L --> KMS
+  L --> SM
+  APP --> RDS
+  APP --> RED
+  APP --> MH
+  APP --> EB --> SNS
+  APP -->|JWKS via NAT| APIGW
+  ADD --> SM
+  APP --> NAT
+  GH --> GHCR
+  GH -->|terraform / kubectl| AWS
+  GH --> S3S
+  APP -.telemetria.-> NR
+  DNS -.CNAME.-> APIGW
+  DNS -.CNAME.-> CF
+  </pre>
+  <p class="muted">Mudanças propostas em relação ao ADR-0071: ALB criado pelo Terraform (não pelo controller), node group com 2 nodes, endpoint EKS público autenticado por IAM, notificação serverless explícita (EventBridge → SNS + DLQ) e HTTP no trecho VPC Link → ALB. CloudFront/Angular, domínio e WAF permanecem no escopo confirmado em 2026-10-27.</p>
+
+  <!-- ================= APP ================= -->
+  <h2 id="app">4. Arquitetura da aplicação e dos 4 repositórios</h2>
+  <pre class="mermaid">
+flowchart TB
+  classDef repo fill:#eef2ff,stroke:#4f46e5,color:#111
+  classDef layer fill:#ffffff,stroke:#6b7280,color:#111
+  classDef warn fill:#fff4e5,stroke:#d99a1e,color:#111
+
+  subgraph R1[auto-shop-system - aplicacao]
+    direction TB
+    API[api: routers, schemas, composition DI]:::layer
+    APPL[application: services + ports]:::layer
+    DOM[domain: entidades, VOs, enums, regras]:::layer
+    INFRA[infrastructure: SQLAlchemy, UoW, SMTP, PDF,\nInvertexto, BrasilAPI, EventBridge, JWKS]:::layer
+    FE[frontend Angular 15]:::layer
+    K8S[k8s/ Kustomize base + overlays\nmigration Job, Deployment, HPA]:::layer
+    GW[infra/aws: API Gateway, WAF,\nEventBridge, SNS]:::layer
+    LEG[gateway/functions HS256\ne infra/ TF-Kubernetes]:::warn
+    API --> APPL --> DOM
+    INFRA -. implementa ports .-> APPL
+  end
+
+  subgraph R2[lambda-auth]
+    LH[handler -> AuthenticateCustomer\nPostgresCustomerRepository, KmsTokenSigner]:::layer
+    LT[infra/terraform: Function, IAM, logs]:::layer
+  end
+
+  subgraph R3[k8s-infra - vazio]
+    KN[VPC, subnets, NAT, SGs]:::layer
+    KE[EKS, node group, access entries, add-ons Helm]:::layer
+    KA[ALB interno + listener + TG]:::layer
+    KP[namespace, RBAC, quota, NetworkPolicy]:::layer
+  end
+
+  subgraph R4[database-infra - vazio]
+    DN[subnet group + SG RDS]:::layer
+    DR[RDS PG16 + parameter group force_ssl]:::layer
+    DS[secrets + Job de grants]:::layer
+  end
+
+  R3 -->|SSM: vpc, subnets, SGs, cluster, listener| R4
+  R3 -->|SSM: subnets, SG lambda| R2
+  R4 -->|SSM: host, secret ARNs| R2
+  R4 -->|SSM: host, secret ARNs| R1
+  R3 -->|SSM: cluster, listener ARN| R1
+  R2 -->|SSM: function ARN, issuer, jwks| R1
+  </pre>
+  <div class="callout"><b>Ownership a corrigir:</b> <code>k8s-infra#10</code> (migration Job) e <code>k8s-infra#11</code> (digest/rollback) são deploy da aplicação. O PDF define o repo 4 como "aplicação executando em Kubernetes" com CI/CD próprio. Mover essas issues para <code>auto-shop-system</code>; <code>k8s-infra</code> fica com cluster, add-ons e baseline de namespace. Também aposentar <code>infra/</code> (Terraform-Kubernetes) no caminho cloud para não haver dois donos dos mesmos objetos.</div>
+
+  <!-- ================= SEQUÊNCIAS ================= -->
+  <h2 id="seq">5. Sequências exigidas pelo PDF</h2>
+  <h3>5.1 Autenticação do cliente por CPF e consumo de rota protegida</h3>
+  <pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor C as Cliente
+  participant G as API Gateway (+WAF)
+  participant L as Lambda lambda-auth
+  participant S as Secrets Manager
+  participant D as RDS PostgreSQL
+  participant K as KMS
+  participant A as FastAPI (EKS via VPC Link/ALB)
+  C->>G: POST /auth/customer/token {cpf}
+  G->>G: throttling / rate rule por IP (429)
+  G->>L: AWS_PROXY
+  L->>L: valida digito verificador
+  L->>S: GetSecretValue (cache em memoria)
+  L->>D: SELECT id, status (role read-only, verify-full)
+  alt inexistente ou inativo
+    L-->>C: 401 resposta uniforme
+  else ativo
+    L->>K: Sign RS256 (kid=staging-sessao)
+    L-->>C: 200 {access_token, expires_in<=900}
+  end
+  C->>G: GET /api/v1/customer/service-orders (Bearer)
+  G->>A: VPC Link -> ALB -> Pod
+  A->>G: GET /.well-known/jwks.json (cache PyJWKClient)
+  G->>L: AWS_PROXY
+  L-->>A: JWKS
+  A->>A: valida alg, kid, iss, aud, exp, scope
+  A->>D: OS do proprio cliente
+  A-->>C: 200 lista (Cache-Control no-store)
+  </pre>
+  <h3>5.2 Abertura de OS e falha de processamento</h3>
+  <pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor O as Operador
+  participant G as API Gateway
+  participant A as FastAPI
+  participant U as UoW / RDS
+  participant E as EventBridge
+  participant N as SNS (e-mail) + DLQ
+  participant M as New Relic
+  O->>G: POST /api/v1/admin/service-orders (cookie + CSRF)
+  G->>A: VPC Link -> ALB
+  A->>A: valida cliente, veiculo, regras de dominio
+  A->>U: insert OS (status Recebida) + commit
+  A-->>M: trace + log JSON (correlation_id)
+  A-->>O: 201 OS
+  Note over A,U: execucao / reserva / faturamento
+  A->>U: rollback em falha irrecuperavel
+  A->>E: PutEvents ServiceOrderProcessingFailed v1 (best-effort)
+  E->>N: regra -> SNS e-mail; falha de entrega -> SQS DLQ
+  A-->>M: metrica service_order_processing_failed -> alerta
+  </pre>
+
+  <!-- ================= CI/CD ================= -->
+  <h2 id="cicd">6. CI/CD e ciclo de sessão efêmera</h2>
+  <pre class="mermaid">
+flowchart LR
+  classDef s fill:#e1ebff,stroke:#4f8cff,color:#111
+  classDef g fill:#fbeed3,stroke:#d99a1e,color:#111
+  PR[PR -> develop/main]:::s --> CI[CI: testes, lint, scan,\nterraform fmt/validate/plan]:::s
+  CI --> M[merge]:::s
+  M --> FLAG{var STAGING_ACTIVE\n== true?}:::g
+  FLAG -- nao --> ART[publica artefato\nimagem digest / zip Lambda]:::s
+  FLAG -- sim --> DEP[deploy automatico\napply / kubectl / lambda update]:::s
+  UP[workflow_dispatch: session-up]:::g --> O1[k8s-infra apply] --> O2[database-infra apply + Job grants] --> O3[lambda-auth apply] --> O4[app: migration Job -> rollout -> smoke] --> O5[gateway apply]
+  O5 --> SET[STAGING_ACTIVE=true]:::g
+  DOWN[session-down manual\n+ cron 23:00 BRT]:::g --> D1[gateway destroy] --> D2[delete app/namespace] --> D3[lambda destroy] --> D4[database destroy] --> D5[k8s-infra destroy] --> UNSET[STAGING_ACTIVE=false]:::g
+  </pre>
+  <p class="muted">Deploy em merge só quando a sessão está ativa evita criar recursos fora da janela e mantém "deploy automático" demonstrável no vídeo. O cron de destroy é a proteção contra esquecer o ambiente ligado (orçamento AWS não interrompe gasto).</p>
+
+  <!-- ================= ACHADOS ================= -->
+  <h2 id="achados">7. Achados e propostas</h2>
+  <table>
+    <thead><tr><th>#</th><th>Sev.</th><th>Achado</th><th>Proposta</th></tr></thead>
+    <tbody>
+      <tr><td>A1</td><td><span class="tag bad">crítico</span></td><td>O ADR arquivado descreve conta Free/US$ 120, mas a conta atual é Paid, recebeu US$ 140 em créditos e está sem compute ativo; saldo não confirmado.</td><td>ADR atualizado. Recalcular o custo de todo o escopo confirmado, conferir o saldo e obter autorização explícita para cada apply antes de criar recursos. Ver D1.</td></tr>
+      <tr><td>A2</td><td><span class="tag bad">crítico</span></td><td>PDF exige deploy automático das branches de homologação <i>e</i> produção; ADR eliminou produção.</td><td>Opção barata: mesmo cluster/RDS, namespaces <code>hml</code>/<code>prd</code>, dois databases, stages <code>hml</code>/<code>prd</code> no Gateway. Custo extra ≈ pods. Ver D2.</td></tr>
+      <tr><td>A3</td><td><span class="tag bad">crítico</span></td><td>Pod limit do <code>t3.medium</code> com VPC CNI = 17. Com CoreDNS, aws-node, kube-proxy, LB Controller (2), ESO (3), metrics-server, agente NR, app, Redis, MailHog e Job, 1 node não cabe.</td><td>Habilitar prefix delegation no VPC CNI (110 pods/node) e iniciar com 2 nodes; quotas atuais são 16 vCPUs On-Demand e 32 Spot. Sessão 1 usou On-Demand após Spot falhar no sizing escolhido. Revalidar requests, disponibilidade e custo.</td></tr>
+      <tr><td>A4</td><td><span class="tag bad">alto</span></td><td>ALB criado pelo LB Controller via Ingress: listener ARN só existe após reconciliação, não pertence a nenhum state e bloqueia <code>destroy</code> da VPC (ENIs órfãs) se o Ingress não for removido antes.</td><td>Criar ALB, listener e target group em <code>k8s-infra</code> (Terraform) e registrar Pods com <code>TargetGroupBinding</code>. Resolve SSM, ownership e teardown.</td></tr>
+      <tr><td>A5</td><td><span class="tag bad">alto</span></td><td>Notificação serverless e infra de evento (bus, regra, alvo, DLQ, IAM) sem issue dona; plano P2 §4 já sinalizava.</td><td>Nova issue em <code>auto-shop-system</code> (dono de <code>infra/aws</code>): EventBridge → SNS e-mail + SQS DLQ. Sem Lambda extra.</td></tr>
+      <tr><td>A6</td><td><span class="tag ok">resolvido</span></td><td>A proposta anterior exigia endpoint exclusivamente privado e CodeBuild na VPC.</td><td>Decisão confirmada: endpoint EKS público e privado, IAM access entries e OIDC restrito ao repo/branch. CodeBuild foi removido.</td></tr>
+      <tr><td>A7</td><td><span class="tag warn">médio</span></td><td>Issues divergem do ADR: <code>database-infra#1</code> (DynamoDB lock, <code>envs/production</code>), <code>#3</code> (Multi-AZ, ≥7 dias, snapshot final), <code>#5</code> (<code>terraform_remote_state</code>), <code>k8s-infra#3</code> (endpoint público), <code>#5</code> (começar permissivo), <code>#7</code> (<code>api.autoshop.com</code>, <code>/docs</code> público), #87 (preservar snapshot), #89/#90 (frontend separado, prod), #113 (<code>api.autoshop.com</code>). O próprio plano P2 §6 ainda diz "hostname padrão, domínio adiado".</td><td>Reescrever critérios de aceite em vez de empilhar "Atualização ADR prevalece". Avaliador lê o corpo da issue.</td></tr>
+      <tr><td>A8</td><td><span class="tag warn">médio</span></td><td>Swagger/Postman público exigido no README; ADR deixa <code>/docs</code> privado.</td><td>Gerar <code>openapi.json</code> no CI, versionar + coleção Postman no repo; opcionalmente Swagger UI estático (GitHub Pages).</td></tr>
+      <tr><td>A9</td><td><span class="tag warn">médio</span></td><td>Observabilidade sem ferramenta; dashboards de negócio exigem instrumentação de transição de status.</td><td>New Relic free tier (1 usuário full, 100 GB/mês, APM, K8s, Lambda). Emitir custom event em cada transição de OS para "tempo médio por status".</td></tr>
+      <tr><td>A10</td><td><span class="tag warn">médio</span></td><td>O desenho anterior previa quatro identidades de banco e superestimava o escopo do Job de grants.</td><td>Desenho atual: três identidades (<code>owner</code>, <code>app_runtime</code>, <code>lambda_auth</code>) por database. O Job usa <code>owner</code> para bootstrap/migrations; ESO sincroniza apenas <code>app_runtime</code>. Ver D4.</td></tr>
+      <tr><td>A11</td><td><span class="tag warn">médio</span></td><td>TLS re-criptografado API GW → ALB exige ACM no ALB, hostname na URI de integração e domínio pronto antes do primeiro smoke.</td><td>HTTP no VPC Link (tráfego dentro da VPC). Manter HTTPS público no Gateway. Re-criptografia como P2.</td></tr>
+      <tr><td>A12</td><td><span class="tag warn">médio</span></td><td>Angular em CloudFront + <code>execute-api</code> quebra cookie de sessão (cross-site). Com domínio, <code>app.</code> e <code>api.</code> são same-site.</td><td>Publicar o Angular em CloudFront/S3 com o domínio próprio, conforme escopo confirmado; validar cookies, CORS e fluxo de sessão no smoke.</td></tr>
+      <tr><td>A13</td><td><span class="tag warn">médio</span></td><td>HPA max 2 + CA max 2: se 2 réplicas cabem em 1 node, CA nunca dispara; evidência exigida em #87 fica impossível.</td><td>HPA 1–4 com requests que forcem 2º node, ou CA como P2. PDF pede só "cluster com escalabilidade".</td></tr>
+      <tr><td>A14</td><td><span class="tag info">baixo</span></td><td>Logs de control plane EKS <code>audit</code> geram volume relevante no CloudWatch.</td><td>Habilitar só <code>api</code> e <code>authenticator</code> em staging; retenção 1 dia.</td></tr>
+      <tr><td>A15</td><td><span class="tag info">baixo</span></td><td>Lambdas HS256 administrativas em <code>gateway/functions</code> duplicam o login do backend e confundem a divisão "Lambda em repo próprio".</td><td>Avaliar remover authorizer HS256; backend já protege rotas admin (cookie + JWT + CSRF).</td></tr>
+      <tr><td>A16</td><td><span class="tag info">baixo</span></td><td>Lambda ainda usa <code>sslmode=require</code>; ADR exige <code>verify-full</code>.</td><td>Empacotar bundle RDS CA no zip; teste de contrato.</td></tr>
+      <tr><td>A17</td><td><span class="tag info">baixo</span></td><td>Budgets podem disparar alertas por custo mesmo quando há créditos disponíveis; entrega de alertas pode atrasar.</td><td>Os budgets de US$ 1/5/10 só alertam. Não há limite, ação de pausa nem gatilho de US$ 20 configurado; não estimar sessões cobertas sem saldo confirmado e custo completo.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ================= CUSTO ================= -->
+  <h2 id="custo">8. Referência histórica de custo, não é orçamento vigente</h2>
+  <p class="muted">A comparação abaixo reproduz uma estimativa anterior incompleta. Ela não inclui CloudFront/S3, domínio, ACM ou os dois WAFs, e não deve ser usada para autorizar uma sessão. Recalcular o custo completo no AWS Pricing Calculator antes de qualquer apply.</p>
+  <table id="costtbl">
+    <thead><tr><th>Item</th><th>Base</th><th class="num">Cenário histórico A</th><th class="num">Cenário histórico B</th><th style="width:28%"></th></tr></thead>
+    <tbody></tbody>
+    <tfoot></tfoot>
+  </table>
+  <div class="callout blue">Recalcular o custo antes da próxima sessão incluindo CloudFront, WAF, DNS/certificado e teardown. Conta Paid recebeu US$ 140 em créditos, mas o saldo remanescente é desconhecido; os budgets não limitam gasto. Observabilidade: New Relic free. Domínio já comprado.</div>
+
+  <!-- ================= STATUS ================= -->
+  <h2 id="status">9. O que foi feito e o que falta</h2>
+  <div class="grid">
+    <div class="card">
+      <h3 style="margin-top:0"><span class="tag ok">feito</span> Aplicação e Lambda</h3>
+      <ul>
+        <li>#63–#67: status cliente, Lambda CPF/JWT RS256 KMS, validação JWT, OS própria, evento de falha</li>
+        <li>CI app: 514 testes, 90%, Bandit, pip-audit, Kind smoke</li>
+        <li>CI Lambda: 74 testes, 95%, Ruff, TF validate</li>
+        <li>Build/push GHCR com tag SHA</li>
+        <li>Gateway admin em Terraform (#88)</li>
+        <li>Manifests K8s com HPA, probes, non-root, migration Job</li>
+        <li>Conta AWS nova, MFA, budgets, ADR-0071 de desenho</li>
+        <li>Domínio <code>oficina-workshop.com.br</code></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0"><span class="tag warn">em andamento</span></h3>
+      <ul>
+        <li>lambda-auth PR #11 rotação JWKS</li>
+        <li>Branch <code>F3P1-02-customer-access-events</code> (no-store, event bus config)</li>
+        <li>#91 proteção (app sim, demais não)</li>
+        <li>#90 CD com deploy skipped</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0"><span class="tag bad">a fazer — caminho crítico</span></h3>
+      <ol>
+        <li>Fechar D1–D5 e atualizar ADR + issues</li>
+        <li>k8s-infra#1 e database-infra#1 (bootstrap, state, CI)</li>
+        <li>k8s-infra#2 → #3 → #4/#5 + ALB TF</li>
+        <li>database-infra#2 → #3 → #4 → #5</li>
+        <li>lambda-auth deploy + verify-full</li>
+        <li>#113 Gateway (rotas cliente, VPC Link)</li>
+        <li>#85 conexão segura, #84/#86 deploy app</li>
+        <li>Nova issue EventBridge → SNS/DLQ</li>
+        <li>#92–#94 New Relic + dashboards</li>
+        <li>#87 staging, #68 homologação, vídeo</li>
+        <li>#95 RFCs, ADRs, READMEs, OpenAPI</li>
+      </ol>
+    </div>
+  </div>
+
+  <h3>Sequenciamento por dependências (sem data fixa)</h3>
+  <table>
+    <thead><tr><th>Dias</th><th>Entrega</th><th>Sessão AWS</th></tr></thead>
+    <tbody>
+      <tr><td>1–2</td><td>Decisões D1–D6 já registradas; alinhar ADR/planos, concluir CI e bootstrap documental/código dos dois repos Terraform</td><td>não; state bucket já existe</td></tr>
+      <tr><td>3–5</td><td>VPC + EKS + node group + add-ons; RDS + secrets + Job de grants; Lambda deploy</td><td>sessões curtas de validação de cada root</td></tr>
+      <tr><td>6–7</td><td>Deploy app (migration → rollout), Gateway #113, EventBridge/SNS, workflows session-up/down</td><td>sessão integrada</td></tr>
+      <tr><td>8–9</td><td>New Relic, logs JSON, dashboards, alertas; carga para HPA</td><td>sessão integrada</td></tr>
+      <tr><td>10–11</td><td>#68 homologação, gravação do vídeo, evidências sanitizadas</td><td>1–2 sessões</td></tr>
+      <tr><td>12</td><td>READMEs, RFCs, OpenAPI/Postman, PDF de entrega; teardown final e export do state</td><td>não</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ================= DECISÕES ================= -->
+  <h2 id="decisoes">10. Decisões confirmadas e gates restantes</h2>
+  <table>
+    <thead><tr><th>ID</th><th>Decisão</th><th>Recomendação</th></tr></thead>
+    <tbody>
+      <tr><td>D1</td><td>Conta, créditos e autorização</td><td>Conta Paid; US$ 140 em créditos concedidos, saldo desconhecido; Cost Explorer mostra US$ 0 sujeito a atraso. Apply exige autorização específica.</td></tr>
+      <tr><td>D2</td><td>Ambientes</td><td>Uma infraestrutura AWS efêmera, com namespaces/databases/stages lógicos <code>hml</code>/<code>prd</code>; sem conta, cluster ou RDS separado para produção.</td></tr>
+      <tr><td>D3</td><td>Acesso CI ao EKS</td><td>Endpoint público e privado, IAM access entries e OIDC restrito; sem CodeBuild.</td></tr>
+      <tr><td>D4</td><td>Banco e bootstrap</td><td>Três identidades por database. Init containers <code>aws-cli</code> + <code>postgres:16</code>, publicação com <code>PutSecretValue</code> e arquivos/segredos em tmpfs. O resolver seguro continua gate de implementação.</td></tr>
+      <tr><td>D5</td><td>Escopo público</td><td>CloudFront/S3 Angular, domínio próprio, ACM e WAF permanecem no escopo; WAF CloudFront usa escopo <code>CLOUDFRONT</code>, separado do WAF <code>REGIONAL</code> da API.</td></tr>
+      <tr><td>D6</td><td>Observabilidade</td><td>New Relic free; validar limites e retenção antes de integrar.</td></tr>
+    </tbody>
+  </table>
+</main>
+
+<script>
+  // Cost model (US$). Hours billed per session = 5 (4 h usage + create/destroy).
+  const H = 5;
+  const rows = [
+    ["EKS control plane", "US$ 0,10/h", 0.10*H, 0.10*H],
+    ["2x t3.medium On-Demand (Spot não foi usado)", "0,0416/h cada", 2*0.0416*H, 2*0.0416*H],
+    ["EBS nodes 2x20 GiB gp3", "0,08/GB-mês", 40*0.08/730*H, 40*0.08/730*H],
+    ["NAT Gateway + EIP + ~2 GB", "0,045/h + 0,005/h", (0.045+0.005)*H+0.09, (0.045+0.005)*H+0.09],
+    ["ALB interno + LCU", "0,0225/h", 0.0225*H+0.03, 0.0225*H+0.03],
+    ["RDS db.t4g.micro + 20 GiB", "0,016/h", 0.016*H+20*0.115/730*H, 0.016*H+20*0.115/730*H],
+    ["WAF Regional; WAF CloudFront excluído desta referência", "estimativa antiga", 7/730*H, 0],
+    ["CloudWatch logs (EKS audit vs api/auth)", "0,50/GB", 0.30, 0.05],
+    ["CodeBuild runner na VPC (estimativa histórica; fora do desenho atual)", "excluído", 0, 0],
+    ["Secrets, KMS, SSM, API GW, Lambda, S3, SNS", "rateado / free tier", 0.05, 0.05],
+  ];
+  const fmt = v => v.toFixed(2).replace(".", ",");
+  const max = Math.max(...rows.map(r => r[2]));
+  const tb = document.querySelector("#costtbl tbody");
+  let a = 0, b = 0;
+  rows.forEach(([n, base, adr, prop]) => {
+    a += adr; b += prop;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${n}</td><td class="muted">${base}</td><td class="num">${fmt(adr)}</td><td class="num">${fmt(prop)}</td>
+      <td><div class="bar" style="width:${(adr/max*100).toFixed(0)}%;opacity:.35"></div><div class="bar" style="width:${(prop/max*100).toFixed(0)}%;margin-top:2px"></div></td>`;
+    tb.appendChild(tr);
+  });
+  document.querySelector("#costtbl tfoot").innerHTML =
+    `<tr><th>Total desta tabela</th><th></th><th class="num">${fmt(a)}</th><th class="num">${fmt(b)}</th><th class="muted">Somente referência histórica incompleta</th></tr>
+     <tr><td>Créditos</td><td colspan="4">US$ 140 concedidos; saldo atual desconhecido. Número de sessões cobertas não pode ser estimado.</td></tr>`;
+</script>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "default", securityLevel: "strict", flowchart: { curve: "basis" } });
+</script>
+</body>
+</html>
