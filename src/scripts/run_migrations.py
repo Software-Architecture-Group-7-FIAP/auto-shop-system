@@ -82,8 +82,8 @@ def run_migrations() -> int:
         with connection:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_lock(%s)", (MIGRATION_LOCK_KEY,))
-            migration_env = os.environ.copy()
             if use_owner_identity:
+                migration_env = os.environ.copy()
                 migration_env.update(
                     {
                         "DATABASE_URL": database_url,
@@ -91,11 +91,13 @@ def run_migrations() -> int:
                         "SECRET_KEY": secrets.token_urlsafe(48),
                     }
                 )
-            result = subprocess.run(
-                ["alembic", "upgrade", "head"],
-                check=False,
-                env=migration_env,
-            )
+                result = subprocess.run(
+                    ["alembic", "upgrade", "head"],
+                    check=False,
+                    env=migration_env,
+                )
+            else:
+                result = subprocess.run(["alembic", "upgrade", "head"], check=False)
             return result.returncode
     finally:
         connection.close()
