@@ -1,9 +1,9 @@
 locals {
   upstream_parameter_suffixes = {
-    vpc_id                   = "network/vpc-id"
-    private_subnet_ids       = "network/workload-private-subnet-ids"
-    eks_cluster_name         = "eks/cluster-name"
-    alb_arn                  = "gateway/internal-alb-arn"
+    vpc_id             = "network/vpc-id"
+    private_subnet_ids = "network/workload-private-subnet-ids"
+    eks_cluster_name   = "eks/cluster-name"
+    alb_arn            = "gateway/internal-alb-arn"
   }
 }
 

@@ -1,6 +1,6 @@
 resource "aws_api_gateway_rest_api" "main" {
-  name        = "${local.name_prefix}-gateway"
-  description = "Auto Shop public API Gateway"
+  name                         = "${local.name_prefix}-gateway"
+  description                  = "Auto Shop public API Gateway"
   disable_execute_api_endpoint = var.disable_execute_api_endpoint
 
   endpoint_configuration {
@@ -252,10 +252,10 @@ resource "aws_api_gateway_method" "admin_any" {
 }
 
 resource "aws_api_gateway_integration" "admin_http" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.admin_proxy.id
-  http_method = aws_api_gateway_method.admin_any.http_method
-  type        = "HTTP_PROXY"
+  rest_api_id        = aws_api_gateway_rest_api.main.id
+  resource_id        = aws_api_gateway_resource.admin_proxy.id
+  http_method        = aws_api_gateway_method.admin_any.http_method
+  type               = "HTTP_PROXY"
   uri                = "http://${var.api_domain_name}:$${stageVariables.backendListenerPort}/api/v1/admin/{proxy}"
   connection_type    = "VPC_LINK"
   connection_id      = aws_apigatewayv2_vpc_link.gateway.id
@@ -310,10 +310,10 @@ resource "aws_api_gateway_method" "public_any" {
 }
 
 resource "aws_api_gateway_integration" "public_http" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.public_proxy.id
-  http_method = aws_api_gateway_method.public_any.http_method
-  type        = "HTTP_PROXY"
+  rest_api_id        = aws_api_gateway_rest_api.main.id
+  resource_id        = aws_api_gateway_resource.public_proxy.id
+  http_method        = aws_api_gateway_method.public_any.http_method
+  type               = "HTTP_PROXY"
   uri                = "http://${var.api_domain_name}:$${stageVariables.backendListenerPort}/api/v1/public/{proxy}"
   connection_type    = "VPC_LINK"
   connection_id      = aws_apigatewayv2_vpc_link.gateway.id
@@ -367,10 +367,10 @@ resource "aws_api_gateway_method" "health_any" {
 }
 
 resource "aws_api_gateway_integration" "health_http" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.health_proxy.id
-  http_method = aws_api_gateway_method.health_any.http_method
-  type        = "HTTP_PROXY"
+  rest_api_id        = aws_api_gateway_rest_api.main.id
+  resource_id        = aws_api_gateway_resource.health_proxy.id
+  http_method        = aws_api_gateway_method.health_any.http_method
+  type               = "HTTP_PROXY"
   uri                = "http://${var.api_domain_name}:$${stageVariables.backendListenerPort}/health/{proxy}"
   connection_type    = "VPC_LINK"
   connection_id      = aws_apigatewayv2_vpc_link.gateway.id
@@ -458,15 +458,15 @@ resource "aws_api_gateway_stage" "main" {
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_gateway_access.arn
     format = jsonencode({
-      requestId       = "$context.requestId"
-      ip              = "$context.identity.sourceIp"
-      requestTime     = "$context.requestTime"
-      httpMethod      = "$context.httpMethod"
-      resourcePath    = "$context.resourcePath"
-      status          = "$context.status"
-      protocol        = "$context.protocol"
-      responseLength  = "$context.responseLength"
-      latencyMs       = "$context.responseLatency"
+      requestId      = "$context.requestId"
+      ip             = "$context.identity.sourceIp"
+      requestTime    = "$context.requestTime"
+      httpMethod     = "$context.httpMethod"
+      resourcePath   = "$context.resourcePath"
+      status         = "$context.status"
+      protocol       = "$context.protocol"
+      responseLength = "$context.responseLength"
+      latencyMs      = "$context.responseLatency"
     })
   }
 

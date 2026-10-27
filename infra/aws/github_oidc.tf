@@ -67,8 +67,8 @@ data "aws_iam_policy_document" "github_deploy_eks" {
   for_each = var.enable_github_oidc ? toset(["staging", "production"]) : toset([])
 
   statement {
-    sid    = "DescribeCluster"
-    effect = "Allow"
+    sid     = "DescribeCluster"
+    effect  = "Allow"
     actions = ["eks:DescribeCluster"]
     resources = [
       format(
