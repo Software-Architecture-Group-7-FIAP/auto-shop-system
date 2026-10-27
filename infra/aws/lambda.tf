@@ -87,3 +87,19 @@ resource "aws_lambda_permission" "jwt_authorizer_apigw" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/authorizers/*"
 }
+
+resource "aws_lambda_permission" "customer_auth_token_apigw" {
+  statement_id  = "AllowCustomerTokenFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = var.customer_auth_lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/POST/auth/customer/token"
+}
+
+resource "aws_lambda_permission" "customer_jwks_apigw" {
+  statement_id  = "AllowCustomerJwksFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = var.customer_auth_lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/GET/.well-known/jwks.json"
+}

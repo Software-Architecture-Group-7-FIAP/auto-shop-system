@@ -178,23 +178,45 @@ class FakeEmailSender:
 
 
 class FakeUnitOfWork:
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        commit_error: Exception | None = None,
+        rollback_error: Exception | None = None,
+        calls: list[str] | None = None,
+    ):
         self.commits = 0
         self.rollbacks = 0
+        self.commit_error = commit_error
+        self.rollback_error = rollback_error
+        self.calls = calls
 
     def commit(self) -> None:
         self.commits += 1
+        if self.commit_error is not None:
+            raise self.commit_error
 
     def rollback(self) -> None:
         self.rollbacks += 1
+        if self.calls is not None:
+            self.calls.append("rollback")
+        if self.rollback_error is not None:
+            raise self.rollback_error
 
 
 class FakeServiceOrderEventPublisher:
-    def __init__(self, error: Exception | None = None):
+    def __init__(
+        self,
+        error: Exception | None = None,
+        calls: list[str] | None = None,
+    ):
         self.events: list[ServiceOrderProcessingFailed] = []
         self.error = error
+        self.calls = calls
 
     def publish(self, event: ServiceOrderProcessingFailed) -> None:
+        if self.calls is not None:
+            self.calls.append("publish")
         self.events.append(event)
         if self.error is not None:
             raise self.error
@@ -306,6 +328,96 @@ def test_event_publisher_failure_does_not_hide_original_execution_error(caplog):
     assert "event_publish_failed" in caplog.text
     assert "52998224725" not in caplog.text
     assert "secret-value" not in caplog.text
+
+
+def test_rollback_happens_before_failure_event_publication():
+    calls: list[str] = []
+    original_error = RuntimeError("commit failed")
+    uow = FakeUnitOfWork(commit_error=original_error, calls=calls)
+    publisher = FakeServiceOrderEventPublisher(calls=calls)
+    service = make_service(uow=uow, event_publisher=publisher)
+
+    with pytest.raises(RuntimeError) as raised:
+        service.enqueue(1)
+
+    assert raised.value is original_error
+    assert calls == ["rollback", "publish"]
+
+
+def test_rollback_failure_does_not_hide_original_execution_error(caplog):
+    original_error = RuntimeError("commit failed")
+    uow = FakeUnitOfWork(
+        commit_error=original_error,
+        rollback_error=RuntimeError("rollback failed with sensitive detail"),
+    )
+    publisher = FakeServiceOrderEventPublisher()
+    service = make_service(uow=uow, event_publisher=publisher)
+
+    with pytest.raises(RuntimeError) as raised:
+        service.enqueue(1)
+
+    assert raised.value is original_error
+    assert len(publisher.events) == 1
+    assert "processing_rollback_failed" in caplog.text
+    assert "sensitive detail" not in caplog.text
+
+
+def test_missing_publisher_does_not_hide_original_execution_error(caplog):
+    original_error = RuntimeError("commit failed")
+    service = make_service(uow=FakeUnitOfWork(commit_error=original_error))
+
+    with pytest.raises(RuntimeError) as raised:
+        service.enqueue(1)
+
+    assert raised.value is original_error
+    assert "reason=publisher_not_configured" in caplog.text
+
+
+@pytest.mark.parametrize("operation", ("enqueue", "start", "finish"))
+def test_each_monitored_execution_operation_preserves_unexpected_commit_failure(operation):
+    original_error = RuntimeError(f"{operation} commit failed")
+    uow = FakeUnitOfWork(commit_error=original_error)
+    publisher = FakeServiceOrderEventPublisher()
+    order = make_service_order(
+        status=(
+            ServiceOrderStatus.EM_EXECUCAO
+            if operation == "finish"
+            else ServiceOrderStatus.AGUARDANDO_INICIO
+        ),
+        mechanic_name="Carlos" if operation == "start" else None,
+    )
+    withdrawals = InMemoryStockWithdrawalRepository(
+        [
+            StockWithdrawal(
+                id=1,
+                service_order_id=1,
+                product_id=10,
+                quantity=2,
+                status=StockWithdrawalStatus.FULFILLED,
+            )
+        ]
+        if operation == "finish"
+        else None
+    )
+    service = make_service(
+        service_orders=InMemoryServiceOrderRepository([order]),
+        withdrawals=withdrawals,
+        reservations=FakeReservationGateway({(1, 10): 2}),
+        uow=uow,
+        event_publisher=publisher,
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        if operation == "enqueue":
+            service.enqueue(1)
+        elif operation == "start":
+            service.start_service(1)
+        else:
+            service.finish_service(1)
+
+    assert raised.value is original_error
+    assert uow.rollbacks == 1
+    assert len(publisher.events) == 1
 
 
 def test_execution_service_starts_service_order_without_sqlalchemy():
