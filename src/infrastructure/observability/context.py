@@ -9,10 +9,17 @@ _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _SERVICE_ORDER_PATH = re.compile(r"/service-orders/(\d+)(?:/|$)")
 
 
+def _looks_like_brazilian_document(value: str) -> bool:
+    digits = re.sub(r"\D", "", value)
+    return len(digits) in (11, 14) and digits.isdigit()
+
+
 def accept_correlation_id(value: str | None) -> str | None:
     if value is None:
         return None
     candidate = value.strip()
+    if _looks_like_brazilian_document(candidate):
+        return None
     if _SAFE_ID.fullmatch(candidate):
         return candidate
     return None

@@ -2,7 +2,10 @@ import json
 import logging
 from uuid import UUID
 
+from fastapi.testclient import TestClient
+
 from src.infrastructure.observability.json_logging import JsonLogFormatter
+from src.main import app
 
 
 def _capture_src_logs():
@@ -77,6 +80,28 @@ def test_access_log_is_json_with_correlation_id(client):
     assert access["status_code"] == 200
     assert isinstance(access["duration_ms"], float)
     assert access["timestamp"].endswith("Z")
+
+
+def test_unhandled_error_returns_correlation_headers(client, auth_headers, monkeypatch):
+    class BoomService:
+        def get_by_id(self, service_order_id: int):
+            raise RuntimeError("simulated failure")
+
+    monkeypatch.setattr(
+        "src.api.routers.service_orders.compose_service_order_service",
+        lambda db: BoomService(),
+    )
+
+    strict_client = TestClient(app, raise_server_exceptions=False)
+    strict_client.cookies.update(client.cookies)
+    response = strict_client.get(
+        "/api/v1/admin/service-orders/1",
+        headers={**auth_headers, "X-Correlation-ID": "err-trace-1"},
+    )
+
+    assert response.status_code == 500
+    assert response.headers["x-correlation-id"] == "err-trace-1"
+    assert response.headers["x-request-id"] == "err-trace-1"
 
 
 def test_missing_service_order_log_carries_correlation_and_order_id(client, auth_headers):

@@ -66,7 +66,17 @@ class CorrelationMiddleware:
                 "unhandled exception",
                 extra={"event": "unhandled_exception", "http_method": scope.get("method"), "path": path},
             )
-            raise
+            status_code = 500
+            body = b'{"detail":"Erro interno do servidor"}'
+            await send_with_correlation(
+                {
+                    "type": "http.response.start",
+                    "status": 500,
+                    "headers": [(b"content-type", b"application/json")],
+                }
+            )
+            await send({"type": "http.response.body", "body": body, "more_body": False})
+            return
         finally:
             if path not in QUIET_PATHS:
                 logger.info(

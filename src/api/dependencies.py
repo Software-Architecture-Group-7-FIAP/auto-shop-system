@@ -15,9 +15,6 @@ from src.infrastructure.auth.customer_jwt import (
     CustomerJwksUnavailableError,
 )
 from src.infrastructure.database import get_db
-from src.infrastructure.observability.json_logging import log_domain_error
-
-
 def _extract_bearer_token(authorization: str | None) -> str | None:
     if not authorization:
         return None
@@ -98,17 +95,6 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
-def domain_error_handler(exc: DomainError) -> HTTPException:
-    log_domain_error(exc)
-    status_map = {
-        "not_found": status.HTTP_404_NOT_FOUND,
-        "validation_error": status.HTTP_422_UNPROCESSABLE_ENTITY,
-        "conflict_error": status.HTTP_409_CONFLICT,
-        "unauthorized": status.HTTP_401_UNAUTHORIZED,
-        "forbidden": status.HTTP_403_FORBIDDEN,
-        "service_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
-    }
-    return HTTPException(
-        status_code=status_map.get(exc.code, status.HTTP_400_BAD_REQUEST),
-        detail=exc.message,
-    )
+def domain_error_handler(exc: DomainError) -> None:
+    """Re-raise so the global DomainError handler returns detail and code."""
+    raise exc
