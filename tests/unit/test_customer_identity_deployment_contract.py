@@ -58,7 +58,7 @@ def test_ci_and_aws_example_use_ssm_for_customer_auth_lambda():
     assert 'upstream_ssm_prefix = "/auto-shop/staging"' in aws_tfvars_example
     assert "auth/customer-token/function-arn/hml" in aws_readme
     assert "auth/customer-token/function-arn/prd" in aws_readme
-    assert "Antes do `apply`" in aws_readme
+    assert "parâmetros SSM upstream listados acima" in aws_readme
 
 
 def test_customer_gateway_routes_do_not_use_admin_hs256_authorizer():
