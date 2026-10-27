@@ -76,9 +76,18 @@ docker compose up api
 
 - API (Docker): http://localhost:8000
 - API (local `poetry run uvicorn`): http://localhost:8000
-- Swagger: http://localhost:8000/docs
+- Swagger local: http://localhost:8000/docs
+- OpenAPI versionado: [docs/api/openapi.json](docs/api/openapi.json)
 - MailHog UI: http://localhost:8025
 - Coleção completa da API: [docs/api/auto-shop.postman_collection.json](docs/api/auto-shop.postman_collection.json)
+- Ambiente Postman HML: [docs/api/auto-shop-hml.postman_environment.json](docs/api/auto-shop-hml.postman_environment.json)
+- Ambiente Postman PRD: [docs/api/auto-shop-prd.postman_environment.json](docs/api/auto-shop-prd.postman_environment.json)
+
+O `baseUrl` da coleção Postman usa `localhost` por padrão. Para homologação ou
+produção, importe o ambiente correspondente e substitua o host de exemplo e os
+dados sintéticos localmente. A coleção inclui rotas do API Gateway e da Lambda
+de autenticação de clientes; essas rotas não fazem parte do OpenAPI gerado pela
+aplicação FastAPI. Não exporte ambientes preenchidos com CPF, senha ou token.
 
 O container `api` inicia apenas o Uvicorn; migrations são uma etapa explícita e única. Rode `docker compose run --rm api alembic upgrade head` **antes** do seed e da API.
 

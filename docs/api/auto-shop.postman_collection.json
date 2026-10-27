@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Auto Shop System - API completa",
-    "description": "Coleção gerada a partir do OpenAPI da aplicação. A autenticação usa cookies HttpOnly; execute o login primeiro e mantenha o cookie oficina_csrf em csrfToken. Os valores de exemplo são placeholders.",
+    "description": "Coleção gerada a partir do OpenAPI da aplicação. A autenticação usa cookies HttpOnly; execute o login primeiro e mantenha o cookie oficina_csrf em csrfToken. Os valores de exemplo são placeholders.\n\nPara homologação, importe um dos ambientes de exemplo e preencha `baseUrl` e os dados sintéticos localmente. As rotas do Gateway e da Lambda de cliente estão na pasta `Fase 3 - Gateway e cliente`; elas não fazem parte do OpenAPI gerado somente a partir da aplicação FastAPI. Não exporte ambientes com CPF, senhas ou tokens preenchidos.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [
@@ -43,6 +43,54 @@
       "key": "trackingToken",
       "value": "<cole-o-token-de-acompanhamento-aqui>",
       "type": "string"
+    },
+    {
+      "key": "adminUsername",
+      "value": "",
+      "type": "string",
+      "description": "Usuário administrativo de homologação; informe apenas no ambiente local do Postman."
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string",
+      "description": "Token administrativo temporário; mantido no ambiente local do Postman."
+    },
+    {
+      "key": "customerCpf",
+      "value": "",
+      "type": "string",
+      "description": "CPF sintético de cliente ativo; não use dados pessoais reais."
+    },
+    {
+      "key": "customerPhone",
+      "value": "",
+      "type": "string",
+      "description": "Telefone sintético de cliente; não use dados pessoais reais."
+    },
+    {
+      "key": "customerToken",
+      "value": "",
+      "type": "string",
+      "description": "Token de cliente temporário; mantido no ambiente local do Postman."
+    },
+    {
+      "key": "serviceOrderId",
+      "value": "",
+      "type": "string",
+      "description": "ID de uma OS de teste pertencente ao cliente sintético."
+    },
+    {
+      "key": "supplierCnpj",
+      "value": "",
+      "type": "string",
+      "description": "CNPJ sintético de fornecedor; não use dados pessoais reais."
+    },
+    {
+      "key": "supplierPhone",
+      "value": "",
+      "type": "string",
+      "description": "Telefone sintético de fornecedor; não use dados pessoais reais."
     }
   ],
   "item": [
@@ -521,7 +569,7 @@
             "description": "Create Customer",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Exemplo\",\n  \"document\": \"529.982.247-25\",\n  \"email\": \"example@test.local\",\n  \"phone\": \"11999999999\",\n  \"address\": \"Rua Exemplo, 100\"\n}",
+              "raw": "{\n  \"name\": \"Exemplo\",\n  \"document\": \"{{customerCpf}}\",\n  \"email\": \"example@test.local\",\n  \"phone\": \"{{customerPhone}}\",\n  \"address\": \"Rua Exemplo, 100\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -600,7 +648,7 @@
             "description": "Update Customer",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Exemplo\",\n  \"email\": \"example@test.local\",\n  \"phone\": \"11999999999\",\n  \"address\": \"Rua Exemplo, 100\"\n}",
+              "raw": "{\n  \"name\": \"Exemplo\",\n  \"email\": \"example@test.local\",\n  \"phone\": \"{{customerPhone}}\",\n  \"address\": \"Rua Exemplo, 100\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -637,7 +685,7 @@
             "description": "Add Customer Document",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"document\": \"529.982.247-25\"\n}",
+              "raw": "{\n  \"document\": \"{{customerCpf}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -686,7 +734,7 @@
             "description": "Get Customer By Document Admin",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"document\": \"529.982.247-25\"\n}",
+              "raw": "{\n  \"document\": \"{{customerCpf}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -717,7 +765,7 @@
             "description": "Validate Cnpj",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"document\": \"529.982.247-25\"\n}",
+              "raw": "{\n  \"document\": \"{{supplierCnpj}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -748,7 +796,7 @@
             "description": "Validate Cpf",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"document\": \"529.982.247-25\"\n}",
+              "raw": "{\n  \"document\": \"{{customerCpf}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1954,7 +2002,7 @@
             "description": "Create Supplier",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Exemplo\",\n  \"document\": \"529.982.247-25\",\n  \"email\": \"example@test.local\",\n  \"phone\": \"11999999999\"\n}",
+              "raw": "{\n  \"name\": \"Exemplo\",\n  \"document\": \"{{supplierCnpj}}\",\n  \"email\": \"example@test.local\",\n  \"phone\": \"{{supplierPhone}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2033,7 +2081,7 @@
             "description": "Update Supplier",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Exemplo\",\n  \"email\": \"example@test.local\",\n  \"phone\": \"11999999999\"\n}",
+              "raw": "{\n  \"name\": \"Exemplo\",\n  \"email\": \"example@test.local\",\n  \"phone\": \"{{supplierPhone}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2191,7 +2239,7 @@
             "description": "Lookup Customer",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"document\": \"529.982.247-25\",\n  \"email\": \"example@test.local\",\n  \"phone\": \"11999999999\",\n  \"plate\": \"ABC1D23\"\n}",
+              "raw": "{\n  \"document\": \"{{customerCpf}}\",\n  \"email\": \"example@test.local\",\n  \"phone\": \"{{customerPhone}}\",\n  \"plate\": \"ABC1D23\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2289,6 +2337,150 @@
               "variables": []
             },
             "description": "Readiness Check"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Fase 3 - Gateway e cliente",
+      "description": "Fluxos externos de homologação. Selecione o ambiente HML ou PRD e preencha as variáveis localmente com dados sintéticos.",
+      "item": [
+        {
+          "name": "POST /auth/login (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login",
+            "description": "Login administrativo pelo API Gateway. O teste salva access_token em adminToken no ambiente ativo do Postman.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{adminUsername}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "  pm.environment.set('adminToken', pm.response.json().access_token);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/v1/admin/me (admin protegido)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/admin/me",
+            "description": "Confirma o acesso administrativo via Gateway com o Bearer token obtido no login.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /auth/customer/token (CPF)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/customer/token",
+            "description": "Emite um token para um cliente sintético ativo. O teste salva access_token em customerToken no ambiente ativo do Postman.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cpf\": \"{{customerCpf}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "  pm.environment.set('customerToken', pm.response.json().access_token);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/v1/customer/me (cliente protegido)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/customer/me",
+            "description": "Confirma a identidade do cliente usando o JWT emitido pela Lambda.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/v1/customer/service-orders/{service_order_id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/customer/service-orders/{{serviceOrderId}}",
+            "description": "Consulta uma OS pertencente ao cliente sintético autenticado. Use uma OS de teste.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customerToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /.well-known/jwks.json",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/.well-known/jwks.json",
+            "description": "Consulta as chaves públicas usadas para validar os JWTs de cliente."
           }
         }
       ]
