@@ -1,0 +1,97 @@
+---
+config:
+  theme: base
+  themeVariables:
+    fontFamily: Arial
+    fontSize: 15px
+    primaryTextColor: "#111827"
+    lineColor: "#263238"
+---
+%% Visão UML parcial por contexto; as classes compartilhadas aparecem em mais de uma vista.
+classDiagram
+    direction TB
+    class Supplier {
+        +id: int [PK]
+        +name: string
+        +document: string [UK]
+        +email: string
+        +phone: string
+        +created_at: datetime
+    }
+
+    class Product {
+        +id: int [PK]
+        +name: string
+        +description: string
+        +sku: string [UK]
+        +unit_price: float
+        +stock_quantity: int
+        +supplier_id: int [FK]
+        +created_at: datetime
+    }
+
+    class ServiceOrder {
+        +id: int [PK]
+        +budget_id: int [FK, opcional]
+        +customer_id: int [FK]
+        +vehicle_id: int [FK]
+        +status: string
+        +priority: string
+        +mechanic_name: string
+        +total_price: float
+        +started_at: datetime
+        +finished_at: datetime
+        +tracking_token_hash: string [UK]
+        +tracking_token_expires_at: datetime
+        +tracking_token_revoked_at: datetime
+        +created_at: datetime
+        +updated_at: datetime
+    }
+
+    class Reservation {
+        +id: int [PK]
+        +service_order_id: int [FK]
+        +product_id: int [FK]
+        +quantity: int
+        +status: string
+        +created_at: datetime
+    }
+
+    class PurchaseRequest {
+        +id: int [PK]
+        +product_id: int [FK]
+        +supplier_id: int [FK, opcional]
+        +service_order_id: int [FK, opcional]
+        +quantity: int
+        +status: string
+        +created_at: datetime
+    }
+
+    class GoodsReceipt {
+        +id: int [PK]
+        +purchase_request_id: int [FK]
+        +quantity: int
+        +received_at: datetime
+    }
+
+    class StockWithdrawal {
+        +id: int [PK]
+        +service_order_id: int [FK]
+        +product_id: int [FK]
+        +quantity: int
+        +status: string
+        +requested_at: datetime
+        +fulfilled_at: datetime
+    }
+
+Supplier "1" --> "0..*" Product : fornece
+Supplier "0..1" --> "0..*" PurchaseRequest : atende
+ServiceOrder "1" --> "0..*" Reservation : reserva
+ServiceOrder "0..1" --> "0..*" PurchaseRequest : dispara
+ServiceOrder "1" --> "0..*" StockWithdrawal : retira
+Product "1" --> "0..*" Reservation : reservado
+Product "1" --> "0..*" StockWithdrawal : retirado
+Product "1" --> "0..*" PurchaseRequest : pedido
+PurchaseRequest "1" --> "0..*" GoodsReceipt : recebido via
+
+classDef default fill:#ffffff,stroke:#111827,stroke-width:1px,color:#111827;

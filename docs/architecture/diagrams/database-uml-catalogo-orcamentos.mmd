@@ -1,0 +1,113 @@
+---
+config:
+  theme: base
+  themeVariables:
+    fontFamily: Arial
+    fontSize: 15px
+    primaryTextColor: "#111827"
+    lineColor: "#263238"
+---
+%% Visão UML parcial por contexto; as classes compartilhadas aparecem em mais de uma vista.
+classDiagram
+    direction TB
+    class Customer {
+        +id: int [PK]
+        +name: string
+        +document: string [UK]
+        +email: string
+        +phone: string
+        +created_at: datetime
+        +updated_at: datetime
+    }
+
+    class Vehicle {
+        +id: int [PK]
+        +customer_id: int [FK]
+        +plate: string [UK]
+        +brand: string
+        +model: string
+        +year: int
+        +created_at: datetime
+    }
+
+    class Supplier {
+        +id: int [PK]
+        +name: string
+        +document: string [UK]
+        +email: string
+        +phone: string
+        +created_at: datetime
+    }
+
+    class Product {
+        +id: int [PK]
+        +name: string
+        +description: string
+        +sku: string [UK]
+        +unit_price: float
+        +stock_quantity: int
+        +supplier_id: int [FK]
+        +created_at: datetime
+    }
+
+    class Service {
+        +id: int [PK]
+        +name: string
+        +description: string
+        +base_price: float
+        +estimated_hours: float
+        +created_at: datetime
+    }
+
+    class ServiceProductLine {
+        +id: int [PK]
+        +service_id: int [FK]
+        +product_id: int [FK]
+        +quantity: int
+    }
+
+    class Budget {
+        +id: int [PK]
+        +customer_id: int [FK]
+        +vehicle_id: int [FK]
+        +status: string
+        +total_price: float
+        +estimated_delivery: datetime
+        +approval_token_hash: string [UK]
+        +approval_expires_at: datetime
+        +approval_used_at: datetime
+        +revision_number: int
+        +supersedes_budget_id: int [FK, opcional]
+        +created_at: datetime
+        +updated_at: datetime
+    }
+
+    class BudgetServiceLine {
+        +id: int [PK]
+        +budget_id: int [FK]
+        +service_id: int [FK]
+        +quantity: int
+        +unit_price: float
+    }
+
+    class BudgetProductLine {
+        +id: int [PK]
+        +budget_id: int [FK]
+        +product_id: int [FK]
+        +quantity: int
+        +unit_price: float
+        +from_service: bool
+    }
+
+Customer "1" --> "0..*" Vehicle : possui
+Customer "1" --> "0..*" Budget : solicita
+Vehicle "1" --> "0..*" Budget : referente a
+Supplier "1" --> "0..*" Product : fornece
+Service "1" --> "0..*" ServiceProductLine : requer
+Product "1" --> "0..*" ServiceProductLine : usado em
+Budget "1" --> "0..*" BudgetServiceLine : contém
+Budget "1" --> "0..*" BudgetProductLine : contém
+Service "1" --> "0..*" BudgetServiceLine : cotado
+Product "1" --> "0..*" BudgetProductLine : cotado
+
+classDef default fill:#ffffff,stroke:#111827,stroke-width:1px,color:#111827;

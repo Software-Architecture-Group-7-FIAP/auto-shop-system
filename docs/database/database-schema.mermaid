@@ -91,7 +91,7 @@ erDiagram
         datetime approval_expires_at
         datetime approval_used_at
         int revision_number
-        int supersedes_budget_id FK
+        int supersedes_budget_id FK "orcamento anterior opcional"
         datetime created_at "criado em"
         datetime updated_at "atualizado em"
     }
@@ -208,27 +208,28 @@ erDiagram
     customers ||--o{ budgets : solicita
     customers ||--o{ service_orders : possui
     users ||--o{ refresh_sessions : possui
-    users ||--o{ service_order_status_history : atua
+    users o|--o{ service_order_status_history : atua
     vehicles ||--o{ budgets : referente_a
     vehicles ||--o{ service_orders : referente_a
 
     suppliers ||--o{ products : fornece
-    suppliers ||--o{ purchase_requests : atende
+    suppliers o|--o{ purchase_requests : atende
     services ||--o{ service_product_lines : requer
     products ||--o{ service_product_lines : usado_em
 
     budgets ||--o{ budget_service_lines : contem
     budgets ||--o{ budget_product_lines : contem
-    budgets ||--o| service_orders : pode_gerar
+    budgets o|--o| service_orders : pode_gerar
+    budgets o|--o{ budgets : substitui
     services ||--o{ budget_service_lines : cotado
     products ||--o{ budget_product_lines : cotado
 
     service_orders ||--o{ service_order_service_lines : executa
     service_orders ||--o{ service_order_product_lines : utiliza
-    service_orders ||--|| invoices : faturado_como
+    service_orders ||--o| invoices : faturado_como
     service_orders ||--o{ reservations : reserva
     service_orders ||--o{ stock_withdrawals : retira
-    service_orders ||--o{ purchase_requests : dispara
+    service_orders o|--o{ purchase_requests : dispara
     service_orders ||--o{ service_order_status_history : audita
     services ||--o{ service_order_service_lines : realizado
     products ||--o{ service_order_product_lines : consumido

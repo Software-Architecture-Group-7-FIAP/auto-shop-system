@@ -6,28 +6,26 @@ PostgreSQL é o banco relacional da aplicação. Na Fase 3, Amazon RDS for Postg
 
 A justificativa é compatível com o modelo atual: entidades relacionadas por chaves estrangeiras, constraints de unicidade e transações que atualizam mais de um agregado durante a jornada de uma OS. A instância de staging não representa a capacidade ou disponibilidade de produção real.
 
-## Diagrama ER
+## Diagramas UML e esquema ER
 
-O arquivo [database-schema.mermaid](../database/database-schema.mermaid) é a fonte editável do esquema. A versão vetorial e a imagem rasterizada são geradas por [render_architecture_diagrams.py](../../scripts/render_architecture_diagrams.py).
+O modelo UML está dividido em quatro vistas editáveis para manter atributos, chaves e cardinalidades legíveis: [identidade e cadastro](diagrams/database-uml-identidade-cadastro.svg), [catálogo e orçamentos](diagrams/database-uml-catalogo-orcamentos.svg), [ordens de serviço](diagrams/database-uml-ordens-servico.svg) e [estoque e compras](diagrams/database-uml-estoque-compras.svg). As classes centrais aparecem repetidas nas vistas onde dão contexto às relações.
 
-![Diagrama ER do Auto Shop](diagrams/database-er.svg)
-
-[PNG do diagrama ER](diagrams/database-er.png) · [Fonte Mermaid](../database/database-schema.mermaid)
+O [esquema ER completo](../database/database-schema.mermaid) e suas exportações são a visão integral do schema. Todas as fontes Mermaid e imagens são atualizadas por [render_architecture_diagrams.py](../../scripts/render_architecture_diagrams.py).
 
 ## Relações e regras representadas
 
 - **Clientes e veículos:** um cliente pode possuir vários veículos; cada veículo referencia um cliente.
 - **Cliente, veículo, orçamento e OS:** orçamentos e ordens de serviço referenciam cliente e veículo. A relação permite recuperar a jornada sem duplicar dados cadastrais.
 - **Orçamento e linhas:** um orçamento contém linhas de serviço e produto com quantidade e preço unitário usados na proposta.
-- **Orçamento e OS:** um orçamento pode gerar no máximo uma OS. budget_id na OS preserva a origem sem exigir que toda OS tenha sido criada por orçamento.
-- **OS e execução:** linhas de serviço/produto, reservas, retiradas de estoque, histórico de status e solicitações de compra referenciam a OS.
+- **Orçamento e OS:** um orçamento pode gerar no máximo uma OS. budget_id na OS é opcional e preserva a origem sem exigir que toda OS tenha sido criada por orçamento.
+- **OS e execução:** linhas de serviço/produto, reservas, retiradas de estoque, histórico de status e solicitações de compra referenciam a OS. Solicitações podem existir sem OS associada, conforme o schema.
 - **OS e fatura:** a fatura referencia uma OS e o identificador da OS é único em invoices, limitando a uma fatura por ordem.
-- **Produtos e fornecedores:** o produto referencia seu fornecedor; solicitações de compra podem registrar quem atende ao pedido.
+- **Produtos e fornecedores:** cada produto referencia seu fornecedor; solicitações de compra podem registrar quem atende ao pedido.
 - **Serviço e produto:** service_product_lines registra a relação muitos-para-muitos entre serviços de catálogo e produtos necessários.
 - **Compra e recebimento:** uma solicitação de compra pode possuir registros de recebimento; cada recebimento referencia a solicitação.
-- **Usuários e auditoria:** sessões de refresh e histórico de status mantêm a referência ao usuário que as criou ou executou.
+- **Usuários e auditoria:** sessões de refresh referenciam um usuário. O histórico de status pode registrar um usuário, mas também admite transições sem ator autenticado.
 
-O diagrama completo, com atributos, chaves e demais cardinalidades, permanece na fonte versionada. Alterar relações exige atualizar schema e migrations.
+As cardinalidades seguem nulabilidade e unicidade das FKs no schema e nas migrations. Alterar relações exige atualizar schema e migrations.
 
 ## Por que PostgreSQL
 

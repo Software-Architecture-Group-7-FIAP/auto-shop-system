@@ -1,0 +1,58 @@
+---
+config:
+  theme: base
+  themeVariables:
+    fontFamily: Arial
+    fontSize: 15px
+    primaryTextColor: "#111827"
+    lineColor: "#263238"
+---
+%% Visão UML parcial por contexto; as classes compartilhadas aparecem em mais de uma vista.
+classDiagram
+    direction TB
+    class User {
+        +id: int [PK]
+        +username: string [UK]
+        +email: string [UK]
+        +hashed_password: string
+        +is_active: bool
+        +role: string
+        +created_at: datetime
+    }
+
+    class RefreshSession {
+        +id: string [PK]
+        +user_id: int [FK]
+        +token_hash: string [UK]
+        +family_id: string
+        +expires_at: datetime
+        +revoked_at: datetime
+        +replaced_by_id: string
+        +created_at: datetime
+        +last_used_at: datetime
+    }
+
+    class Customer {
+        +id: int [PK]
+        +name: string
+        +document: string [UK]
+        +email: string
+        +phone: string
+        +created_at: datetime
+        +updated_at: datetime
+    }
+
+    class Vehicle {
+        +id: int [PK]
+        +customer_id: int [FK]
+        +plate: string [UK]
+        +brand: string
+        +model: string
+        +year: int
+        +created_at: datetime
+    }
+
+Customer "1" --> "0..*" Vehicle : possui
+User "1" --> "0..*" RefreshSession : possui
+
+classDef default fill:#ffffff,stroke:#111827,stroke-width:1px,color:#111827;

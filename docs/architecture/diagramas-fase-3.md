@@ -21,12 +21,20 @@ Esta página reúne os RFCs, ADRs e diagramas complementares da Fase 3. O desenh
 
 ## Diagramas editáveis e exportados
 
-| Diagrama | Fonte Mermaid | SVG | PNG |
+| Diagrama | Fonte | SVG | PNG |
 | --- | --- | --- | --- |
-| Componentes da Fase 3 | [componentes-fase-3.mmd](diagrams/componentes-fase-3.mmd) | [SVG](diagrams/componentes-fase-3.svg) | [PNG](diagrams/componentes-fase-3.png) |
+| Arquitetura AWS da Fase 3 | [componentes-fase-3.mmd](diagrams/componentes-fase-3.mmd) | [SVG](diagrams/componentes-fase-3.svg) | [PNG](diagrams/componentes-fase-3.png) |
 | Autenticação de cliente | [autenticacao-cliente.mmd](diagrams/autenticacao-cliente.mmd) | [SVG](diagrams/autenticacao-cliente.svg) | [PNG](diagrams/autenticacao-cliente.png) |
 | Abertura de OS | [abertura-os.mmd](diagrams/abertura-os.mmd) | [SVG](diagrams/abertura-os.svg) | [PNG](diagrams/abertura-os.png) |
-| Modelo ER | [database-schema.mermaid](../database/database-schema.mermaid) | [SVG](diagrams/database-er.svg) | [PNG](diagrams/database-er.png) |
+| UML: identidade e cadastro | [Fonte](diagrams/database-uml-identidade-cadastro.mmd) | [SVG](diagrams/database-uml-identidade-cadastro.svg) | [PNG](diagrams/database-uml-identidade-cadastro.png) |
+| UML: catálogo e orçamentos | [Fonte](diagrams/database-uml-catalogo-orcamentos.mmd) | [SVG](diagrams/database-uml-catalogo-orcamentos.svg) | [PNG](diagrams/database-uml-catalogo-orcamentos.png) |
+| UML: ordens de serviço | [Fonte](diagrams/database-uml-ordens-servico.mmd) | [SVG](diagrams/database-uml-ordens-servico.svg) | [PNG](diagrams/database-uml-ordens-servico.png) |
+| UML: estoque e compras | [Fonte](diagrams/database-uml-estoque-compras.mmd) | [SVG](diagrams/database-uml-estoque-compras.svg) | [PNG](diagrams/database-uml-estoque-compras.png) |
+| Modelo relacional ER completo | [database-schema.mermaid](../database/database-schema.mermaid) | [SVG](diagrams/database-er.svg) | [PNG](diagrams/database-er.png) |
+
+As quatro vistas UML cobrem as 20 tabelas do schema. Classes centrais são repetidas entre vistas para contextualizar as relações; elas continuam representando as mesmas tabelas. O ER permanece disponível como visão integral do esquema.
+
+O diagrama AWS usa um subconjunto local de ícones do pacote [@aws-icons/iconify](https://www.npmjs.com/package/@aws-icons/iconify), versão 4.1.0, baseado nos [AWS Architecture Icons](https://aws.amazon.com/architecture/icons/). A AWS permite o uso desses ícones em diagramas de arquitetura por clientes e parceiros. O subconjunto está versionado em diagrams/aws-icons.json para que a renderização não dependa de CDN. Atribuição e origem estão em [aws-icons-credits.md](diagrams/aws-icons-credits.md).
 
 ## Regenerar as exportações
 
@@ -36,4 +44,4 @@ A fonte versionada é a autoridade para os diagramas. Com Node.js 22.13 ou super
 poetry run python scripts/render_architecture_diagrams.py
 ~~~
 
-O script fixa @mermaid-js/mermaid-cli em 12.0.0, lê os arquivos Mermaid e atualiza os SVGs e PNGs em docs/architecture/diagrams/. Regere as exportações no mesmo PR que altera uma fonte.
+O script fixa @mermaid-js/mermaid-cli em 12.0.0, lê os arquivos Mermaid e atualiza os SVGs e PNGs em docs/architecture/diagrams/. O ícone AWS utilizado pelo diagrama de componentes vem do subconjunto local em docs/architecture/diagrams/aws-icons.json. Regere as exportações no mesmo PR que altera uma fonte.
