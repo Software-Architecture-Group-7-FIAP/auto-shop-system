@@ -9,7 +9,16 @@ from jwt import PyJWKClient
 
 from src.config import settings
 from src.domain.enums import ServiceOrderStatus
-from src.infrastructure.database import CustomerModel, ServiceOrderModel, VehicleModel
+from src.infrastructure.database import (
+    CustomerModel,
+    ProductModel,
+    ServiceModel,
+    ServiceOrderModel,
+    ServiceOrderProductLineModel,
+    ServiceOrderServiceLineModel,
+    SupplierModel,
+    VehicleModel,
+)
 
 ISSUER = "https://auth.example.invalid"
 AUDIENCE = "auto-shop-api"
@@ -95,6 +104,45 @@ def test_customer_can_read_own_service_order_with_allowlisted_fields(
     customer_token_factory,
 ):
     customer_id, order_id = _create_customer_order(db_session, suffix="own")
+    service = ServiceModel(
+        name="Alinhamento interno",
+        description="Não deve aparecer no DTO",
+        base_price=50.0,
+        estimated_hours=1.0,
+    )
+    supplier = SupplierModel(
+        name="Fornecedor interno",
+        document="11222333000181",
+        email="supplier-internal@test.local",
+    )
+    db_session.add_all([service, supplier])
+    db_session.flush()
+    product = ProductModel(
+        name="Peça interna",
+        description="Não deve aparecer no DTO",
+        sku="CUSTOMER-DTO-001",
+        unit_price=25.0,
+        stock_quantity=10,
+        supplier_id=supplier.id,
+    )
+    db_session.add(product)
+    db_session.flush()
+    db_session.add_all(
+        [
+            ServiceOrderServiceLineModel(
+                service_order_id=order_id,
+                service_id=service.id,
+                quantity=2,
+                unit_price=50.0,
+            ),
+            ServiceOrderProductLineModel(
+                service_order_id=order_id,
+                product_id=product.id,
+                quantity=1,
+                unit_price=25.0,
+            ),
+        ]
+    )
     db_session.commit()
     token = customer_token_factory(sub=str(customer_id))
 
@@ -112,14 +160,21 @@ def test_customer_can_read_own_service_order_with_allowlisted_fields(
         "created_at": "2026-10-01T12:00:00",
         "started_at": "2026-10-02T12:00:00",
         "finished_at": None,
-        "service_lines": [],
-        "product_lines": [],
+        "service_lines": [
+            {"service_id": service.id, "quantity": 2, "unit_price": 50.0}
+        ],
+        "product_lines": [
+            {"product_id": product.id, "quantity": 1, "unit_price": 25.0}
+        ],
     }
     assert "customer_id" not in response.json()
     assert "vehicle_id" not in response.json()
     assert "budget_id" not in response.json()
     assert "mechanic_name" not in response.json()
     assert "cliente-own@test.local" not in response.text
+    assert "Alinhamento interno" not in response.text
+    assert "Fornecedor interno" not in response.text
+    assert "supplier-internal@test.local" not in response.text
 
 
 def test_customer_cannot_distinguish_foreign_service_order_from_missing_order(

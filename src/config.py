@@ -107,6 +107,14 @@ class Settings(BaseSettings):
         normalized = str(value).strip()
         return normalized or None
 
+    @field_validator("service_order_event_bus_name", mode="before")
+    @classmethod
+    def normalize_service_order_event_bus_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
     @field_validator("customer_jwt_jwks_url", mode="before")
     @classmethod
     def validate_customer_jwt_jwks_url(cls, value: str | None) -> str | None:
@@ -142,12 +150,25 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_security_sensitive_settings(self) -> "Settings":
         if self.is_production_like():
-            if (
-                self.customer_jwt_jwks_url
-                and urlparse(self.customer_jwt_jwks_url).scheme != "https"
-            ):
+            if not self.customer_jwt_jwks_url:
+                raise ValueError(
+                    "CUSTOMER_JWT_JWKS_URL is required in production-like environments"
+                )
+            if urlparse(self.customer_jwt_jwks_url).scheme != "https":
                 raise ValueError(
                     "CUSTOMER_JWT_JWKS_URL must use HTTPS in production-like environments"
+                )
+            if not self.customer_jwt_issuer:
+                raise ValueError(
+                    "CUSTOMER_JWT_ISSUER is required in production-like environments"
+                )
+            if not self.customer_jwt_audience:
+                raise ValueError(
+                    "CUSTOMER_JWT_AUDIENCE is required in production-like environments"
+                )
+            if not self.service_order_event_bus_name:
+                raise ValueError(
+                    "SERVICE_ORDER_EVENT_BUS_NAME is required in production-like environments"
                 )
             if not self.cors_origins() or "*" in self.cors_origins():
                 raise ValueError("Production-like CORS requires an explicit origin allowlist")

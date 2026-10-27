@@ -25,6 +25,16 @@ variable "backend_base_url" {
   type        = string
 }
 
+variable "customer_auth_lambda_invoke_arn" {
+  description = "Invoke ARN da Lambda externa que atende autenticação e JWKS de clientes."
+  type        = string
+}
+
+variable "customer_auth_lambda_function_name" {
+  description = "Nome da Lambda externa usado para restringir a permissão de invocação do Gateway."
+  type        = string
+}
+
 variable "jwt_secret" {
   description = "HS256 secret shared with the FastAPI backend (ACCESS_TOKEN_SECRET or SECRET_KEY)."
   type        = string

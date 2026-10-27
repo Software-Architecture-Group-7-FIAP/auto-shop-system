@@ -1,6 +1,6 @@
 # ADR-0066/0067: Consulta da OS pelo cliente e evento operacional
 
-- **Status:** Aceito para homologação; integração pendente
+- **Status:** Aceito e implementado em código; implantação e homologação pendentes
 - **Data:** 2026-10-18
 - **Issues:** [#66](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/66) e [#67](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/67)
 
@@ -28,3 +28,4 @@ O `X-Correlation-ID` UUID tem precedência sobre o `X-Request-ID`. Valores ausen
 
 - Event bus, permissões IAM, Gateway com limitação configurada, banco e ambiente de homologação dependem das issues de infraestrutura e dos responsáveis por esses repositórios.
 - A issue #68 permanece aberta até executar o fluxo completo e anexar evidências sanitizadas. Nenhum recurso AWS foi criado, consultado ou implantado nesta implementação.
+- O fechamento das issues #66 e #67 comprova integração na branch compartilhada, não implantação em staging. O consumidor e os alertas continuam sob responsabilidade da Pessoa 3.
