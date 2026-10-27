@@ -1,0 +1,20 @@
+%%{init: {"theme": "base", "themeVariables": {"fontSize": "16px"}}}%%
+flowchart TB
+    Users["Cliente / operador"] --> Frontend["Angular<br/>S3 privado + CloudFront"]
+    Frontend --> Gateway["API Gateway REST<br/>AWS WAF Regional"]
+
+    Gateway -->|"token e JWKS"| Auth["Lambda lambda-auth"]
+    Gateway -->|"rotas privadas"| PrivateLink["VPC Link V2<br/>ALB interno"]
+    PrivateLink --> App["EKS · FastAPI<br/>namespaces HML e PRD · HPA"]
+
+    Auth --> KMS["AWS KMS<br/>RS256"]
+    Auth --> Secrets["Secrets Manager<br/>credencial do banco"]
+    Auth -->|"somente leitura"| RDS[("RDS PostgreSQL<br/>autoshop_hml e autoshop_prd")]
+    App -->|"database do ambiente"| RDS
+
+    App -->|"falha após rollback"| EventBridge["EventBridge<br/>ServiceOrderProcessingFailed v1"]
+    EventBridge --> SNS["SNS<br/>aviso por e-mail"]
+    EventBridge -. "falha após retries" .-> DLQ[("SQS DLQ")]
+
+    App -.-> Observability["New Relic<br/>integração planejada"]
+    Auth -.-> Observability

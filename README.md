@@ -62,6 +62,10 @@ src/
   api/            # routers FastAPI e schemas
 ```
 
+### Documentação da Fase 3
+
+RFCs, ADRs, justificativa do banco e diagramas editáveis/exportados estão reunidos em [docs/architecture/diagramas-fase-3.md](docs/architecture/diagramas-fase-3.md). O documento descreve o desenho-alvo e separa decisões aceitas de validações ainda pendentes.
+
 ## Executar com Docker
 
 ```bash
