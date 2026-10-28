@@ -19,7 +19,7 @@ RDS_CA_BUNDLE = (
 )
 
 
-def _load_owner_database_url() -> str:
+def _load_migration_database_url() -> str:
     secret_arn = os.environ.get("MIGRATION_DATABASE_SECRET_ARN")
     database_name = os.environ.get("MIGRATION_DATABASE_NAME")
     if not secret_arn or not database_name:
@@ -45,7 +45,7 @@ def _load_owner_database_url() -> str:
         raise RuntimeError("Migration database credentials are invalid")
 
     return URL.create(
-        "postgresql+psycopg2",
+        "postgresql",
         username=username,
         password=password,
         host=host,
@@ -60,7 +60,7 @@ def _load_owner_database_url() -> str:
 
 def _migration_config() -> tuple[str, int, bool]:
     if os.environ.get("MIGRATION_DATABASE_SECRET_ARN"):
-        return _load_owner_database_url(), 2, True
+        return _load_migration_database_url(), 2, True
 
     from src.config import settings
 
@@ -68,7 +68,7 @@ def _migration_config() -> tuple[str, int, bool]:
 
 
 def run_migrations() -> int:
-    database_url, connect_timeout, use_owner_identity = _migration_config()
+    database_url, connect_timeout, use_migration_identity = _migration_config()
 
     try:
         connection = psycopg2.connect(
@@ -82,7 +82,7 @@ def run_migrations() -> int:
         with connection:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_lock(%s)", (MIGRATION_LOCK_KEY,))
-            if use_owner_identity:
+            if use_migration_identity:
                 migration_env = os.environ.copy()
                 migration_env.update(
                     {

@@ -28,5 +28,4 @@ locals {
     Component   = "api-gateway"
   }
 
-  backend_uri = trimsuffix(var.backend_base_url, "/")
 }

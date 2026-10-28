@@ -1,6 +1,4 @@
 import importlib.util
-import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -19,78 +17,49 @@ def _load_handler(relative_path: str, module_name: str):
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
-    return module.handler
+    return module
 
 
-auth_login_handler = _load_handler("auth_login", "gateway_auth_login")
-jwt_authorizer_handler = _load_handler("jwt_authorizer", "gateway_jwt_authorizer")
+jwt_authorizer_module = _load_handler("jwt_authorizer", "gateway_jwt_authorizer")
+jwt_authorizer_handler = jwt_authorizer_module.handler
 
 
-@pytest.fixture(autouse=True)
-def reset_jwt_secret_cache():
-    module = sys.modules["gateway_jwt_authorizer"]
-    module._SECRET_CACHE_VALUE = None
-    module._SECRET_CACHE_EXPIRY = 0.0
-    yield
-    module._SECRET_CACHE_VALUE = None
-    module._SECRET_CACHE_EXPIRY = 0.0
-
-
-def test_auth_login_rejects_invalid_json():
-    response = auth_login_handler({"body": "not-json"}, None)
-    assert response["statusCode"] == 400
-
-
-@patch.dict(os.environ, {"BACKEND_BASE_URL": "http://backend.test"})
-def test_auth_login_requires_credentials():
-    response = auth_login_handler({"body": json.dumps({})}, None)
-    assert response["statusCode"] == 400
-
-
-@patch.dict(
-    os.environ,
-    {
-        "JWT_SECRET_ARN": "arn:aws:secretsmanager:us-east-1:123456789012:secret:jwt",
-        "AWS_REGION": "us-east-1",
-    },
-)
-@patch("gateway_jwt_authorizer.boto3.client")
-def test_jwt_authorizer_allows_valid_token(secrets_client):
+def test_jwt_authorizer_allows_valid_token():
     secret = "unit-test-secret-key-with-32-chars-min"
     secrets_client.return_value.get_secret_value.return_value = {"SecretString": secret}
     token = jwt.encode(
-        {"sub": "admin", "sid": "session-1", "exp": int(time.time()) + 300},
+        {
+            "sub": "admin",
+            "sid": "session-1",
+            "exp": int(time.time()) + 300,
+            "aud": "gateway",
+        },
         secret,
         algorithm="HS256",
     )
-    policy = jwt_authorizer_handler(
-        {
-            "authorizationToken": f"Bearer {token}",
-            "methodArn": "arn:aws:execute-api:region:acct:api/stage/GET/admin",
-        },
-        None,
-    )
-    assert policy["principalId"] == "admin"
-    assert policy["policyDocument"]["Statement"][0]["Effect"] == "Allow"
-
-
-@patch.dict(
-    os.environ,
-    {
-        "JWT_SECRET_ARN": "arn:aws:secretsmanager:us-east-1:123456789012:secret:jwt",
-        "AWS_REGION": "us-east-1",
-    },
-)
-@patch("gateway_jwt_authorizer.boto3.client")
-def test_jwt_authorizer_rejects_invalid_token(secrets_client):
-    secrets_client.return_value.get_secret_value.return_value = {
-        "SecretString": "unit-test-secret-key-with-32-chars-min"
-    }
-    with pytest.raises(Exception, match="Unauthorized"):
-        jwt_authorizer_handler(
+    with patch.object(jwt_authorizer_module, "_jwt_secret", return_value=secret):
+        policy = jwt_authorizer_handler(
             {
-                "authorizationToken": "Bearer invalid",
+                "authorizationToken": f"Bearer {token}",
                 "methodArn": "arn:aws:execute-api:region:acct:api/stage/GET/admin",
             },
             None,
         )
+    assert policy["principalId"] == "admin"
+    assert policy["policyDocument"]["Statement"][0]["Effect"] == "Allow"
+
+
+def test_jwt_authorizer_rejects_invalid_token():
+    with patch.object(
+        jwt_authorizer_module,
+        "_jwt_secret",
+        return_value="unit-test-secret-key-with-32-chars-min",
+    ):
+        with pytest.raises(Exception, match="Unauthorized"):
+            jwt_authorizer_handler(
+                {
+                    "authorizationToken": "Bearer invalid",
+                    "methodArn": "arn:aws:execute-api:region:acct:api/stage/GET/admin",
+                },
+                None,
+            )

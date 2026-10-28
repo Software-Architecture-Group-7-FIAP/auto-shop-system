@@ -35,12 +35,16 @@ data "aws_ssm_parameter" "customer_auth_lambda_arn" {
   name = "${trimsuffix(var.upstream_ssm_prefix, "/")}/auth/customer-token/function-arn/${each.key}"
 }
 
-data "aws_ssm_parameter" "migration_owner_secret_arn" {
-  name = "${trimsuffix(var.upstream_ssm_prefix, "/")}/database/secrets/owner-arn"
+data "aws_ssm_parameter" "migration_secret_arn" {
+  for_each = local.api_stages
+
+  name = "${trimsuffix(var.upstream_ssm_prefix, "/")}/database/secrets/migrations-${each.key}-arn"
 }
 
-data "aws_ssm_parameter" "migration_owner_secret_read_policy_arn" {
-  name = "${trimsuffix(var.upstream_ssm_prefix, "/")}/database/iam/owner-read-policy-arn"
+data "aws_ssm_parameter" "migration_secret_read_policy_arn" {
+  for_each = local.api_stages
+
+  name = "${trimsuffix(var.upstream_ssm_prefix, "/")}/database/iam/migrations-${each.key}-read-policy-arn"
 }
 
 locals {

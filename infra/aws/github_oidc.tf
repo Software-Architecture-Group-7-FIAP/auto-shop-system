@@ -24,6 +24,10 @@ locals {
     staging    = "hml"
     production = "prd"
   }
+  github_environment_branch = {
+    staging    = "refs/heads/develop"
+    production = "refs/heads/main"
+  }
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
@@ -52,6 +56,11 @@ data "aws_iam_policy_document" "github_deploy_assume" {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
       values   = ["repo:${var.github_repository}:environment:${each.key}"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:ref"
+      values   = [local.github_environment_branch[each.key]]
     }
   }
 }
@@ -114,7 +123,7 @@ data "aws_iam_policy_document" "github_deploy_eks" {
     ]
     resources = [
       data.aws_ssm_parameter.upstream["eks_cluster_name"].arn,
-      data.aws_ssm_parameter.migration_owner_secret_arn.arn,
+      data.aws_ssm_parameter.migration_secret_arn[local.github_environment_api_stage[each.key]].arn,
       aws_ssm_parameter.frontend_bucket_name[local.github_environment_api_stage[each.key]].arn,
       aws_ssm_parameter.frontend_distribution_id[local.github_environment_api_stage[each.key]].arn,
     ]

@@ -53,7 +53,7 @@ jobs:
             --name "${SSM_PARAMETER_PREFIX}/eks/cluster-name" \
             --query 'Parameter.Value' --output text)"
           migration_secret_arn="$(aws ssm get-parameter \
-            --name "${SSM_PARAMETER_PREFIX}/database/secrets/owner-arn" \
+            --name "${SSM_PARAMETER_PREFIX}/database/secrets/migrations-prd-arn" \
             --query 'Parameter.Value' --output text)"
           if [[ -z "${cluster_name}" || ! "${migration_secret_arn}" =~ ^arn:aws:secretsmanager: ]]; then
             echo "The EKS cluster or migration secret ARN is missing from SSM." >&2

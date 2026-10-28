@@ -95,7 +95,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   }
 
   origin {
-    domain_name = var.api_domain_name
+    domain_name = var.enable_custom_domains ? var.api_domain_name : "${aws_api_gateway_rest_api.main.id}.execute-api.${var.aws_region}.amazonaws.com"
     origin_id   = "api-gateway-${each.key}"
     origin_path = "/${each.key}"
 

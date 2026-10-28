@@ -2,6 +2,13 @@
 # Bash deploy for CI/CD (staging/production). Local NGINX Ingress remains in deploy.ps1.
 set -euo pipefail
 
+if [[ ! -d /dev/shm || ! -w /dev/shm ]]; then
+  echo "A writable tmpfs at /dev/shm is required for deployment temporary files." >&2
+  exit 1
+fi
+export TMPDIR=/dev/shm
+umask 077
+
 ENVIRONMENT="${1:?environment (staging|production)}"
 IMAGE_REFERENCE="${2:?immutable image reference}"
 CONFIRM_PRODUCTION="${3:-}"
@@ -107,6 +114,42 @@ ensure_secret() {
   done
 }
 
+assert_redis_secret_key() {
+  local key="$1"
+  local b64
+  b64="$(kubectl get secret auto-shop-redis-credentials --namespace "${NAMESPACE}" \
+    --output "jsonpath={.data.${key}}" 2>/dev/null || true)"
+  if [[ -z "${b64}" ]]; then
+    echo "Secret auto-shop-redis-credentials missing key ${key}"
+    exit 1
+  fi
+}
+
+ensure_redis_credentials() {
+  if kubectl get secret auto-shop-redis-credentials --namespace "${NAMESPACE}" \
+    --output name >/dev/null 2>&1; then
+    assert_redis_secret_key REDIS_PASSWORD
+    assert_redis_secret_key REDIS_URL
+    return
+  fi
+
+  command -v openssl >/dev/null
+  local password_file url_file redis_password redis_url
+  password_file="$(mktemp)"
+  url_file="$(mktemp)"
+  TEMP_FILES+=("${password_file}" "${url_file}")
+  redis_password="$(openssl rand -hex 32)"
+  redis_url="redis://:${redis_password}@auto-shop-redis:6379/0"
+  printf '%s' "${redis_password}" > "${password_file}"
+  printf '%s' "${redis_url}" > "${url_file}"
+  kubectl create secret generic auto-shop-redis-credentials \
+    --namespace "${NAMESPACE}" \
+    --from-file="REDIS_PASSWORD=${password_file}" \
+    --from-file="REDIS_URL=${url_file}" \
+    --dry-run=client --output=yaml | kubectl apply --filename=-
+  unset redis_password redis_url
+}
+
 wait_migration() {
   if ! kubectl wait --for=condition=complete "job/${MIGRATION_JOB}" \
     --namespace "${NAMESPACE}" --timeout=300s; then
@@ -138,10 +181,12 @@ smoke_test() {
 
 kubectl create namespace "${NAMESPACE}" --dry-run=client --output=yaml | kubectl apply --filename=-
 ensure_secret
+ensure_redis_credentials
 apply_phase foundation
 apply_phase migration
 wait_migration
 apply_phase app
+kubectl rollout status deployment/auto-shop-redis --namespace "${NAMESPACE}" --timeout=180s
 kubectl rollout status deployment/auto-shop-backend --namespace "${NAMESPACE}" --timeout=300s
 smoke_test
 echo "Auto Shop ${ENVIRONMENT} deployment completed successfully."

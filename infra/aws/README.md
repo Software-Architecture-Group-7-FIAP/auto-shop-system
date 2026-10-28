@@ -10,7 +10,7 @@ Este repositório contém a definição da infraestrutura. Isso não significa q
 - VPC Link V2 do API Gateway para o ALB interno, com regras de security group limitadas às portas dos listeners.
 - CORS preflight for web-session and administrative routes is handled by FastAPI; the customer-token OPTIONS route reaches the stage-specific Lambda.
 - The customer-token and JWKS endpoints invoke the Lambda ARN for their own stage, read from SSM.
-- Regional WAF with Common Rule Set and a 100-per-5-minute rate rule scoped to POST customer-token requests; CloudFront has a separate global WAF.
+- Regional WAF with Common Rule Set and a high coarse source-IP cap; CloudFront WAF applies viewer-IP limits for authentication, public/customer APIs, and customer-token requests.
 - Dois buckets S3 privados e distribuições CloudFront para o Angular, com OAC.
 - Certificado ACM para `api.oficina-workshop.com.br`, `app-hml.oficina-workshop.com.br` e `app.oficina-workshop.com.br`.
 - Logs de acesso da API e logs do WAF no CloudWatch.
@@ -31,8 +31,8 @@ A stack upstream precisa exportar os parâmetros abaixo sob `upstream_ssm_prefix
 - `gateway/internal-alb-arn`
 - `gateway/listener-arn/hml` and `gateway/listener-arn/prd`
 - `auth/customer-token/function-arn/hml` and `auth/customer-token/function-arn/prd`
-- `database/secrets/owner-arn`
-- `database/iam/owner-read-policy-arn`
+- `database/secrets/migrations-hml-arn` and `database/secrets/migrations-prd-arn`
+- `database/iam/migrations-hml-read-policy-arn` and `database/iam/migrations-prd-read-policy-arn`
 
 Os fluxos de sessão do EKS e do banco são pré-requisitos separados para a issue #87 e precisam ser coordenados com os repositórios responsáveis.
 
@@ -77,4 +77,4 @@ Os gates de deploy dos GitHub Environments devem permanecer desligados até a in
 
 ## Evidências de staging pendentes para #87
 
-O mapeamento de namespaces e stages está representado neste repositório, mas a issue #87 só estará concluída após demonstrar uma sessão completa de staging. Ainda faltam a orquestração e o teardown upstream da sessão, a identidade de owner do banco exigida pela ADR, smoke checks do fluxo de negócio, evidência de HPA na AWS e um teardown sem recursos órfãos. O smoke local com Kind não comprova staging na AWS.
+O mapeamento de namespaces e stages está representado neste repositório, mas a issue #87 só estará concluída após demonstrar uma sessão completa de staging. O repositório `database-infra` ainda precisa publicar credenciais e políticas de leitura distintas para migrations em HML e PRD; não use o master `owner` para executar migrations. Também faltam a orquestração e o teardown upstream da sessão, smoke checks do fluxo de negócio, evidência de HPA na AWS e um teardown sem recursos órfãos. O smoke local com Kind não comprova staging na AWS.

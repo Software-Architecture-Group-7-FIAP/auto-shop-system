@@ -13,7 +13,68 @@ resource "aws_wafv2_web_acl" "main" {
   }
 
   rule {
-    name     = "CustomerTokenRateLimit"
+    name     = "AuthenticationRateLimit"
+    priority = 5
+
+    action {
+      block {
+        custom_response {
+          response_code = 429
+        }
+      }
+    }
+
+    statement {
+      rate_based_statement {
+        limit                 = var.waf_regional_rate_limit
+        aggregate_key_type    = "IP"
+        evaluation_window_sec = 300
+
+        scope_down_statement {
+          and_statement {
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  method {}
+                }
+                positional_constraint = "EXACTLY"
+                search_string         = "POST"
+
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  uri_path {}
+                }
+                positional_constraint = "ENDS_WITH"
+                search_string         = "/auth/login"
+
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-auth-rate-limit"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "PublicAndCustomerApiRateLimit"
     priority = 10
 
     action {
@@ -26,7 +87,98 @@ resource "aws_wafv2_web_acl" "main" {
 
     statement {
       rate_based_statement {
-        limit                 = var.waf_rate_limit
+        limit                 = var.waf_regional_rate_limit
+        aggregate_key_type    = "IP"
+        evaluation_window_sec = 300
+
+        scope_down_statement {
+          or_statement {
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  uri_path {}
+                }
+                positional_constraint = "CONTAINS"
+                search_string         = "/api/v1/public/"
+
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  uri_path {}
+                }
+                positional_constraint = "CONTAINS"
+                search_string         = "/api/v1/customer/"
+
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  uri_path {}
+                }
+                positional_constraint = "CONTAINS"
+                search_string         = "/api/v1/customers/"
+
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  uri_path {}
+                }
+                positional_constraint = "ENDS_WITH"
+                search_string         = "/auth/customer/token"
+
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-public-rate-limit"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "CustomerTokenRateLimit"
+    priority = 20
+
+    action {
+      block {
+        custom_response {
+          response_code = 429
+        }
+      }
+    }
+
+    statement {
+      rate_based_statement {
+        limit                 = var.waf_regional_rate_limit
         aggregate_key_type    = "IP"
         evaluation_window_sec = 300
 
@@ -102,7 +254,7 @@ resource "aws_wafv2_web_acl" "main" {
 
     visibility_config {
       cloudwatch_metrics_enabled = true
-      metric_name                = "${local.name_prefix}-rate-limit"
+      metric_name                = "${local.name_prefix}-customer-token-rate-limit"
       sampled_requests_enabled   = true
     }
   }
@@ -111,7 +263,7 @@ resource "aws_wafv2_web_acl" "main" {
     for_each = var.enable_waf_managed_rules ? [1] : []
     content {
       name     = "AWSManagedRulesCommonRuleSet"
-      priority = 20
+      priority = 30
 
       override_action {
         none {}
@@ -155,11 +307,223 @@ resource "aws_wafv2_web_acl" "cloudfront" {
     sampled_requests_enabled   = true
   }
 
+  rule {
+    name     = "AuthenticationRateLimit"
+    priority = 5
+
+    action {
+      block {
+        custom_response {
+          response_code = 429
+        }
+      }
+    }
+
+    statement {
+      rate_based_statement {
+        limit                 = var.waf_auth_rate_limit
+        aggregate_key_type    = "IP"
+        evaluation_window_sec = 300
+
+        scope_down_statement {
+          and_statement {
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  method {}
+                }
+                positional_constraint = "EXACTLY"
+                search_string         = "POST"
+
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  uri_path {}
+                }
+                positional_constraint = "ENDS_WITH"
+                search_string         = "/auth/login"
+
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+          }
+        }
+      }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-frontend-auth-rate-limit"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "PublicAndCustomerApiRateLimit"
+    priority = 10
+
+    action {
+      block {
+        custom_response {
+          response_code = 429
+        }
+      }
+    }
+
+    statement {
+      rate_based_statement {
+        limit                 = var.waf_public_rate_limit
+        aggregate_key_type    = "IP"
+        evaluation_window_sec = 300
+
+        scope_down_statement {
+          or_statement {
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  uri_path {}
+                }
+                positional_constraint = "CONTAINS"
+                search_string         = "/api/v1/public/"
+
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  uri_path {}
+                }
+                positional_constraint = "CONTAINS"
+                search_string         = "/api/v1/customer/"
+
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  uri_path {}
+                }
+                positional_constraint = "CONTAINS"
+                search_string         = "/api/v1/customers/"
+
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  uri_path {}
+                }
+                positional_constraint = "ENDS_WITH"
+                search_string         = "/auth/customer/token"
+
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-frontend-public-rate-limit"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "CustomerTokenRateLimit"
+    priority = 20
+
+    action {
+      block {
+        custom_response {
+          response_code = 429
+        }
+      }
+    }
+
+    statement {
+      rate_based_statement {
+        limit                 = var.waf_rate_limit
+        aggregate_key_type    = "IP"
+        evaluation_window_sec = 300
+
+        scope_down_statement {
+          and_statement {
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  method {}
+                }
+                positional_constraint = "EXACTLY"
+                search_string         = "POST"
+
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+
+            statement {
+              byte_match_statement {
+                field_to_match {
+                  uri_path {}
+                }
+                positional_constraint = "ENDS_WITH"
+                search_string         = "/auth/customer/token"
+
+                text_transformation {
+                  priority = 0
+                  type     = "NONE"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-frontend-customer-token-rate-limit"
+      sampled_requests_enabled   = true
+    }
+  }
+
   dynamic "rule" {
     for_each = var.enable_waf_managed_rules ? [1] : []
     content {
       name     = "AWSManagedRulesCommonRuleSet"
-      priority = 10
+      priority = 30
 
       override_action {
         none {}
