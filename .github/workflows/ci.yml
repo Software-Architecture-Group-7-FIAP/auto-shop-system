@@ -47,6 +47,12 @@ jobs:
         run: poetry check --lock
       - name: Install dependencies
         run: poetry install --no-interaction --sync
+      - name: Check generated OpenAPI artifact
+        env:
+          APP_ENV: development
+          DATABASE_URL: sqlite://
+          SECRET_KEY: test-secret-key-with-at-least-32-chars
+        run: poetry run python scripts/export_openapi.py --check
       - name: Run tests with coverage gate
         run: poetry run pytest --cov=src --cov-report=term-missing --cov-fail-under=80
       - name: Run Bandit
