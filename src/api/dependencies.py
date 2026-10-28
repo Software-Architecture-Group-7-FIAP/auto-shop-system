@@ -7,7 +7,7 @@ from src.api.csrf import enforce_csrf
 from src.domain.auth.entity import User
 from src.domain.auth.entity import UserRole
 from src.domain.auth.principal import CustomerPrincipal
-from src.domain.exceptions import UnauthorizedError
+from src.domain.exceptions import DomainError, UnauthorizedError
 from src.domain.auth.jwt_audience import JWT_AUD_GATEWAY, JWT_AUD_WEB
 from src.infrastructure.auth.customer_jwt import (
     CustomerJwtConfigurationError,
@@ -15,8 +15,6 @@ from src.infrastructure.auth.customer_jwt import (
     CustomerJwksUnavailableError,
 )
 from src.infrastructure.database import get_db
-
-
 def _extract_bearer_token(authorization: str | None) -> str | None:
     if not authorization:
         return None
@@ -95,3 +93,8 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
             detail="Apenas administradores podem executar esta operação",
         )
     return current_user
+
+
+def domain_error_handler(exc: DomainError) -> None:
+    """Re-raise so the global DomainError handler returns detail and code."""
+    raise exc

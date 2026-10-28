@@ -13,7 +13,7 @@ data:
   FRONTEND_PUBLIC_URL: "https://app.autoshop.com"
   CORS_ALLOWED_ORIGINS: "https://app.autoshop.com"
   CORS_ALLOWED_METHODS: "GET,POST,PUT,PATCH,DELETE,OPTIONS"
-  CORS_ALLOWED_HEADERS: "Authorization,Content-Type"
+  CORS_ALLOWED_HEADERS: "Authorization,Content-Type,X-CSRF-Token,X-Request-ID,X-Correlation-ID,Accept"
   CORS_ALLOW_CREDENTIALS: "true"
   SECURITY_HSTS_ENABLED: "true"
   ACCESS_TOKEN_EXPIRE_MINUTES: "60"

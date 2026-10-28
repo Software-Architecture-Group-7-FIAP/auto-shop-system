@@ -1,11 +1,11 @@
-from uuid import uuid4
-
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.orm import Session
 
 from src.api.composition.budget_approval import compose_budget_approval_service
 from src.api.composition.budgets import compose_budget_service
-from src.api.dependencies import get_current_user
+from src.api.dependencies import domain_error_handler, get_current_user
+from src.api.request_context import request_correlation_id
+from src.domain.exceptions import DomainError
 from src.api.rate_limit import enforce_public_rate_limit
 from src.api.schemas import (
     AvailabilityItem,
@@ -178,11 +178,14 @@ async def send_budget_email(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return await compose_budget_approval_service(db).send_budget_email(
-        budget_id,
-        actor_id=current_user.id,
-        request_id=request.headers.get("x-request-id") or str(uuid4()),
-    )
+    try:
+        return await compose_budget_approval_service(db).send_budget_email(
+            budget_id,
+            actor_id=current_user.id,
+            request_id=request_correlation_id(request),
+        )
+    except DomainError as e:
+        raise domain_error_handler(e)
 
 
 @admin_router.patch("/{budget_id}/approve", response_model=MessageResponse)
@@ -192,12 +195,15 @@ def approve_budget_admin(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    service_order = compose_budget_approval_service(db).approve_budget_by_id(
-        budget_id,
-        actor_id=current_user.id,
-        request_id=request.headers.get("x-request-id") or str(uuid4()),
-    )
-    return MessageResponse(message=f"Orçamento aprovado. OS #{service_order.id} criada.")
+    try:
+        service_order = compose_budget_approval_service(db).approve_budget_by_id(
+            budget_id,
+            actor_id=current_user.id,
+            request_id=request_correlation_id(request),
+        )
+        return MessageResponse(message=f"Orçamento aprovado. OS #{service_order.id} criada.")
+    except DomainError as e:
+        raise domain_error_handler(e)
 
 
 @public_router.post("/decisions", response_model=BudgetDecisionResponse)
@@ -211,25 +217,28 @@ def decide_budget(
     enforce_public_rate_limit(
         request, approval_token_fingerprint(data.token), "budget_decision"
     )
-    result = compose_budget_approval_service(db).decide_budget(
-        data.token,
-        data.decision,
-        request_id=request.headers.get("x-request-id") or str(uuid4()),
-    )
-    if data.decision == "approve":
-        message = (
-            f"Orçamento aprovado. OS #{result.service_order.id} criada."
-            if result.service_order
-            else "Orçamento já aprovado."
+    try:
+        result = compose_budget_approval_service(db).decide_budget(
+            data.token,
+            data.decision,
+            request_id=request_correlation_id(request),
         )
-    else:
-        message = "Orçamento já recusado." if result.already_processed else "Orçamento recusado."
-    return BudgetDecisionResponse(
-        message=message,
-        status=result.status,
-        already_processed=result.already_processed,
-        service_order_id=result.service_order.id if result.service_order else None,
-    )
+        if data.decision == "approve":
+            message = (
+                f"Orçamento aprovado. OS #{result.service_order.id} criada."
+                if result.service_order
+                else "Orçamento já aprovado."
+            )
+        else:
+            message = "Orçamento já recusado." if result.already_processed else "Orçamento recusado."
+        return BudgetDecisionResponse(
+            message=message,
+            status=result.status,
+            already_processed=result.already_processed,
+            service_order_id=result.service_order.id if result.service_order else None,
+        )
+    except DomainError as e:
+        raise domain_error_handler(e)
 
 
 @admin_router.post("/{budget_id}/revisions", response_model=BudgetResponse, status_code=201)
