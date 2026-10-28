@@ -75,6 +75,29 @@ def test_customer_gateway_routes_do_not_use_admin_hs256_authorizer():
     assert "authorizer_id" not in customer_method
 
 
+def test_public_customer_lookup_is_forwarded_through_gateway_without_auth():
+    gateway = (ROOT / "infra/aws/api_gateway.tf").read_text(encoding="utf-8")
+
+    assert 'resource "aws_api_gateway_resource" "customers_lookup"' in gateway
+    assert 'resource "aws_api_gateway_method" "customers_lookup_post"' in gateway
+    assert 'resource "aws_api_gateway_method" "customers_lookup_options"' in gateway
+    assert "/api/v1/customers/lookup" in gateway
+    assert "aws_api_gateway_integration.customers_lookup_post," in gateway
+    assert "aws_api_gateway_integration.customers_lookup_options," in gateway
+
+    customer_lookup_method = gateway.split(
+        'resource "aws_api_gateway_method" "customers_lookup_post"', maxsplit=1
+    )[1].split("resource ", maxsplit=1)[0]
+    assert 'authorization = "NONE"' in customer_lookup_method
+    assert "authorizer_id" not in customer_lookup_method
+
+    customer_lookup_integration = gateway.split(
+        'resource "aws_api_gateway_integration" "customers_lookup_post"', maxsplit=1
+    )[1].split("resource ", maxsplit=1)[0]
+    assert 'type                    = "HTTP_PROXY"' in customer_lookup_integration
+    assert 'connection_type         = "VPC_LINK"' in customer_lookup_integration
+
+
 def test_gateway_limits_customer_lambda_permissions_to_expected_routes():
     lambda_config = (ROOT / "infra/aws/lambda.tf").read_text(encoding="utf-8")
 

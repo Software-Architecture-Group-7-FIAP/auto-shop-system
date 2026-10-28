@@ -115,6 +115,18 @@ resource "aws_api_gateway_resource" "customer_proxy" {
   path_part   = "{proxy+}"
 }
 
+resource "aws_api_gateway_resource" "customers" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.api_v1.id
+  path_part   = "customers"
+}
+
+resource "aws_api_gateway_resource" "customers_lookup" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  parent_id   = aws_api_gateway_resource.customers.id
+  path_part   = "lookup"
+}
+
 resource "aws_api_gateway_resource" "public_proxy" {
   rest_api_id = aws_api_gateway_rest_api.main.id
   parent_id   = aws_api_gateway_resource.public.id
@@ -383,6 +395,52 @@ resource "aws_api_gateway_integration" "customer_http" {
   }
 }
 
+resource "aws_api_gateway_method" "customers_lookup_post" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.customers_lookup.id
+  http_method   = "POST"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "customers_lookup_post" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.customers_lookup.id
+  http_method             = aws_api_gateway_method.customers_lookup_post.http_method
+  integration_http_method = "POST"
+  type                    = "HTTP_PROXY"
+  connection_type         = "VPC_LINK"
+  connection_id           = aws_apigatewayv2_vpc_link.gateway.id
+  integration_target      = data.aws_lb.internal.arn
+  uri                     = "http://${var.api_domain_name}:$${stageVariables.backendListenerPort}/api/v1/customers/lookup"
+
+  request_parameters = {
+    "integration.request.header.X-Correlation-ID" = "context.requestId"
+  }
+}
+
+resource "aws_api_gateway_method" "customers_lookup_options" {
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  resource_id   = aws_api_gateway_resource.customers_lookup.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "customers_lookup_options" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.customers_lookup.id
+  http_method             = aws_api_gateway_method.customers_lookup_options.http_method
+  integration_http_method = "OPTIONS"
+  type                    = "HTTP_PROXY"
+  connection_type         = "VPC_LINK"
+  connection_id           = aws_apigatewayv2_vpc_link.gateway.id
+  integration_target      = data.aws_lb.internal.arn
+  uri                     = "http://${var.api_domain_name}:$${stageVariables.backendListenerPort}/api/v1/customers/lookup"
+
+  request_parameters = {
+    "integration.request.header.X-Correlation-ID" = "context.requestId"
+  }
+}
+
 resource "aws_api_gateway_method" "health_any" {
   rest_api_id   = aws_api_gateway_rest_api.main.id
   resource_id   = aws_api_gateway_resource.health_proxy.id
@@ -418,6 +476,8 @@ resource "aws_api_gateway_deployment" "main" {
   triggers = {
     redeployment = sha1(jsonencode([
       aws_api_gateway_resource.api_v1_auth.id,
+      aws_api_gateway_resource.customers,
+      aws_api_gateway_resource.customers_lookup,
       { for name, integration in aws_api_gateway_integration.api_v1_auth_endpoint : name => integration.id },
       { for name, integration in aws_api_gateway_integration.api_v1_auth_endpoint : name => integration.uri },
       aws_api_gateway_resource.auth_login.id,
@@ -429,6 +489,8 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_integration.admin_http.id,
       aws_api_gateway_integration.admin_options_http.id,
       aws_api_gateway_integration.customer_http.id,
+      aws_api_gateway_integration.customers_lookup_post,
+      aws_api_gateway_integration.customers_lookup_options,
       aws_api_gateway_integration.public_http.id,
       aws_api_gateway_integration.health_http.id,
       aws_api_gateway_method.api_v1_auth_endpoint,
@@ -441,6 +503,8 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_method.admin_options,
       aws_api_gateway_method.public_any,
       aws_api_gateway_method.customer_any,
+      aws_api_gateway_method.customers_lookup_post,
+      aws_api_gateway_method.customers_lookup_options,
       aws_api_gateway_method.health_any,
       aws_api_gateway_authorizer.jwt,
       aws_api_gateway_integration.auth_login_backend.uri,
@@ -479,6 +543,8 @@ resource "aws_api_gateway_deployment" "main" {
     aws_api_gateway_integration.admin_http,
     aws_api_gateway_integration.admin_options_http,
     aws_api_gateway_integration.customer_http,
+    aws_api_gateway_integration.customers_lookup_post,
+    aws_api_gateway_integration.customers_lookup_options,
     aws_api_gateway_integration.public_http,
     aws_api_gateway_integration.health_http,
   ]
