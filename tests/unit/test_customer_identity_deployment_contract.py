@@ -42,6 +42,22 @@ def test_customer_identity_settings_are_configured_in_local_and_staging_overlays
     assert 'SERVICE_ORDER_EVENT_BUS_NAME: ""' not in staging_overlay
 
 
+def test_api_gateway_stage_prefix_is_configured_for_fastapi_root_path():
+    app = (ROOT / "src/main.py").read_text(encoding="utf-8")
+    settings = (ROOT / "src/config.py").read_text(encoding="utf-8")
+    staging_overlay = (
+        ROOT / "k8s/overlays/staging/foundation/configmap-patch.yaml"
+    ).read_text(encoding="utf-8")
+    production_overlay = (
+        ROOT / "k8s/overlays/production/foundation/configmap-patch.yaml"
+    ).read_text(encoding="utf-8")
+
+    assert "root_path=settings.api_root_path" in app
+    assert "api_root_path: str = \"\"" in settings
+    assert 'API_ROOT_PATH: "/hml"' in staging_overlay
+    assert 'API_ROOT_PATH: "/prd"' in production_overlay
+
+
 def test_ci_and_aws_example_use_ssm_for_customer_auth_lambda():
     ci_workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     aws_tfvars_example = (ROOT / "infra/aws/terraform.tfvars.example").read_text(

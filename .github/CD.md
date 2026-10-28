@@ -24,9 +24,9 @@ O script de deploy usa o namespace `auto-shop-hml` em staging e `auto-shop-prd` 
 
 ## Gates de deploy do backend e frontend
 
-As variáveis de repositório `DEPLOY_STAGING_ENABLED` e `DEPLOY_PRODUCTION_ENABLED` controlam os jobs de deploy. Mantenha ambas ausentes ou `false` até o ambiente alvo, a infraestrutura AWS e os smoke checks estarem prontos. Com o gate desligado, o build da imagem continua e os jobs de deploy são ignorados.
+As variáveis de repositório `DEPLOY_STAGING_ENABLED` e `DEPLOY_PRODUCTION_ENABLED` controlam os jobs de deploy do backend. Mantenha ambas ausentes ou `false` até o ambiente alvo, a infraestrutura AWS e os smoke checks estarem prontos. Com o gate desligado, o build da imagem continua e os jobs de deploy são ignorados.
 
-Quando o gate está ligado, o workflow publica o backend primeiro. O workflow reutilizável do frontend só roda depois que o deploy do backend termina com sucesso. Ele compila o Angular, lê do SSM o bucket S3 e o ID da distribuição CloudFront do stage, sincroniza o bundle e invalida a distribuição.
+O deploy do frontend tem gates independentes: `DEPLOY_STAGING_FRONTEND_ENABLED` e `DEPLOY_PRODUCTION_FRONTEND_ENABLED`. Ambos precisam estar ausentes ou `false` enquanto a publicação do frontend não estiver autorizada. Habilitar o deploy do backend não publica o frontend. Quando o respectivo gate do frontend estiver `true`, o workflow reutilizável só roda depois do deploy do backend correspondente; ele compila o Angular, lê do SSM o bucket S3 e o ID da distribuição CloudFront, sincroniza o bundle e invalida a distribuição.
 
 ## Configuração dos GitHub Environments
 
@@ -37,9 +37,10 @@ Configure cada Environment com:
 | Variável ou secret | Exemplo | Uso |
 |---|---|---|
 | Variável `AWS_REGION` | `us-east-1` | Região de EKS, SSM e S3 |
-| Secret `AWS_DEPLOY_ROLE_ARN` | ARN real da role | Assumida via GitHub OIDC |
+| Secret `AWS_DEPLOY_ROLE_ARN` | ARN real da role de backend | Acesso a EKS e leitura dos parâmetros SSM do backend |
+| Secret `AWS_FRONTEND_DEPLOY_ROLE_ARN` | ARN real da role do frontend | Escrita no bucket S3 do frontend e invalidação da distribuição CloudFront |
 
-A role do Environment precisa de permissões restritas para descrever o cluster EKS, ler do SSM o ARN do segredo de migrations, o nome do event bus e a role IRSA daquele stage, além dos destinos do frontend; também precisa listar o bucket S3, publicar e remover objetos do frontend e invalidar o CloudFront. A autorização de acesso à API do EKS (access entry ou `aws-auth`) vem do repositório de infraestrutura, não deste workflow.
+As roles são separadas por finalidade: a role de backend descreve o cluster EKS e lê apenas os parâmetros SSM necessários para o deploy; ela não pode publicar o frontend. A role do frontend lê apenas os destinos SSM do stage e publica no bucket S3 correspondente, podendo invalidar apenas a distribuição CloudFront correspondente. A autorização de acesso à API do EKS (access entry ou `aws-auth`) vem do repositório de infraestrutura, não deste workflow.
 
 Por padrão, o workflow lê estes parâmetros SSM não secretos sob o prefixo `/auto-shop/staging`:
 
@@ -54,7 +55,7 @@ Esses parâmetros são criados por `infra/aws`. Se `upstream_ssm_prefix` mudar n
 
 ## Pré-requisitos de OIDC e infraestrutura
 
-O Terraform em [`infra/aws/github_oidc.tf`](../infra/aws/github_oidc.tf) pode criar roles cuja trust policy fica restrita a este repositório, ao GitHub Environment e à branch esperada: `develop` para staging e `main` para production. Mantenha também as regras de deployment branch nos Environments. Os outputs são `github_deploy_role_arn_staging` e `github_deploy_role_arn_production`; configure cada valor como o secret `AWS_DEPLOY_ROLE_ARN` do Environment correspondente.
+O Terraform em [`infra/aws/github_oidc.tf`](../infra/aws/github_oidc.tf) pode criar roles cuja trust policy fica restrita a este repositório, ao GitHub Environment e à branch esperada: `develop` para staging e `main` para production. Mantenha também as regras de deployment branch nos Environments. Configure `github_deploy_role_arn_staging` e `github_deploy_role_arn_production` como `AWS_DEPLOY_ROLE_ARN`, e `github_frontend_deploy_role_arn_staging` e `github_frontend_deploy_role_arn_production` como `AWS_FRONTEND_DEPLOY_ROLE_ARN` nos Environments correspondentes.
 
 Antes de ativar os deploys, configure o acesso ao cluster EKS, a rede, os parâmetros SSM, o API Gateway, as funções Lambda de autenticação de cliente, o DNS e as distribuições de frontend. Siga [`infra/aws/README.md`](../infra/aws/README.md) e a [ADR-0071](../docs/architecture/decisions/ADR-0071-infraestrutura-cloud-fase-3.md). Não habilite produção antes de configurar a aprovação e os smoke checks.
 

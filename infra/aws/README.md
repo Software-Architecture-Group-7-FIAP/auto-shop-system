@@ -14,7 +14,7 @@ Este repositório contém a definição da infraestrutura. Isso não significa q
 - Dois buckets S3 privados e distribuições CloudFront para o Angular, com OAC.
 - Certificado ACM para `api.oficina-workshop.com.br`, `app-hml.oficina-workshop.com.br` e `app.oficina-workshop.com.br`.
 - Logs de acesso da API e logs do WAF no CloudWatch.
-- Roles opcionais de GitHub OIDC para deploy no Kubernetes e publicação do frontend.
+- Roles opcionais de GitHub OIDC separadas para deploy do backend e publicação do frontend.
 - EventBridge por stage, SNS para alertas por e-mail, DLQs SQS e roles IRSA para o publisher de falhas de OS (#117).
 
 ## Mapeamento dos ambientes
@@ -75,7 +75,7 @@ O bundle Angular é igual nos dois stages e chama a API por caminhos relativos `
 
 O workflow reutilizável compila `frontend/` com Node 18, lê do SSM o bucket e o ID da distribuição do stage, sincroniza o bundle de produção no S3 e invalida o cache do CloudFront. O `index.html` recebe headers `no-cache`; os assets com hash recebem cache de longa duração. O workflow de CI executa separadamente lint, checagem de tipos, build e testes do frontend.
 
-Os gates de deploy dos GitHub Environments devem permanecer desligados até a infraestrutura e os smoke checks necessários estarem prontos. Os buckets S3 mantêm `force_destroy = false`; esvazie os dois buckets antes de `terraform destroy` para que a remoção não apague objetos sem uma ação explícita.
+Os gates de deploy do backend (`DEPLOY_STAGING_ENABLED` e `DEPLOY_PRODUCTION_ENABLED`) devem permanecer desligados até a infraestrutura e os smoke checks necessários estarem prontos. A publicação do frontend usa os gates separados `DEPLOY_STAGING_FRONTEND_ENABLED` e `DEPLOY_PRODUCTION_FRONTEND_ENABLED`, ambos ausentes ou `false` enquanto a publicação não estiver autorizada. As roles OIDC também são separadas: a role de backend não pode gravar no S3 nem invalidar CloudFront. Os buckets S3 mantêm `force_destroy = false`; esvazie os dois buckets antes de `terraform destroy` para que a remoção não apague objetos sem uma ação explícita.
 
 ## Eventos de falha de OS (#117)
 

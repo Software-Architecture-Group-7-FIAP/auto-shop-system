@@ -61,16 +61,28 @@ jobs:
           service_order_publisher_role_arn="$(aws ssm get-parameter \
             --name "${SSM_PARAMETER_PREFIX}/events/service-order-publisher-role-arn/prd" \
             --query 'Parameter.Value' --output text)"
-          if [[ -z "${cluster_name}" || ! "${migration_secret_arn}" =~ ^arn:aws:secretsmanager: \
-            || ! "${service_order_event_bus_name}" =~ ^[A-Za-z0-9._-]{1,256}$ \
-            || ! "${service_order_publisher_role_arn}" =~ ^arn:aws:iam::[0-9]{12}:role/ ]]; then
-            echo "The EKS cluster, migration secret, or service-order event configuration is missing from SSM." >&2
+          if [[ ! "${cluster_name}" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$ ]]; then
+            echo "The EKS cluster name in SSM is invalid." >&2
             exit 1
           fi
-          echo "cluster_name=${cluster_name}" >> "${GITHUB_OUTPUT}"
-          echo "migration_secret_arn=${migration_secret_arn}" >> "${GITHUB_OUTPUT}"
-          echo "service_order_event_bus_name=${service_order_event_bus_name}" >> "${GITHUB_OUTPUT}"
-          echo "service_order_publisher_role_arn=${service_order_publisher_role_arn}" >> "${GITHUB_OUTPUT}"
+          if [[ ! "${migration_secret_arn}" =~ ^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$ ]]; then
+            echo "The migration secret ARN in SSM is invalid." >&2
+            exit 1
+          fi
+          if [[ ! "${service_order_event_bus_name}" =~ ^[A-Za-z0-9._-]{1,256}$ ]]; then
+            echo "The service-order event bus name in SSM is invalid." >&2
+            exit 1
+          fi
+          if [[ ! "${service_order_publisher_role_arn}" =~ ^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$ ]]; then
+            echo "The service-order publisher role ARN in SSM is invalid." >&2
+            exit 1
+          fi
+          {
+            echo "cluster_name=${cluster_name}"
+            echo "migration_secret_arn=${migration_secret_arn}"
+            echo "service_order_event_bus_name=${service_order_event_bus_name}"
+            echo "service_order_publisher_role_arn=${service_order_publisher_role_arn}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Connect to EKS
         env:
@@ -87,7 +99,7 @@ jobs:
 
   deploy-production-frontend:
     needs: deploy-production
-    if: vars.DEPLOY_PRODUCTION_ENABLED == 'true'
+    if: vars.DEPLOY_PRODUCTION_FRONTEND_ENABLED == 'true'
     uses: ./.github/workflows/reusable-frontend-deploy.yml
     with:
       github_environment: production

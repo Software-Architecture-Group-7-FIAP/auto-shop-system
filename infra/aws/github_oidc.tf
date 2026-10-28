@@ -1,5 +1,5 @@
-# GitHub Actions OIDC → IAM roles for EKS deploy (issue #90).
-# Apply once per AWS account; map role ARNs to GitHub Environment secrets.
+# GitHub Actions OIDC roles for backend and frontend deploys (issue #90).
+# Map each role ARN to the matching GitHub Environment secret.
 
 variable "enable_github_oidc" {
   description = "Create GitHub OIDC provider and deploy roles."
@@ -72,6 +72,13 @@ resource "aws_iam_role" "github_deploy" {
   assume_role_policy = data.aws_iam_policy_document.github_deploy_assume[each.key].json
 }
 
+resource "aws_iam_role" "github_frontend_deploy" {
+  for_each = var.enable_github_oidc ? toset(["staging", "production"]) : toset([])
+
+  name               = "${local.name_prefix}-github-${each.key}-frontend"
+  assume_role_policy = data.aws_iam_policy_document.github_deploy_assume[each.key].json
+}
+
 data "aws_iam_policy_document" "github_deploy_eks" {
   for_each = var.enable_github_oidc ? toset(["staging", "production"]) : toset([])
 
@@ -88,6 +95,24 @@ data "aws_iam_policy_document" "github_deploy_eks" {
       ),
     ]
   }
+
+  statement {
+    sid    = "ReadStageDeployParameters"
+    effect = "Allow"
+    actions = [
+      "ssm:GetParameter",
+    ]
+    resources = [
+      data.aws_ssm_parameter.upstream["eks_cluster_name"].arn,
+      data.aws_ssm_parameter.migration_secret_arn[local.github_environment_api_stage[each.key]].arn,
+      aws_ssm_parameter.service_order_bus_name[local.github_environment_api_stage[each.key]].arn,
+      aws_ssm_parameter.service_order_publisher_role_arn[local.github_environment_api_stage[each.key]].arn,
+    ]
+  }
+}
+
+data "aws_iam_policy_document" "github_frontend_deploy" {
+  for_each = var.enable_github_oidc ? toset(["staging", "production"]) : toset([])
 
   statement {
     sid       = "ListStageFrontendBucket"
@@ -116,16 +141,10 @@ data "aws_iam_policy_document" "github_deploy_eks" {
   }
 
   statement {
-    sid    = "ReadStageDeployParameters"
-    effect = "Allow"
-    actions = [
-      "ssm:GetParameter",
-    ]
+    sid     = "ReadStageFrontendParameters"
+    effect  = "Allow"
+    actions = ["ssm:GetParameter"]
     resources = [
-      data.aws_ssm_parameter.upstream["eks_cluster_name"].arn,
-      data.aws_ssm_parameter.migration_secret_arn[local.github_environment_api_stage[each.key]].arn,
-      aws_ssm_parameter.service_order_bus_name[local.github_environment_api_stage[each.key]].arn,
-      aws_ssm_parameter.service_order_publisher_role_arn[local.github_environment_api_stage[each.key]].arn,
       aws_ssm_parameter.frontend_bucket_name[local.github_environment_api_stage[each.key]].arn,
       aws_ssm_parameter.frontend_distribution_id[local.github_environment_api_stage[each.key]].arn,
     ]
@@ -140,6 +159,14 @@ resource "aws_iam_role_policy" "github_deploy_eks" {
   policy = data.aws_iam_policy_document.github_deploy_eks[each.key].json
 }
 
+resource "aws_iam_role_policy" "github_frontend_deploy" {
+  for_each = var.enable_github_oidc ? toset(["staging", "production"]) : toset([])
+
+  name   = "${each.key}-frontend-deploy"
+  role   = aws_iam_role.github_frontend_deploy[each.key].id
+  policy = data.aws_iam_policy_document.github_frontend_deploy[each.key].json
+}
+
 output "github_deploy_role_arn_staging" {
   description = "IAM role ARN for GitHub Environment staging (secret AWS_DEPLOY_ROLE_ARN)."
   value       = var.enable_github_oidc ? aws_iam_role.github_deploy["staging"].arn : null
@@ -148,4 +175,14 @@ output "github_deploy_role_arn_staging" {
 output "github_deploy_role_arn_production" {
   description = "IAM role ARN for GitHub Environment production."
   value       = var.enable_github_oidc ? aws_iam_role.github_deploy["production"].arn : null
+}
+
+output "github_frontend_deploy_role_arn_staging" {
+  description = "IAM role ARN for GitHub Environment staging frontend publication."
+  value       = var.enable_github_oidc ? aws_iam_role.github_frontend_deploy["staging"].arn : null
+}
+
+output "github_frontend_deploy_role_arn_production" {
+  description = "IAM role ARN for GitHub Environment production frontend publication."
+  value       = var.enable_github_oidc ? aws_iam_role.github_frontend_deploy["production"].arn : null
 }
