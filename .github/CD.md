@@ -39,7 +39,7 @@ Configure cada Environment com:
 | Variável `AWS_REGION` | `us-east-1` | Região de EKS, SSM e S3 |
 | Secret `AWS_DEPLOY_ROLE_ARN` | ARN real da role | Assumida via GitHub OIDC |
 
-A role do Environment precisa de permissões restritas para descrever o cluster EKS, ler do SSM o ARN do segredo de migrations daquele stage e os destinos do frontend, listar o bucket S3, publicar e remover objetos do frontend e invalidar o CloudFront. A autorização de acesso à API do EKS (access entry ou `aws-auth`) vem do repositório de infraestrutura, não deste workflow.
+A role do Environment precisa de permissões restritas para descrever o cluster EKS, ler do SSM o ARN do segredo de migrations, o nome do event bus e a role IRSA daquele stage, além dos destinos do frontend; também precisa listar o bucket S3, publicar e remover objetos do frontend e invalidar o CloudFront. A autorização de acesso à API do EKS (access entry ou `aws-auth`) vem do repositório de infraestrutura, não deste workflow.
 
 Por padrão, o workflow lê estes parâmetros SSM não secretos sob o prefixo `/auto-shop/staging`:
 
@@ -47,6 +47,8 @@ Por padrão, o workflow lê estes parâmetros SSM não secretos sob o prefixo `/
 - `/frontend/prd/bucket-name` e `/frontend/prd/distribution-id`
 - `/eks/cluster-name`
 - `/database/secrets/migrations-hml-arn` e `/database/secrets/migrations-prd-arn` (ARN não secreto do segredo de migrations por database)
+- `/events/service-order-bus-name` e `/events/service-order-bus-name/prd`
+- `/events/service-order-publisher-role-arn/hml` e `/events/service-order-publisher-role-arn/prd`
 
 Esses parâmetros são criados por `infra/aws`. Se `upstream_ssm_prefix` mudar nessa stack, atualize também a entrada do workflow reutilizável nos workflows CD chamadores.
 

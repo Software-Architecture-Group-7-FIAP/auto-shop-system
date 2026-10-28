@@ -251,6 +251,9 @@ Todos os parâmetros abaixo são Standard `String` ou `StringList`, região `us-
 | `/auto-shop/staging/auth/customer-jwt/audience` | `String` | `lambda-auth` | aplicação valida `CUSTOMER_JWT_AUDIENCE` |
 | `/auto-shop/staging/auth/customer-jwt/jwks-url` | `String` | `lambda-auth` | aplicação valida JWT via `CUSTOMER_JWT_JWKS_URL` |
 | `/auto-shop/staging/events/service-order-bus-name` | `String` | `auto-shop-system/infra/aws` | aplicação; seu IAM só recebe `events:PutEvents` no ARN do bus |
+| `/auto-shop/staging/events/service-order-bus-name/prd` | `String` | `auto-shop-system/infra/aws` | aplicação PRD; seu IAM só recebe `events:PutEvents` no ARN do bus PRD |
+| `/auto-shop/staging/events/service-order-publisher-role-arn/hml` | `String` | `auto-shop-system/infra/aws` | pipeline lê o ARN e injeta na ServiceAccount da aplicação HML |
+| `/auto-shop/staging/events/service-order-publisher-role-arn/prd` | `String` | `auto-shop-system/infra/aws` | pipeline lê o ARN e injeta na ServiceAccount da aplicação PRD |
 
 `database-infra` publica somente endpoint/porta/nomes/IDs/ARNs. O master `owner`, as credenciais `migration`, `app_runtime` e `lambda_auth` vivem no Secrets Manager, cada uma em ARN exato. Os Jobs de migrations HML e PRD usam usuários e roles distintos, com permissão de leitura apenas do secret correspondente; `owner` fica restrito ao bootstrap do banco. Credenciais Redis são geradas por sessão diretamente no cluster e não são publicadas no SSM.
 

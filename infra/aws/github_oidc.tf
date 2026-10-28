@@ -124,6 +124,8 @@ data "aws_iam_policy_document" "github_deploy_eks" {
     resources = [
       data.aws_ssm_parameter.upstream["eks_cluster_name"].arn,
       data.aws_ssm_parameter.migration_secret_arn[local.github_environment_api_stage[each.key]].arn,
+      aws_ssm_parameter.service_order_bus_name[local.github_environment_api_stage[each.key]].arn,
+      aws_ssm_parameter.service_order_publisher_role_arn[local.github_environment_api_stage[each.key]].arn,
       aws_ssm_parameter.frontend_bucket_name[local.github_environment_api_stage[each.key]].arn,
       aws_ssm_parameter.frontend_distribution_id[local.github_environment_api_stage[each.key]].arn,
     ]

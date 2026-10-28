@@ -105,12 +105,14 @@ jobs:
               output="$(mktemp)"
               kubectl kustomize "k8s/overlays/${environment}/${phase}" \
                 | sed "s#registry.example.com/auto-shop-system:__IMAGE_TAG__#${image_reference}#g" \
+                | sed "s#__SERVICE_ORDER_EVENT_BUS_NAME__#auto-shop-service-orders-${environment}#g" \
+                | sed "s#__SERVICE_ORDER_PUBLISHER_ROLE_ARN__#arn:aws:iam::000000000000:role/ci-placeholder#g" \
                 > "$output"
               if grep -Eiq 'secrets\.example|:latest' "$output"; then
                 echo "Unsafe value found in ${environment}/${phase}"
                 exit 1
               fi
-              if [[ "$environment" != "local" ]] && grep -Eiq 'http://|localhost|mailhog|__IMAGE_TAG__' "$output"; then
+              if [[ "$environment" != "local" ]] && grep -Eiq 'http://|localhost|mailhog|__IMAGE_TAG__|__SERVICE_ORDER_EVENT_BUS_NAME__|__SERVICE_ORDER_PUBLISHER_ROLE_ARN__' "$output"; then
                 echo "Production-like overlay contains a local, HTTP, or unresolved value: ${environment}/${phase}"
                 exit 1
               fi
@@ -212,6 +214,7 @@ jobs:
             -var=customer_jwt_jwks_url=https://auth.staging.example.com/.well-known/jwks.json \
             -var=customer_jwt_issuer=https://auth.staging.example.com \
             -var=service_order_event_bus_name=auto-shop-service-orders-staging \
+            -var=service_order_publisher_role_arn=arn:aws:iam::000000000000:role/auto-shop-staging-hml-service-order-events-publisher \
             -var=frontend_public_url=https://staging.example.com \
             -var=cors_allowed_origins=https://staging.example.com \
             -var=security_hsts_enabled=true \
@@ -231,6 +234,7 @@ jobs:
             -var=customer_jwt_jwks_url=https://auth.example.com/.well-known/jwks.json \
             -var=customer_jwt_issuer=https://auth.example.com \
             -var=service_order_event_bus_name=auto-shop-service-orders-production \
+            -var=service_order_publisher_role_arn=arn:aws:iam::000000000000:role/auto-shop-staging-prd-service-order-events-publisher \
             -var=frontend_public_url=https://example.com \
             -var=cors_allowed_origins=https://example.com \
             -var=security_hsts_enabled=true \

@@ -15,6 +15,7 @@ Este repositório contém a definição da infraestrutura. Isso não significa q
 - Certificado ACM para `api.oficina-workshop.com.br`, `app-hml.oficina-workshop.com.br` e `app.oficina-workshop.com.br`.
 - Logs de acesso da API e logs do WAF no CloudWatch.
 - Roles opcionais de GitHub OIDC para deploy no Kubernetes e publicação do frontend.
+- EventBridge por stage, SNS para alertas por e-mail, DLQs SQS e roles IRSA para o publisher de falhas de OS (#117).
 
 ## Mapeamento dos ambientes
 
@@ -28,6 +29,7 @@ A stack upstream precisa exportar os parâmetros abaixo sob `upstream_ssm_prefix
 - `network/vpc-id`
 - `network/workload-private-subnet-ids`
 - `eks/cluster-name`
+- `eks/oidc-provider-arn`
 - `gateway/internal-alb-arn`
 - `gateway/listener-arn/hml` and `gateway/listener-arn/prd`
 - `auth/customer-token/function-arn/hml` and `auth/customer-token/function-arn/prd`
@@ -74,6 +76,24 @@ O bundle Angular é igual nos dois stages e chama a API por caminhos relativos `
 O workflow reutilizável compila `frontend/` com Node 18, lê do SSM o bucket e o ID da distribuição do stage, sincroniza o bundle de produção no S3 e invalida o cache do CloudFront. O `index.html` recebe headers `no-cache`; os assets com hash recebem cache de longa duração. O workflow de CI executa separadamente lint, checagem de tipos, build e testes do frontend.
 
 Os gates de deploy dos GitHub Environments devem permanecer desligados até a infraestrutura e os smoke checks necessários estarem prontos. Os buckets S3 mantêm `force_destroy = false`; esvazie os dois buckets antes de `terraform destroy` para que a remoção não apague objetos sem uma ação explícita.
+
+## Eventos de falha de OS (#117)
+
+Esta stack cria um bus EventBridge isolado para cada stage. O contrato do SSM é:
+
+- HML: `${upstream_ssm_prefix}/events/service-order-bus-name`.
+- PRD: `${upstream_ssm_prefix}/events/service-order-bus-name/prd`.
+- Role IRSA: `${upstream_ssm_prefix}/events/service-order-publisher-role-arn/{hml|prd}`.
+
+As regras aceitam somente `source=auto-shop.service-orders`, `detail-type=ServiceOrderProcessingFailed` e `detail.event_version=1`. O EventBridge entrega ao tópico SNS; falhas na entrega são tentadas novamente por até 24 horas e podem seguir para a DLQ SQS standard do stage. A política da fila permite `sqs:SendMessage` somente ao EventBridge, para a regra correspondente e na conta atual. A política do tópico limita `sns:Publish` às duas regras do projeto e aos alarmes de DLQ. O tópico usa uma chave KMS gerenciada pelo projeto, com rotação e janela de exclusão de sete dias; a política limita o uso ao contexto da topic. As filas usam SSE gerenciada pelo SQS.
+
+Um alarme CloudWatch por stage publica no mesmo tópico SNS quando a respectiva DLQ contém uma mensagem visível. O ServiceAccount `auto-shop-backend` em cada namespace recebe a role de publicação por IRSA. A trust policy valida o audience `sts.amazonaws.com` e o subject exato do namespace e ServiceAccount. O provedor OIDC do cluster precisa existir e ser publicado por `k8s-infra` em `eks/oidc-provider-arn`. A rede privada dos pods também precisa ter saída ao endpoint EventBridge, por NAT ou endpoint de VPC gerenciado pela stack de rede.
+
+A chave KMS própria gera custo recorrente enquanto existir; o destroy agenda a exclusão após sete dias. A DLQ não tem consumidor de replay automático: a mensagem dispara o alarme e deve ser inspecionada antes de qualquer reenvio.
+
+Para habilitar e-mail, forneça `service_order_alert_email` em um arquivo local não versionado ou via `TF_VAR_service_order_alert_email`. O Terraform não grava o endereço no repositório. Se o valor estiver vazio, os recursos EventBridge/SNS/DLQ continuam disponíveis, mas nenhuma inscrição de e-mail é criada. O destinatário recebe uma mensagem de confirmação da AWS e precisa aceitá-la antes dos testes de recebimento.
+
+Os deploys HML/PRD leem do SSM somente os nomes/ARNs exatos do bus e da role IRSA e injetam esses valores nos manifests, sem conceder `ssm:GetParameter` ao backend. O payload do e-mail contém apenas stage, IDs técnicos e timestamp; falhas no próprio `PutEvents` continuam sendo best-effort na aplicação e não são cobertas pela DLQ do target.
 
 ## Evidências de staging pendentes para #87
 

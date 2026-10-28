@@ -145,6 +145,20 @@ variable "service_order_event_bus_name" {
   }
 }
 
+variable "service_order_publisher_role_arn" {
+  description = "IRSA role ARN permitted to publish service-order failure events."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = var.environment == "local" || can(regex(
+      "^arn:aws:iam::[0-9]{12}:role/.+$",
+      trimspace(var.service_order_publisher_role_arn),
+    ))
+    error_message = "service_order_publisher_role_arn must be a valid IAM role ARN outside local development."
+  }
+}
+
 variable "frontend_public_url" {
   description = "URL pública do frontend."
   type        = string

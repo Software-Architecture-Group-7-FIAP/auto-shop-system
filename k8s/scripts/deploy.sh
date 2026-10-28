@@ -13,6 +13,8 @@ ENVIRONMENT="${1:?environment (staging|production)}"
 IMAGE_REFERENCE="${2:?immutable image reference}"
 CONFIRM_PRODUCTION="${3:-}"
 MIGRATION_DATABASE_SECRET_ARN="${MIGRATION_DATABASE_SECRET_ARN:-}"
+SERVICE_ORDER_EVENT_BUS_NAME="${SERVICE_ORDER_EVENT_BUS_NAME:-}"
+SERVICE_ORDER_PUBLISHER_ROLE_ARN="${SERVICE_ORDER_PUBLISHER_ROLE_ARN:-}"
 
 case "${ENVIRONMENT}" in
   staging) NAMESPACE="auto-shop-hml" ;;
@@ -28,6 +30,16 @@ fi
 
 if [[ ! "${MIGRATION_DATABASE_SECRET_ARN}" =~ ^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+ ]]; then
   echo "A valid migration database secret ARN from the approved SSM parameter is required."
+  exit 1
+fi
+
+if [[ ! "${SERVICE_ORDER_EVENT_BUS_NAME}" =~ ^[A-Za-z0-9._-]{1,256}$ ]]; then
+  echo "A valid EventBridge bus name from the approved SSM parameter is required."
+  exit 1
+fi
+
+if [[ ! "${SERVICE_ORDER_PUBLISHER_ROLE_ARN}" =~ ^arn:aws:iam::[0-9]{12}:role/.+ ]]; then
+  echo "A valid service-order publisher role ARN from the approved SSM parameter is required."
   exit 1
 fi
 
@@ -77,10 +89,12 @@ render_phase() {
   rendered="${rendered//registry.example.com\/auto-shop-system:__IMAGE_TAG__/${IMAGE_REFERENCE}}"
   rendered="${rendered//auto-shop-system:__IMAGE_TAG__/${IMAGE_REFERENCE}}"
   rendered="${rendered//__MIGRATION_DATABASE_SECRET_ARN__/${MIGRATION_DATABASE_SECRET_ARN}}"
+  rendered="${rendered//__SERVICE_ORDER_EVENT_BUS_NAME__/${SERVICE_ORDER_EVENT_BUS_NAME}}"
+  rendered="${rendered//__SERVICE_ORDER_PUBLISHER_ROLE_ARN__/${SERVICE_ORDER_PUBLISHER_ROLE_ARN}}"
   if [[ "${phase}" == "migration" ]]; then
     rendered="${rendered//name: auto-shop-migrate/name: ${MIGRATION_JOB}}"
   fi
-  if grep -Eq '__IMAGE_TAG__|__MIGRATION_DATABASE_SECRET_ARN__' <<< "${rendered}"; then
+  if grep -Eq '__IMAGE_TAG__|__MIGRATION_DATABASE_SECRET_ARN__|__SERVICE_ORDER_EVENT_BUS_NAME__|__SERVICE_ORDER_PUBLISHER_ROLE_ARN__' <<< "${rendered}"; then
     echo "Unresolved deployment placeholder in ${ENVIRONMENT}/${phase}"
     exit 1
   fi

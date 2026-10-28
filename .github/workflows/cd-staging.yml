@@ -55,12 +55,22 @@ jobs:
           migration_secret_arn="$(aws ssm get-parameter \
             --name "${SSM_PARAMETER_PREFIX}/database/secrets/migrations-hml-arn" \
             --query 'Parameter.Value' --output text)"
-          if [[ -z "${cluster_name}" || ! "${migration_secret_arn}" =~ ^arn:aws:secretsmanager: ]]; then
-            echo "The EKS cluster or migration secret ARN is missing from SSM." >&2
+          service_order_event_bus_name="$(aws ssm get-parameter \
+            --name "${SSM_PARAMETER_PREFIX}/events/service-order-bus-name" \
+            --query 'Parameter.Value' --output text)"
+          service_order_publisher_role_arn="$(aws ssm get-parameter \
+            --name "${SSM_PARAMETER_PREFIX}/events/service-order-publisher-role-arn/hml" \
+            --query 'Parameter.Value' --output text)"
+          if [[ -z "${cluster_name}" || ! "${migration_secret_arn}" =~ ^arn:aws:secretsmanager: \
+            || ! "${service_order_event_bus_name}" =~ ^[A-Za-z0-9._-]{1,256}$ \
+            || ! "${service_order_publisher_role_arn}" =~ ^arn:aws:iam::[0-9]{12}:role/ ]]; then
+            echo "The EKS cluster, migration secret, or service-order event configuration is missing from SSM." >&2
             exit 1
           fi
           echo "cluster_name=${cluster_name}" >> "${GITHUB_OUTPUT}"
           echo "migration_secret_arn=${migration_secret_arn}" >> "${GITHUB_OUTPUT}"
+          echo "service_order_event_bus_name=${service_order_event_bus_name}" >> "${GITHUB_OUTPUT}"
+          echo "service_order_publisher_role_arn=${service_order_publisher_role_arn}" >> "${GITHUB_OUTPUT}"
 
       - name: Connect to EKS
         env:
@@ -71,6 +81,8 @@ jobs:
       - name: Deploy to staging
         env:
           MIGRATION_DATABASE_SECRET_ARN: ${{ steps.eks.outputs.migration_secret_arn }}
+          SERVICE_ORDER_EVENT_BUS_NAME: ${{ steps.eks.outputs.service_order_event_bus_name }}
+          SERVICE_ORDER_PUBLISHER_ROLE_ARN: ${{ steps.eks.outputs.service_order_publisher_role_arn }}
         run: ./k8s/scripts/deploy.sh staging "${IMAGE_REFERENCE}"
 
   deploy-staging-frontend:
