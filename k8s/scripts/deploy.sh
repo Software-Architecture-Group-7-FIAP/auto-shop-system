@@ -28,7 +28,7 @@ if [[ "${ENVIRONMENT}" != "staging" && "${ENVIRONMENT}" != "production" ]]; then
   exit 1
 fi
 
-if [[ ! "${MIGRATION_DATABASE_SECRET_ARN}" =~ ^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+ ]]; then
+if [[ ! "${MIGRATION_DATABASE_SECRET_ARN}" =~ ^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$ ]]; then
   echo "A valid migration database secret ARN from the approved SSM parameter is required."
   exit 1
 fi
@@ -38,7 +38,7 @@ if [[ ! "${SERVICE_ORDER_EVENT_BUS_NAME}" =~ ^[A-Za-z0-9._-]{1,256}$ ]]; then
   exit 1
 fi
 
-if [[ ! "${SERVICE_ORDER_PUBLISHER_ROLE_ARN}" =~ ^arn:aws:iam::[0-9]{12}:role/.+ ]]; then
+if [[ ! "${SERVICE_ORDER_PUBLISHER_ROLE_ARN}" =~ ^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$ ]]; then
   echo "A valid service-order publisher role ARN from the approved SSM parameter is required."
   exit 1
 fi
@@ -67,6 +67,23 @@ if [[ ! -d "${OVERLAY_ROOT}" ]]; then
   echo "Overlay not found: ${OVERLAY_ROOT}"
   exit 1
 fi
+
+assert_pod_identity_agent_ready() {
+  local agent_status ready desired
+  if ! agent_status="$(kubectl get daemonset eks-pod-identity-agent \
+    --namespace kube-system \
+    --output='jsonpath={.status.numberReady} {.status.desiredNumberScheduled}' \
+    2>/dev/null)"; then
+    echo "The EKS Pod Identity Agent is missing; install the EKS add-on before deploying."
+    exit 1
+  fi
+
+  read -r ready desired <<< "${agent_status}"
+  if [[ -z "${desired}" || "${desired}" == "0" || "${ready}" != "${desired}" ]]; then
+    echo "The EKS Pod Identity Agent is not ready on every worker node."
+    exit 1
+  fi
+}
 
 release_suffix() {
   printf '%s' "${IMAGE_REFERENCE}" | sha256sum | awk '{print substr($1,1,12)}'
@@ -193,6 +210,7 @@ smoke_test() {
   exit 1
 }
 
+assert_pod_identity_agent_ready
 kubectl create namespace "${NAMESPACE}" --dry-run=client --output=yaml | kubectl apply --filename=-
 ensure_secret
 ensure_redis_credentials

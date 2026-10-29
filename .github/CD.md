@@ -22,6 +22,12 @@ Após o merge, o workflow reutilizável publica uma imagem imutável `sha-<7 car
 
 O script de deploy usa o namespace `auto-shop-hml` em staging e `auto-shop-prd` em produção. No primeiro deploy de cada namespace, gera uma senha Redis aleatória e grava `REDIS_PASSWORD` e `REDIS_URL` em `auto-shop-redis-credentials`, sem incluí-los em logs ou artefatos. O Redis é efêmero, sem persistência, e aceita conexões somente dos Pods da API. O NGINX Ingress segue restrito ao ambiente local; em AWS, o API Gateway encaminha o tráfego ao ALB interno. O GHCR usa `GITHUB_TOKEN`, sem access key AWS.
 
+## Pré-requisitos do cluster para migrations
+
+O `GITHUB_TOKEN` autentica o runner ao publicar no GHCR; ele não configura credenciais de pull nos nós EKS. Os manifests atuais não definem `imagePullSecrets`, então o backend precisa aceitar pull anônimo. Os workflows CD validam isso com `docker pull` sem login antes de configurar credenciais AWS. Se o check retornar 401, mantenha o gate de deploy desligado e escolha entre tornar o package público ou implementar uma credencial de pull persistente para o cluster. O endpoint GHCR respondeu 401 para pull anônimo em 2026-10-29.
+
+O Job de migrations usa EKS Pod Identity para ler o segredo do banco. A infraestrutura do cluster precisa instalar e manter pronto o add-on `eks-pod-identity-agent`; `deploy.sh` verifica o DaemonSet antes de alterar o namespace. Os nós de trabalho também precisam acessar a API EKS Auth, usada pelo agente, e o Secrets Manager, usado pelo Job. Se as sub-redes não tiverem NAT, configure VPC interface endpoints com DNS privado e regras de Security Group que permitam HTTPS na porta 443.
+
 ## Gates de deploy do backend e frontend
 
 As variáveis de repositório `DEPLOY_STAGING_ENABLED` e `DEPLOY_PRODUCTION_ENABLED` controlam os jobs de deploy do backend. Mantenha ambas ausentes ou `false` até o ambiente alvo, a infraestrutura AWS e os smoke checks estarem prontos. Com o gate desligado, o build da imagem continua e os jobs de deploy são ignorados.

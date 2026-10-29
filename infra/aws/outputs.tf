@@ -14,7 +14,7 @@ output "api_gateway_stage_arn" {
 }
 
 output "jwt_authorizer_lambda_arn" {
-  description = "Lambda ARN for JWT TOKEN authorizer."
+  description = "Lambda ARN for JWT REQUEST authorizer."
   value       = aws_lambda_function.jwt_authorizer.arn
 }
 

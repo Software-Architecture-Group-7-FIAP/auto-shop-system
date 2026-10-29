@@ -10,7 +10,7 @@ Este repositório contém a definição da infraestrutura. Isso não significa q
 - VPC Link V2 do API Gateway para o ALB interno, com regras de security group limitadas às portas dos listeners.
 - CORS preflight for web-session and administrative routes is handled by FastAPI; the customer-token OPTIONS route reaches the stage-specific Lambda.
 - The customer-token and JWKS endpoints invoke the Lambda ARN for their own stage, read from SSM.
-- Regional WAF with Common Rule Set and a high coarse source-IP cap; CloudFront WAF applies viewer-IP limits for authentication, public/customer APIs, and customer-token requests.
+- Regional WAF with Common Rule Set and one aggregate cap of 20,000 requests per five minutes per source IP; CloudFront WAF applies viewer-IP limits of 100 for customer-token requests, 300 for login, and 1,000 for public/customer APIs.
 - Dois buckets S3 privados e distribuições CloudFront para o Angular, com OAC.
 - Certificado ACM para `api.oficina-workshop.com.br`, `app-hml.oficina-workshop.com.br` e `app.oficina-workshop.com.br`.
 - Logs de acesso da API e logs do WAF no CloudWatch.

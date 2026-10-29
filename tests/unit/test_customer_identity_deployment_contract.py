@@ -1,3 +1,5 @@
+import re
+from collections import Counter
 from pathlib import Path
 
 
@@ -125,3 +127,86 @@ def test_gateway_limits_customer_lambda_permissions_to_expected_routes():
         "${aws_api_gateway_rest_api.main.execution_arn}/"
         "${each.key}/GET/.well-known/jwks.json"
     ) in lambda_config
+
+
+def test_regional_waf_uses_one_aggregate_source_ip_cap():
+    waf = (ROOT / "infra/aws/waf.tf").read_text(encoding="utf-8")
+    regional_acl = waf.split("cloudfront", maxsplit=1)[0]
+
+    assert regional_acl.count("var.waf_regional_rate_limit") == 1
+    assert regional_acl.count("rate_based_statement {") == 1
+    assert "scope_down_statement" not in regional_acl
+
+
+def test_waf_hcl_braces_are_balanced():
+    waf = (ROOT / "infra/aws/waf.tf").read_text(encoding="utf-8")
+
+    assert waf.count("{") == waf.count("}"), "Unbalanced WAF HCL braces"
+
+
+def test_deploy_script_requires_complete_arn_values():
+    deploy_script = (ROOT / "k8s/scripts/deploy.sh").read_text(encoding="utf-8")
+
+    assert "secret:[A-Za-z0-9/_+=.@-]+$" in deploy_script
+    assert "role/[A-Za-z0-9+=,.@_/-]+$" in deploy_script
+    assert "assert_pod_identity_agent_ready" in deploy_script
+    assert "assert_pod_identity_agent_ready\nkubectl create namespace" in deploy_script
+
+
+def test_cd_workflows_check_anonymous_image_access_before_aws_authentication():
+    workflows = (
+        ROOT / ".github/workflows/cd-staging.yml",
+        ROOT / ".github/workflows/cd-prod.yml",
+    )
+
+    for workflow_path in workflows:
+        workflow = workflow_path.read_text(encoding="utf-8")
+        assert 'run: docker pull "${IMAGE_REFERENCE}"' in workflow
+        assert workflow.index("Verify image is pullable without credentials") < workflow.index(
+            "Configure AWS credentials (OIDC)"
+        )
+
+
+def test_ci_and_cd_kubernetes_tools_match_the_staging_baseline():
+    ci_workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    staging_workflow = (ROOT / ".github/workflows/cd-staging.yml").read_text(
+        encoding="utf-8"
+    )
+    production_workflow = (ROOT / ".github/workflows/cd-prod.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "version: v1.37.1" in ci_workflow
+    assert "version: v1.37.1" in staging_workflow
+    assert "version: v1.37.1" in production_workflow
+    assert ci_workflow.count("version: v0.32.0") == 2
+    assert ci_workflow.count("node_image: kindest/node:v1.36.1") == 2
+
+
+def test_terraform_block_addresses_are_unique():
+    declarations = Counter()
+    resource_or_data = re.compile(
+        r'^\s*(resource|data)\s+"([^"]+)"\s+"([^"]+)"', re.MULTILINE
+    )
+    named_blocks = re.compile(r'^\s*(output|variable)\s+"([^"]+)"', re.MULTILINE)
+
+    for terraform_file in (ROOT / "infra").rglob("*.tf"):
+        source = terraform_file.read_text(encoding="utf-8")
+        module_directory = terraform_file.parent
+        declarations.update(
+            (module_directory, *declaration)
+            for declaration in resource_or_data.findall(source)
+        )
+        declarations.update(
+            (module_directory, kind, name)
+            for kind, name in named_blocks.findall(source)
+        )
+
+    duplicates = sorted(address for address, count in declarations.items() if count > 1)
+    duplicate_addresses = [
+        f"{directory.relative_to(ROOT)}: {address[1:]}"
+        for directory, *address in duplicates
+    ]
+    assert not duplicate_addresses, (
+        f"Duplicate Terraform block addresses: {duplicate_addresses}"
+    )

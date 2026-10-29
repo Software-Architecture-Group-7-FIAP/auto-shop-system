@@ -28,6 +28,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify image is pullable without credentials
+        run: docker pull "${IMAGE_REFERENCE}"
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -36,7 +39,7 @@ jobs:
 
       - uses: azure/setup-kubectl@v4
         with:
-          version: v1.34.1
+          version: v1.37.1
 
       - name: Resolve EKS cluster name from SSM
         id: eks

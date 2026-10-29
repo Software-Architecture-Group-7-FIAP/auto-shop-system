@@ -26,7 +26,6 @@ jwt_authorizer_handler = jwt_authorizer_module.handler
 
 def test_jwt_authorizer_allows_valid_token():
     secret = "unit-test-secret-key-with-32-chars-min"
-    secrets_client.return_value.get_secret_value.return_value = {"SecretString": secret}
     token = jwt.encode(
         {
             "sub": "admin",
@@ -63,3 +62,59 @@ def test_jwt_authorizer_rejects_invalid_token():
                 },
                 None,
             )
+
+
+def _encode_token(secret: str, audience: str) -> str:
+    return jwt.encode(
+        {
+            "sub": "admin",
+            "sid": "session-1",
+            "exp": int(time.time()) + 300,
+            "aud": audience,
+        },
+        secret,
+        algorithm="HS256",
+    )
+
+
+def test_jwt_authorizer_accepts_request_bearer_header():
+    secret = "unit-test-secret-key-with-32-chars-min"
+    token = _encode_token(secret, "gateway")
+    event = {
+        "headers": {"Authorization": f"Bearer {token}"},
+        "methodArn": "arn:aws:execute-api:region:acct:api/stage/GET/admin",
+    }
+
+    with patch.object(jwt_authorizer_module, "_jwt_secret", return_value=secret):
+        policy = jwt_authorizer_handler(event, None)
+
+    assert policy["principalId"] == "admin"
+    assert policy["policyDocument"]["Statement"][0]["Effect"] == "Allow"
+
+
+def test_jwt_authorizer_accepts_web_session_cookie():
+    secret = "unit-test-secret-key-with-32-chars-min"
+    token = _encode_token(secret, "web")
+    event = {
+        "headers": {"cookie": f"theme=dark; oficina_access={token}"},
+        "methodArn": "arn:aws:execute-api:region:acct:api/stage/GET/admin",
+    }
+
+    with patch.object(jwt_authorizer_module, "_jwt_secret", return_value=secret):
+        policy = jwt_authorizer_handler(event, None)
+
+    assert policy["principalId"] == "admin"
+    assert policy["policyDocument"]["Statement"][0]["Effect"] == "Allow"
+
+
+def test_jwt_authorizer_rejects_gateway_token_from_cookie():
+    secret = "unit-test-secret-key-with-32-chars-min"
+    token = _encode_token(secret, "gateway")
+    event = {
+        "headers": {"Cookie": f"oficina_access={token}"},
+        "methodArn": "arn:aws:execute-api:region:acct:api/stage/GET/admin",
+    }
+
+    with patch.object(jwt_authorizer_module, "_jwt_secret", return_value=secret):
+        with pytest.raises(Exception, match="Unauthorized"):
+            jwt_authorizer_handler(event, None)

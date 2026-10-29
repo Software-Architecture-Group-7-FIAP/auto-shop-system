@@ -1,4 +1,4 @@
-"""TOKEN Lambda authorizer for HS256 JWT used by API Gateway."""
+"""REQUEST Lambda authorizer for HS256 JWT used by API Gateway."""
 
 from __future__ import annotations
 

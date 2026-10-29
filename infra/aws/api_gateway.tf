@@ -311,33 +311,6 @@ resource "aws_api_gateway_integration" "admin_options_http" {
   }
 }
 
-resource "aws_api_gateway_method" "admin_options" {
-  rest_api_id   = aws_api_gateway_rest_api.main.id
-  resource_id   = aws_api_gateway_resource.admin_proxy.id
-  http_method   = "OPTIONS"
-  authorization = "NONE"
-
-  request_parameters = {
-    "method.request.path.proxy" = true
-  }
-}
-
-resource "aws_api_gateway_integration" "admin_options_http" {
-  rest_api_id             = aws_api_gateway_rest_api.main.id
-  resource_id             = aws_api_gateway_resource.admin_proxy.id
-  http_method             = aws_api_gateway_method.admin_options.http_method
-  integration_http_method = "OPTIONS"
-  type                    = "HTTP_PROXY"
-  connection_type         = "VPC_LINK"
-  connection_id           = aws_apigatewayv2_vpc_link.gateway.id
-  integration_target      = data.aws_lb.internal.arn
-  uri                     = "http://${var.api_domain_name}:$${stageVariables.backendListenerPort}/api/v1/admin/{proxy}"
-
-  request_parameters = {
-    "integration.request.path.proxy" = "method.request.path.proxy"
-  }
-}
-
 resource "aws_api_gateway_method" "public_any" {
   rest_api_id   = aws_api_gateway_rest_api.main.id
   resource_id   = aws_api_gateway_resource.public_proxy.id
