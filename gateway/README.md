@@ -1,33 +1,18 @@
-# Gateway — Lambdas Auto Shop
+# API Gateway Lambda functions
 
-Funções Lambda usadas pelo API Gateway (issue #88). Código em `gateway/functions/`.
+The API Gateway routes web-session login, refresh, logout, and admin requests to the FastAPI backend. Customer token and JWKS routes invoke the customer-auth Lambda published for each stage.
 
-## `auth_login`
+## auth_login (legacy)
 
-Proxy de autenticação pública:
+The legacy proxy Lambda remains in the Terraform source, but the API Gateway login route targets FastAPI directly so it can set the web-session cookies expected by Angular. Do not use this Lambda for browser session login.
 
-- Entrada: `POST /auth/login` `{ "username", "password" }`
-- Saída: resposta JSON do backend (`access_token`, `token_type`, `expires_in`, ...)
-- O JWT emitido por `/api/v1/auth/gateway-login` inclui `aud: "gateway"` (Bearer sem CSRF)
-- Tokens de login web usam `aud: "web"` e só funcionam via cookie + CSRF
-- Retry configurável para erros 5xx do backend
+## jwt_authorizer
 
-Variáveis:
+The TOKEN authorizer checks HS256 JWTs and adds username and sessionId to the API Gateway context.
 
-- `BACKEND_BASE_URL`
-- `BACKEND_LOGIN_PATH` (default `/api/v1/auth/gateway-login`)
-- `REQUEST_TIMEOUT_SECONDS`
-- `MAX_RETRIES`
+Environment:
 
-## `jwt_authorizer`
+- JWT_SECRET_ARN: ARN of the Secrets Manager secret containing the same signing value as backend ACCESS_TOKEN_SECRET.
+- JWT_ALGORITHM: HS256.
 
-Authorizer TOKEN para rotas protegidas:
-
-- Valida JWT HS256 com o mesmo segredo do backend
-- Propaga `username` e `sessionId` no contexto do API Gateway
-- Headers repassados ao backend: `X-Gateway-User`, `X-Gateway-Session`, `X-Correlation-ID`
-
-Variáveis:
-
-- `JWT_SECRET`
-- `JWT_ALGORITHM` (default `HS256`)
+The authorizer execution role can read only the configured secret ARN. The secret value is fetched at runtime and cached for five minutes. Terraform state contains the ARN, never the secret value.

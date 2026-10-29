@@ -42,7 +42,7 @@ def test_customer_identity_settings_are_configured_in_local_and_staging_overlays
     assert 'SERVICE_ORDER_EVENT_BUS_NAME: ""' not in staging_overlay
 
 
-def test_ci_and_aws_example_supply_new_customer_identity_terraform_variables():
+def test_ci_and_aws_example_use_ssm_for_customer_auth_lambda():
     ci_workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     aws_tfvars_example = (ROOT / "infra/aws/terraform.tfvars.example").read_text(
         encoding="utf-8"
@@ -55,11 +55,10 @@ def test_ci_and_aws_example_supply_new_customer_identity_terraform_variables():
         "service_order_event_bus_name",
     ):
         assert ci_workflow.count(f"-var={key}=") == 2
-    assert 'customer_auth_lambda_invoke_arn = "arn:aws:apigateway:' in aws_tfvars_example
-    assert 'customer_auth_lambda_function_name = "auto-shop-customer-auth-' in aws_tfvars_example
-    assert "customer_auth_lambda_invoke_arn" in aws_readme
-    assert "customer_auth_lambda_function_name" in aws_readme
-    assert "Antes do `apply`" in aws_readme
+    assert 'upstream_ssm_prefix = "/auto-shop/staging"' in aws_tfvars_example
+    assert "auth/customer-token/function-arn/hml" in aws_readme
+    assert "auth/customer-token/function-arn/prd" in aws_readme
+    assert "parâmetros SSM upstream listados acima" in aws_readme
 
 
 def test_customer_gateway_routes_do_not_use_admin_hs256_authorizer():
@@ -79,5 +78,11 @@ def test_customer_gateway_routes_do_not_use_admin_hs256_authorizer():
 def test_gateway_limits_customer_lambda_permissions_to_expected_routes():
     lambda_config = (ROOT / "infra/aws/lambda.tf").read_text(encoding="utf-8")
 
-    assert "/*/POST/auth/customer/token" in lambda_config
-    assert "/*/GET/.well-known/jwks.json" in lambda_config
+    assert (
+        "${aws_api_gateway_rest_api.main.execution_arn}/"
+        "${each.key}/POST/auth/customer/token"
+    ) in lambda_config
+    assert (
+        "${aws_api_gateway_rest_api.main.execution_arn}/"
+        "${each.key}/GET/.well-known/jwks.json"
+    ) in lambda_config

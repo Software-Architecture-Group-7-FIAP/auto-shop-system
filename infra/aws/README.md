@@ -1,93 +1,80 @@
-# AWS API Gateway — Auto Shop
+# Borda AWS e staging
 
-Terraform para a camada operacional descrita na issue **#88**:
+Terraform da borda de API e frontend descrita na issue [#113](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/113), com suporte ao staging da [#87](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/87).
 
-- API Gateway REST regional
-- Lambda de autenticação (`POST /auth/login`)
-- Integração HTTP com backend Kubernetes
-- Authorizer JWT (Lambda TOKEN + HS256)
-- Throttling por stage e usage plan
-- WAF regional (rate limit + managed rules + SQLi)
-- Domínio customizado com ACM + Route53 (opcional)
-- Access logs JSON no CloudWatch
+Este repositório contém a definição da infraestrutura. Isso não significa que os recursos foram aplicados nem que o staging passou pelos smoke checks.
 
-## Pré-requisitos
+## Recursos
 
-- Terraform >= 1.6
-- AWS CLI autenticado
-- Backend FastAPI acessível via HTTPS a partir da internet (Ingress/NLB)
-- Mesmo segredo JWT do backend (`SECRET_KEY` / `ACCESS_TOKEN_SECRET`)
-- Lambda de autenticação de cliente já implantada na mesma conta e região do API Gateway
+- API Gateway REST regional com os stages `hml` e `prd`.
+- VPC Link V2 do API Gateway para o ALB interno, com regras de security group limitadas às portas dos listeners.
+- CORS preflight for web-session and administrative routes is handled by FastAPI; the customer-token OPTIONS route reaches the stage-specific Lambda.
+- The customer-token and JWKS endpoints invoke the Lambda ARN for their own stage, read from SSM.
+- Regional WAF with Common Rule Set and a 100-per-5-minute rate rule scoped to POST customer-token requests; CloudFront has a separate global WAF.
+- Dois buckets S3 privados e distribuições CloudFront para o Angular, com OAC.
+- Certificado ACM para `api.oficina-workshop.com.br`, `app-hml.oficina-workshop.com.br` e `app.oficina-workshop.com.br`.
+- Logs de acesso da API e logs do WAF no CloudWatch.
+- Roles opcionais de GitHub OIDC para deploy no Kubernetes e publicação do frontend.
 
-## Rotas expostas
+## Mapeamento dos ambientes
 
-| Rota Gateway | Destino | Auth |
-|--------------|---------|------|
-| `POST /auth/login` | Lambda → backend `/api/v1/auth/gateway-login` | Pública |
-| `POST /auth/customer/token` | Lambda de identidade de cliente | Pública, com throttling/WAF |
-| `GET /.well-known/jwks.json` | Lambda de identidade de cliente | Pública |
-| `/api/v1/customer/*` | HTTP proxy → backend | Bearer RS256 validado na aplicação |
-| `/api/v1/admin/*` | HTTP proxy → backend | JWT authorizer |
-| `/api/v1/public/*` | HTTP proxy → backend | Pública |
-| `/health/*` | HTTP proxy → backend | Pública |
+| GitHub Environment | Stage da API | Namespace Kubernetes | Host do frontend |
+|---|---|---|---|
+| `staging` | `hml` | `auto-shop-hml` | `app-hml.oficina-workshop.com.br` |
+| `production` | `prd` | `auto-shop-prd` | `app.oficina-workshop.com.br` |
 
-## Comandos
+A stack upstream precisa exportar os parâmetros abaixo sob `upstream_ssm_prefix` (padrão `/auto-shop/staging`):
+
+- `network/vpc-id`
+- `network/workload-private-subnet-ids`
+- `eks/cluster-name`
+- `gateway/internal-alb-arn`
+- `gateway/listener-arn/hml` and `gateway/listener-arn/prd`
+- `auth/customer-token/function-arn/hml` and `auth/customer-token/function-arn/prd`
+- `database/secrets/owner-arn`
+- `database/iam/owner-read-policy-arn`
+
+Os fluxos de sessão do EKS e do banco são pré-requisitos separados para a issue #87 e precisam ser coordenados com os repositórios responsáveis.
+
+O contrato upstream publica um ARN de Lambda por stage: `/auth/customer-token/function-arn/hml` e `/auth/customer-token/function-arn/prd`. A API Gateway usa o ARN correspondente a `hml` ou `prd`; o plan depende que os dois parametros existam. A Lambda e publicada pelo repositorio `lambda-auth` e sua alteracao correspondente ainda precisa passar pelo PR upstream.
+
+Há outra diferença de contrato a resolver antes de declarar a integração de JWT concluída: a ADR define o issuer na raiz do domínio da API, enquanto o JWKS é publicado sob os base paths `/hml` e `/prd`. Confirme que o Lambda emite esse issuer e que os dois documentos JWKS correspondem às chaves usadas nos tokens.
+
+## Entradas e revisão Terraform
+
+Pré-requisitos: Terraform >= 1.10, credenciais AWS para a conta alvo e os parâmetros SSM upstream listados acima. O state usa o bucket S3 compartilhado e lock nativo, conforme a ADR-0071. `aws_region` é limitado a `us-east-1` porque o certificado será usado pelo CloudFront.
 
 ```bash
 terraform -chdir=infra/aws init
 terraform -chdir=infra/aws fmt -recursive
 terraform -chdir=infra/aws validate
-
-export TF_VAR_jwt_secret='your-shared-secret-at-least-32-chars'
 terraform -chdir=infra/aws plan -var-file=terraform.tfvars
-terraform -chdir=infra/aws apply -var-file=terraform.tfvars
 ```
 
-## Integração da Lambda de identidade
+Forneca `jwt_secret_arn` com o ARN de um segredo do Secrets Manager. O valor armazenado como SecretString deve ser igual ao `ACCESS_TOKEN_SECRET` usado pelo backend. O Terraform passa somente o ARN; a role exclusiva do authorizer le o valor em runtime. Nunca passe o segredo por tfvars, variaveis Terraform com valor, plano, log ou state. A chave do state eh `auto-shop-system/infra/aws/staging/terraform.tfstate`. Mantenha o arquivo do plano local e revise as mudancas antes de qualquer apply. O plano e as mudancas AWS seguem o processo de aprovacao da ADR-0071.
 
-As variáveis `customer_auth_lambda_invoke_arn` e `customer_auth_lambda_function_name` são obrigatórias. Copie `terraform.tfvars.example` para `terraform.tfvars`; os valores de exemplo permitem revisar um plano, mas não podem ser aplicados sem substituição.
+## Ativação dos domínios próprios
 
-Antes do `apply`, confirme que:
+O padrão é `enable_custom_domains = false`, para permitir solicitar o certificado ACM antes da publicação dos registros DNS.
 
-- [ ] A Lambda de autenticação de cliente está implantada na mesma conta e região do API Gateway.
-- [ ] `customer_auth_lambda_invoke_arn` usa o formato de invoke ARN do API Gateway e aponta para essa Lambda.
-- [ ] `customer_auth_lambda_function_name` é o nome da mesma função referenciada no ARN.
+1. Revise o plano Terraform e crie o certificado.
+2. Consulte o output `acm_dns_validation_records` e publique os CNAMEs no Registro.br.
+3. Aguarde o ACM marcar o certificado como emitido.
+4. Defina `enable_custom_domains = true`, revise o plano e aplique os mappings da API e os aliases do CloudFront.
+5. Publique CNAMEs para `api.oficina-workshop.com.br`, `app-hml.oficina-workshop.com.br` e `app.oficina-workshop.com.br`. Use `custom_domain_target` para a API e `frontend_deploy_targets[*].distribution_domain` para CloudFront.
+6. Faça smoke checks nos dois base paths da API (`/hml` e `/prd`) e nos dois domínios do frontend.
+7. Somente depois desses checks, defina `disable_execute_api_endpoint = true` em um plano revisado separadamente.
 
-A stack do Gateway concede permissão para invocar a função, mas não cria nem implanta a Lambda.
+Os registros DNS são gerenciados manualmente no Registro.br; esta stack Terraform não gerencia uma zona Route 53.
 
-## Domínio e HTTPS
+## Deploy do frontend
 
-Informe `domain_name` e `route53_zone_id` para:
+O bundle Angular é igual nos dois stages e chama a API por caminhos relativos `/api/v1/...`. O comportamento `api/*` de cada distribuição encaminha as chamadas ao API Gateway com o prefixo `hml` ou `prd`. Assim, a sessão permanece no domínio do frontend e os caminhos dos cookies continuam válidos.
 
-1. Emitir certificado ACM com validação DNS
-2. Criar `aws_api_gateway_domain_name` com TLS 1.2
-3. Publicar alias A no Route53 apontando para o endpoint regional
+O workflow reutilizável compila `frontend/` com Node 18, lê do SSM o bucket e o ID da distribuição do stage, sincroniza o bundle de produção no S3 e invalida o cache do CloudFront. O `index.html` recebe headers `no-cache`; os assets com hash recebem cache de longa duração. O workflow de CI executa separadamente lint, checagem de tipos, build e testes do frontend.
 
-Sem `route53_zone_id`, o certificado precisa ser validado manualmente antes do apply completo.
+Os gates de deploy dos GitHub Environments devem permanecer desligados até a infraestrutura e os smoke checks necessários estarem prontos. Os buckets S3 mantêm `force_destroy = false`; esvazie os dois buckets antes de `terraform destroy` para que a remoção não apague objetos sem uma ação explícita.
 
-## Observabilidade
+## Evidências de staging pendentes para #87
 
-Access logs são enviados para `/aws/apigateway/auto-shop-<environment>` com:
-
-- `requestId`, `ip`, `httpMethod`, `path`, `status`, `latencyMs`
-
-Propague `X-Correlation-ID` usando `$context.requestId` nas integrações HTTP.
-
-## Segurança
-
-- WAF bloqueia SQLi e aplica rate limit por IP
-- Throttling retorna `429` no API Gateway
-- Authorizer rejeita JWT inválido/expirado com `401` antes do backend
-- Rotas de cliente não reutilizam o authorizer administrativo HS256; a aplicação valida RS256/JWKS
-- Segredos **não** devem ser versionados — use `TF_VAR_jwt_secret` ou arquivo local ignorado
-
-## Relação com `infra/` (Kubernetes)
-
-- `infra/` continua gerenciando recursos **dentro** do cluster
-- `infra/aws/` gerencia a **borda pública** na AWS
-- O backend aceita `Authorization: Bearer` nas rotas admin apenas para JWT com `aud: "gateway"` (emitido por `/api/v1/auth/gateway-login`); sessões web (`aud: "web"`) continuam exigindo cookie + CSRF
-
-## GitHub Actions OIDC (#90)
-
-Com `enable_github_oidc=true`, o arquivo `github_oidc.tf` cria provider OIDC do GitHub e roles `staging` / `production` restritas por environment.  
-Outputs → secrets `AWS_DEPLOY_ROLE_ARN` no GitHub. Detalhes: [`.github/CD.md`](../../.github/CD.md).
+O mapeamento de namespaces e stages está representado neste repositório, mas a issue #87 só estará concluída após demonstrar uma sessão completa de staging. Ainda faltam a orquestração e o teardown upstream da sessão, a identidade de owner do banco exigida pela ADR, smoke checks do fluxo de negócio, evidência de HPA na AWS e um teardown sem recursos órfãos. O smoke local com Kind não comprova staging na AWS.

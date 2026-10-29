@@ -38,20 +38,49 @@ jobs:
         with:
           version: v1.34.1
 
+      - name: Resolve EKS cluster name from SSM
+        id: eks
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          SSM_PARAMETER_PREFIX: /auto-shop/staging
+        run: |
+          set -euo pipefail
+          if [[ -z "${AWS_REGION}" ]]; then
+            echo "Environment production requires AWS_REGION."
+            exit 1
+          fi
+          cluster_name="$(aws ssm get-parameter \
+            --name "${SSM_PARAMETER_PREFIX}/eks/cluster-name" \
+            --query 'Parameter.Value' --output text)"
+          migration_secret_arn="$(aws ssm get-parameter \
+            --name "${SSM_PARAMETER_PREFIX}/database/secrets/owner-arn" \
+            --query 'Parameter.Value' --output text)"
+          if [[ -z "${cluster_name}" || ! "${migration_secret_arn}" =~ ^arn:aws:secretsmanager: ]]; then
+            echo "The EKS cluster or migration secret ARN is missing from SSM." >&2
+            exit 1
+          fi
+          echo "cluster_name=${cluster_name}" >> "${GITHUB_OUTPUT}"
+          echo "migration_secret_arn=${migration_secret_arn}" >> "${GITHUB_OUTPUT}"
+
       - name: Connect to EKS
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
-          EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${EKS_CLUSTER_NAME}" || -z "${AWS_REGION}" ]]; then
-            echo "Environment production requires EKS_CLUSTER_NAME and AWS_REGION."
-            exit 1
-          fi
-          aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
+          EKS_CLUSTER_NAME: ${{ steps.eks.outputs.cluster_name }}
+        run: aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
 
       - name: Deploy to production (rolling via Deployment rollout)
+        env:
+          MIGRATION_DATABASE_SECRET_ARN: ${{ steps.eks.outputs.migration_secret_arn }}
         run: ./k8s/scripts/deploy.sh production "${IMAGE_REFERENCE}" yes
+
+  deploy-production-frontend:
+    needs: deploy-production
+    if: vars.DEPLOY_PRODUCTION_ENABLED == 'true'
+    uses: ./.github/workflows/reusable-frontend-deploy.yml
+    with:
+      github_environment: production
+      api_stage: prd
+    secrets: inherit
 
   deploy-production-skipped:
     needs: build-push
@@ -64,5 +93,5 @@ jobs:
         run: |
           echo "Imagem publicada: ${IMAGE_REFERENCE}"
           echo "Deploy produção ignorado: defina a variável de repositório DEPLOY_PRODUCTION_ENABLED=true."
-          echo "No Environment production: approval, EKS_CLUSTER_NAME, AWS_REGION e o secret AWS_DEPLOY_ROLE_ARN."
+          echo "No Environment production: approval, AWS_REGION e o secret AWS_DEPLOY_ROLE_ARN; o nome do cluster vem do SSM."
           echo "Ver .github/CD.md"

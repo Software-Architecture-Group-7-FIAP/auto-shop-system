@@ -39,6 +39,7 @@ app = FastAPI(
     title="Oficina Mecânica API",
     description="Sistema Integrado de Atendimento e Execução de Serviços - FIAP 15SOAT Tech Challenge",
     version="1.0.0",
+    root_path=settings.api_root_path,
     lifespan=lifespan,
 )
 

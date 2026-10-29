@@ -26,6 +26,16 @@ auth_login_handler = _load_handler("auth_login", "gateway_auth_login")
 jwt_authorizer_handler = _load_handler("jwt_authorizer", "gateway_jwt_authorizer")
 
 
+@pytest.fixture(autouse=True)
+def reset_jwt_secret_cache():
+    module = sys.modules["gateway_jwt_authorizer"]
+    module._SECRET_CACHE_VALUE = None
+    module._SECRET_CACHE_EXPIRY = 0.0
+    yield
+    module._SECRET_CACHE_VALUE = None
+    module._SECRET_CACHE_EXPIRY = 0.0
+
+
 def test_auth_login_rejects_invalid_json():
     response = auth_login_handler({"body": "not-json"}, None)
     assert response["statusCode"] == 400
@@ -37,9 +47,17 @@ def test_auth_login_requires_credentials():
     assert response["statusCode"] == 400
 
 
-@patch.dict(os.environ, {"JWT_SECRET": "unit-test-secret-key-with-32-chars-min"})
-def test_jwt_authorizer_allows_valid_token():
+@patch.dict(
+    os.environ,
+    {
+        "JWT_SECRET_ARN": "arn:aws:secretsmanager:us-east-1:123456789012:secret:jwt",
+        "AWS_REGION": "us-east-1",
+    },
+)
+@patch("gateway_jwt_authorizer.boto3.client")
+def test_jwt_authorizer_allows_valid_token(secrets_client):
     secret = "unit-test-secret-key-with-32-chars-min"
+    secrets_client.return_value.get_secret_value.return_value = {"SecretString": secret}
     token = jwt.encode(
         {"sub": "admin", "sid": "session-1", "exp": int(time.time()) + 300},
         secret,
@@ -56,8 +74,18 @@ def test_jwt_authorizer_allows_valid_token():
     assert policy["policyDocument"]["Statement"][0]["Effect"] == "Allow"
 
 
-@patch.dict(os.environ, {"JWT_SECRET": "unit-test-secret-key-with-32-chars-min"})
-def test_jwt_authorizer_rejects_invalid_token():
+@patch.dict(
+    os.environ,
+    {
+        "JWT_SECRET_ARN": "arn:aws:secretsmanager:us-east-1:123456789012:secret:jwt",
+        "AWS_REGION": "us-east-1",
+    },
+)
+@patch("gateway_jwt_authorizer.boto3.client")
+def test_jwt_authorizer_rejects_invalid_token(secrets_client):
+    secrets_client.return_value.get_secret_value.return_value = {
+        "SecretString": "unit-test-secret-key-with-32-chars-min"
+    }
     with pytest.raises(Exception, match="Unauthorized"):
         jwt_authorizer_handler(
             {

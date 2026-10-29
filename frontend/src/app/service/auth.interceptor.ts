@@ -11,9 +11,22 @@ import { Observable } from 'rxjs';
 export class AuthInterceptor implements HttpInterceptor {
   private readonly csrfCookie = 'oficina_csrf';
 
-  private isApiRequest(url: string): boolean {
-    const parsed = new URL(url, window.location.origin);
-    return parsed.origin === window.location.origin && parsed.pathname.startsWith('/api/v1/');
+  private apiRequestUrl(url: string): string | null {
+    try {
+      const parsed = new URL(url, window.location.origin);
+      if (
+        parsed.origin !== window.location.origin ||
+        !parsed.pathname.startsWith('/api/v1/')
+      ) {
+        return null;
+      }
+
+      // CloudFront keeps the browser request same-origin and selects hml/prd
+      // through the stage-specific API origin configured on each distribution.
+      return parsed.toString();
+    } catch {
+      return null;
+    }
   }
 
   private csrfToken(): string | null {
@@ -24,7 +37,8 @@ export class AuthInterceptor implements HttpInterceptor {
   }
 
   intercept(req: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
-    if (!this.isApiRequest(req.url)) {
+    const apiUrl = this.apiRequestUrl(req.url);
+    if (!apiUrl) {
       return next.handle(req);
     }
 
@@ -35,6 +49,12 @@ export class AuthInterceptor implements HttpInterceptor {
         headers['X-CSRF-Token'] = csrf;
       }
     }
-    return next.handle(req.clone({ withCredentials: true, setHeaders: headers }));
+    return next.handle(
+      req.clone({
+        url: apiUrl,
+        withCredentials: true,
+        setHeaders: headers,
+      })
+    );
   }
 }

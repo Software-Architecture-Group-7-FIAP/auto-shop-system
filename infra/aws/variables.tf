@@ -1,7 +1,12 @@
 variable "aws_region" {
-  description = "AWS region for API Gateway, Lambda and WAF."
+  description = "AWS region for the API, ACM certificate, WAF and CloudFront."
   type        = string
   default     = "us-east-1"
+
+  validation {
+    condition     = var.aws_region == "us-east-1"
+    error_message = "The API and CloudFront ACM certificate must be managed in us-east-1."
+  }
 }
 
 variable "project_name" {
@@ -11,46 +16,67 @@ variable "project_name" {
 }
 
 variable "environment" {
-  description = "Deployment stage: dev, staging or prod."
+  description = "Shared infrastructure session name used in resource names and tags."
   type        = string
 
   validation {
-    condition     = contains(["dev", "staging", "prod"], var.environment)
-    error_message = "environment must be dev, staging or prod."
+    condition     = var.environment == "staging"
+    error_message = "This Terraform root manages the shared staging AWS session only."
   }
 }
 
+variable "upstream_ssm_prefix" {
+  description = "SSM prefix exported by the upstream staging stacks."
+  type        = string
+  default     = "/auto-shop/staging"
+}
+
 variable "backend_base_url" {
-  description = "Public or internal base URL of the Kubernetes backend (scheme + host, no trailing slash)."
+  description = "Legacy target retained for the unconnected auth-login Lambda pending its decommission."
   type        = string
+  default     = "https://api.oficina-workshop.com.br/hml"
 }
 
-variable "customer_auth_lambda_invoke_arn" {
-  description = "Invoke ARN da Lambda externa que atende autenticação e JWKS de clientes."
+variable "api_domain_name" {
+  description = "Public API custom domain managed outside Route 53 (Registro.br)."
   type        = string
+  default     = "api.oficina-workshop.com.br"
 }
 
-variable "customer_auth_lambda_function_name" {
-  description = "Nome da Lambda externa usado para restringir a permissão de invocação do Gateway."
+variable "jwt_secret_arn" {
+  description = "Secrets Manager ARN containing the plaintext HS256 signing secret used by the backend."
   type        = string
+
+  validation {
+    condition     = can(regex("^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$", var.jwt_secret_arn))
+    error_message = "jwt_secret_arn must be the ARN of one Secrets Manager secret."
+  }
 }
 
-variable "jwt_secret" {
-  description = "HS256 secret shared with the FastAPI backend (ACCESS_TOKEN_SECRET or SECRET_KEY)."
-  type        = string
-  sensitive   = true
+variable "frontend_domains" {
+  description = "CloudFront alternate domain names for the static frontend per stage."
+  type        = map(string)
+  default = {
+    hml = "app-hml.oficina-workshop.com.br"
+    prd = "app.oficina-workshop.com.br"
+  }
+
+  validation {
+    condition     = toset(keys(var.frontend_domains)) == toset(["hml", "prd"])
+    error_message = "frontend_domains must define hml and prd."
+  }
 }
 
-variable "domain_name" {
-  description = "Optional custom domain for the API Gateway (e.g. api.autoshop.com)."
-  type        = string
-  default     = ""
+variable "enable_custom_domains" {
+  description = "Enable API and CloudFront aliases after ACM DNS validation CNAMEs are published at Registro.br."
+  type        = bool
+  default     = false
 }
 
-variable "route53_zone_id" {
-  description = "Optional Route53 hosted zone ID for domain validation and alias record."
-  type        = string
-  default     = ""
+variable "disable_execute_api_endpoint" {
+  description = "Disable the execute-api host only after both custom-domain stages pass their smoke checks."
+  type        = bool
+  default     = false
 }
 
 variable "throttle_burst_limit" {
@@ -66,9 +92,9 @@ variable "throttle_rate_limit" {
 }
 
 variable "waf_rate_limit" {
-  description = "WAF rate-based rule limit per 5-minute window per IP."
+  description = "WAF rate-based rule limit per 5-minute window per IP for the customer token endpoint."
   type        = number
-  default     = 2000
+  default     = 100
 }
 
 variable "enable_waf_managed_rules" {
@@ -78,7 +104,7 @@ variable "enable_waf_managed_rules" {
 }
 
 variable "log_retention_days" {
-  description = "CloudWatch retention for API Gateway access logs."
+  description = "CloudWatch retention for API Gateway and WAF logs."
   type        = number
   default     = 30
 }

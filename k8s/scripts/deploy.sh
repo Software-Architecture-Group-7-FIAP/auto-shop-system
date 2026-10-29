@@ -1,17 +1,26 @@
 #!/usr/bin/env bash
-# Bash deploy for CI/CD (staging/production). Local deploy continues to use deploy.ps1.
+# Bash deploy for CI/CD (staging/production). Local NGINX Ingress remains in deploy.ps1.
 set -euo pipefail
 
 ENVIRONMENT="${1:?environment (staging|production)}"
 IMAGE_REFERENCE="${2:?immutable image reference}"
 CONFIRM_PRODUCTION="${3:-}"
+MIGRATION_DATABASE_SECRET_ARN="${MIGRATION_DATABASE_SECRET_ARN:-}"
 
-NAMESPACE="auto-shop"
+case "${ENVIRONMENT}" in
+  staging) NAMESPACE="auto-shop-hml" ;;
+  production) NAMESPACE="auto-shop-prd" ;;
+esac
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OVERLAY_ROOT="${REPO_ROOT}/k8s/overlays/${ENVIRONMENT}"
 
 if [[ "${ENVIRONMENT}" != "staging" && "${ENVIRONMENT}" != "production" ]]; then
   echo "Only staging and production are supported in deploy.sh"
+  exit 1
+fi
+
+if [[ ! "${MIGRATION_DATABASE_SECRET_ARN}" =~ ^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+ ]]; then
+  echo "A valid migration database secret ARN from the approved SSM parameter is required."
   exit 1
 fi
 
@@ -60,11 +69,12 @@ render_phase() {
   rendered="$(kubectl kustomize "${OVERLAY_ROOT}/${phase}")"
   rendered="${rendered//registry.example.com\/auto-shop-system:__IMAGE_TAG__/${IMAGE_REFERENCE}}"
   rendered="${rendered//auto-shop-system:__IMAGE_TAG__/${IMAGE_REFERENCE}}"
+  rendered="${rendered//__MIGRATION_DATABASE_SECRET_ARN__/${MIGRATION_DATABASE_SECRET_ARN}}"
   if [[ "${phase}" == "migration" ]]; then
     rendered="${rendered//name: auto-shop-migrate/name: ${MIGRATION_JOB}}"
   fi
-  if grep -q '__IMAGE_TAG__' <<< "${rendered}"; then
-    echo "Unresolved __IMAGE_TAG__ in ${ENVIRONMENT}/${phase}"
+  if grep -Eq '__IMAGE_TAG__|__MIGRATION_DATABASE_SECRET_ARN__' <<< "${rendered}"; then
+    echo "Unresolved deployment placeholder in ${ENVIRONMENT}/${phase}"
     exit 1
   fi
   printf '%s' "${rendered}"
@@ -95,11 +105,6 @@ ensure_secret() {
   for key in DATABASE_URL SECRET_KEY INVERTEXTO_API_TOKEN SMTP_USER SMTP_PASSWORD; do
     assert_secret_key "${key}"
   done
-  local tls_secret="auto-shop-tls"
-  if [[ "${ENVIRONMENT}" == "staging" ]]; then
-    tls_secret="staging-auto-shop-tls"
-  fi
-  kubectl get secret "${tls_secret}" --namespace "${NAMESPACE}" --output name >/dev/null
 }
 
 wait_migration() {
@@ -131,13 +136,12 @@ smoke_test() {
   exit 1
 }
 
-kubectl apply --filename "${REPO_ROOT}/k8s/base/foundation/namespace.yaml"
+kubectl create namespace "${NAMESPACE}" --dry-run=client --output=yaml | kubectl apply --filename=-
 ensure_secret
 apply_phase foundation
 apply_phase migration
 wait_migration
 apply_phase app
 kubectl rollout status deployment/auto-shop-backend --namespace "${NAMESPACE}" --timeout=300s
-apply_phase ingress
 smoke_test
 echo "Auto Shop ${ENVIRONMENT} deployment completed successfully."
