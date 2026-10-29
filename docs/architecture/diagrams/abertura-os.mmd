@@ -1,0 +1,20 @@
+%%{init: {"theme": "base", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorFontSize": 16, "messageFontSize": 16, "noteFontSize": 14}}}%%
+sequenceDiagram
+    autonumber
+    actor Operador
+    participant Gateway as API Gateway REST + WAF
+    participant Ingress as VPC Link V2 + ALB interno
+    participant API as FastAPI no namespace do ambiente
+    participant Banco as RDS PostgreSQL
+
+    Operador->>Gateway: POST /api/v1/admin/service-orders com sessão e CSRF
+    Gateway->>Ingress: Integração privada para o stage selecionado
+    Ingress->>API: Roteia para FastAPI em HML ou PRD
+    API->>API: Valida sessão, CSRF, cliente, veículo e regras de negócio
+    API->>Banco: Abre transação e cria OS com status Recebida
+    Banco-->>API: Commit concluído
+    API-->>Ingress: 201 Created com a OS
+    Ingress-->>Gateway: Resposta da integração privada
+    Gateway-->>Operador: 201 Created
+
+    Note over API,Banco: Telemetria sem PII só é enviada após a integração de observabilidade
