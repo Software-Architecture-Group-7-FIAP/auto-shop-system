@@ -1,0 +1,99 @@
+---
+config:
+  theme: base
+  themeVariables:
+    fontFamily: Arial
+    fontSize: 17px
+    primaryTextColor: "#1f2937"
+    lineColor: "#61758a"
+    clusterBkg: "#eaf4fb"
+    clusterBorder: "#adc1d2"
+    tertiaryColor: "#eff6e8"
+    secondaryColor: "#f2ecf8"
+  flowchart:
+    curve: linear
+    htmlLabels: true
+---
+
+%% Arquitetura-alvo da Fase 3; o desenho não comprova implantação ou homologação.
+%% Ícones AWS: subconjunto local de @aws-icons/iconify 4.1.0, baseado em AWS Architecture Icons.
+
+flowchart TB
+    users["Clientes e operadores"]
+
+    subgraph frontend["Frontend / Presentation Layer"]
+        direction LR
+        waf_edge@{ icon: "aws:aws-waf", label: "AWS WAF<br/>escopo CloudFront", pos: "b", h: 68 }
+        cloudfront@{ icon: "aws:amazon-cloud-front", label: "Amazon CloudFront", pos: "b", h: 68 }
+        s3_site@{ icon: "aws:amazon-simple-storage-service", label: "S3 privado<br/>OAC + Angular", pos: "b", h: 68 }
+        waf_edge --> cloudfront
+        cloudfront -->|"origem privada"| s3_site
+    end
+
+    subgraph api_layer["API Layer"]
+        direction LR
+        waf_api@{ icon: "aws:aws-waf", label: "AWS WAF<br/>escopo Regional", pos: "b", h: 68 }
+        api_gateway@{ icon: "aws:amazon-api-gateway", label: "API Gateway REST", pos: "b", h: 68 }
+        waf_api --> api_gateway
+    end
+
+    subgraph auth_layer["Authentication Layer"]
+        direction LR
+        lambda_auth@{ icon: "aws:aws-lambda", label: "Lambda lambda-auth<br/>CPF → JWT RS256 / JWKS", pos: "b", h: 68 }
+        iam_role@{ icon: "aws:aws-identity-and-access-management", label: "IAM execution role<br/>escopo mínimo", pos: "b", h: 68 }
+        kms@{ icon: "aws:aws-key-management-service", label: "AWS KMS<br/>assinatura RS256", pos: "b", h: 68 }
+        lambda_auth -. "usa role" .-> iam_role
+        lambda_auth -->|"assina JWT"| kms
+    end
+
+    subgraph app_layer["Private Application Layer"]
+        direction LR
+        vpc_link["VPC Link V2"]
+        alb@{ icon: "aws:elastic-load-balancing", label: "ALB interno<br/>target groups HML / PRD", pos: "b", h: 68 }
+        eks@{ icon: "aws:amazon-elastic-kubernetes-service", label: "Amazon EKS<br/>namespaces HML / PRD · HPA", pos: "b", h: 68 }
+        vpc_link -->|"HTTP privado"| alb
+        alb --> eks
+    end
+
+    subgraph data_layer["Data Layer"]
+        direction LR
+        secrets@{ icon: "aws:aws-secrets-manager", label: "AWS Secrets Manager<br/>credenciais por ambiente", pos: "b", h: 68 }
+        rds@{ icon: "aws:amazon-rds", label: "Amazon RDS PostgreSQL 16<br/>autoshop_hml · autoshop_prd", pos: "b", h: 68 }
+    end
+
+    subgraph ops_layer["Monitoring & Notifications"]
+        direction LR
+        cloudwatch@{ icon: "aws:amazon-cloud-watch", label: "Amazon CloudWatch", pos: "b", h: 68 }
+        eventbridge@{ icon: "aws:amazon-event-bridge", label: "Amazon EventBridge<br/>ServiceOrderProcessingFailed v1", pos: "b", h: 68 }
+        sns@{ icon: "aws:amazon-simple-notification-service", label: "Amazon SNS<br/>e-mail", pos: "b", h: 68 }
+        sqs_dlq@{ icon: "aws:amazon-simple-queue-service", label: "Amazon SQS<br/>DLQ", pos: "b", h: 68 }
+        new_relic["New Relic<br/>integração planejada"]
+        eventbridge --> sns
+        eventbridge -. "retry esgotado" .-> sqs_dlq
+        cloudwatch -. "integração planejada" .-> new_relic
+    end
+
+    users -->|"site Angular"| waf_edge
+    users -->|"REST via Angular"| waf_api
+    api_gateway -->|"POST token / JWKS"| lambda_auth
+    api_gateway -->|"rotas privadas"| vpc_link
+    lambda_auth -->|"SELECT cliente"| rds
+    lambda_auth -->|"credencial de leitura"| secrets
+    eks -->|"ESO / app_runtime"| secrets
+    eks -->|"DB por ambiente"| rds
+    eks -->|"falha operacional"| eventbridge
+    lambda_auth -. "logs a validar" .-> cloudwatch
+    eks -. "logs a validar" .-> cloudwatch
+
+    classDef actor fill:#ffffff,stroke:#455a70,color:#1f2937,stroke-width:1.5px;
+    classDef component fill:#ffffff,stroke:#61758a,color:#1f2937;
+    classDef planned fill:#fff7ed,stroke:#d97706,color:#7c2d12,stroke-dasharray:5 3;
+    class users actor;
+    class vpc_link component;
+    class new_relic planned;
+    style frontend fill:#e8f4fc,stroke:#a9c1d2,stroke-width:1px;
+    style api_layer fill:#e8f4fc,stroke:#a9c1d2,stroke-width:1px;
+    style auth_layer fill:#eff6e8,stroke:#b7c8a9,stroke-width:1px;
+    style app_layer fill:#eff6e8,stroke:#b7c8a9,stroke-width:1px;
+    style data_layer fill:#f1effa,stroke:#c2bad8,stroke-width:1px;
+    style ops_layer fill:#fbedf2,stroke:#d6b3c0,stroke-width:1px;

@@ -1,0 +1,148 @@
+---
+config:
+  theme: base
+  themeVariables:
+    fontFamily: Arial
+    fontSize: 15px
+    primaryTextColor: "#111827"
+    lineColor: "#263238"
+---
+%% Visão UML parcial por contexto; as classes compartilhadas aparecem em mais de uma vista.
+classDiagram
+    direction TB
+    class User {
+        +id: int [PK]
+        +username: string [UK]
+        +email: string [UK]
+        +hashed_password: string
+        +is_active: bool
+        +role: string
+        +created_at: datetime
+    }
+
+    class Customer {
+        +id: int [PK]
+        +name: string
+        +document: string [UK]
+        +email: string
+        +phone: string
+        +created_at: datetime
+        +updated_at: datetime
+    }
+
+    class Vehicle {
+        +id: int [PK]
+        +customer_id: int [FK]
+        +plate: string [UK]
+        +brand: string
+        +model: string
+        +year: int
+        +created_at: datetime
+    }
+
+    class Budget {
+        +id: int [PK]
+        +customer_id: int [FK]
+        +vehicle_id: int [FK]
+        +status: string
+        +total_price: float
+        +estimated_delivery: datetime
+        +approval_token_hash: string [UK]
+        +approval_expires_at: datetime
+        +approval_used_at: datetime
+        +revision_number: int
+        +supersedes_budget_id: int [FK, opcional]
+        +created_at: datetime
+        +updated_at: datetime
+    }
+
+    class ServiceOrder {
+        +id: int [PK]
+        +budget_id: int [FK, opcional]
+        +customer_id: int [FK]
+        +vehicle_id: int [FK]
+        +status: string
+        +priority: string
+        +mechanic_name: string
+        +total_price: float
+        +started_at: datetime
+        +finished_at: datetime
+        +tracking_token_hash: string [UK]
+        +tracking_token_expires_at: datetime
+        +tracking_token_revoked_at: datetime
+        +created_at: datetime
+        +updated_at: datetime
+    }
+
+    class ServiceOrderStatusHistory {
+        +id: int [PK]
+        +service_order_id: int [FK]
+        +from_status: string
+        +to_status: string
+        +transition_type: string
+        +reason: string
+        +actor_id: int [FK, opcional]
+        +request_id: string
+        +occurred_at: datetime
+    }
+
+    class ServiceOrderServiceLine {
+        +id: int [PK]
+        +service_order_id: int [FK]
+        +service_id: int [FK]
+        +quantity: int
+        +unit_price: float
+    }
+
+    class ServiceOrderProductLine {
+        +id: int [PK]
+        +service_order_id: int [FK]
+        +product_id: int [FK]
+        +quantity: int
+        +unit_price: float
+    }
+
+    class Service {
+        +id: int [PK]
+        +name: string
+        +description: string
+        +base_price: float
+        +estimated_hours: float
+        +created_at: datetime
+    }
+
+    class Product {
+        +id: int [PK]
+        +name: string
+        +description: string
+        +sku: string [UK]
+        +unit_price: float
+        +stock_quantity: int
+        +supplier_id: int [FK]
+        +created_at: datetime
+    }
+
+    class Invoice {
+        +id: int [PK]
+        +service_order_id: int [FK, UK]
+        +amount: float
+        +status: string
+        +paid_at: datetime
+        +created_at: datetime
+    }
+
+Customer "1" --> "0..*" Vehicle : possui
+Customer "1" --> "0..*" Budget : solicita
+Vehicle "1" --> "0..*" Budget : referente a
+User "0..1" --> "0..*" ServiceOrderStatusHistory : atua
+Customer "1" --> "0..*" ServiceOrder : possui
+Vehicle "1" --> "0..*" ServiceOrder : referente a
+Budget "0..1" --> "0..1" ServiceOrder : pode gerar
+ServiceOrder "1" --> "0..*" ServiceOrderServiceLine : executa
+ServiceOrder "1" --> "0..*" ServiceOrderProductLine : utiliza
+ServiceOrder "1" --> "0..1" Invoice : faturada em
+ServiceOrder "1" --> "0..*" ServiceOrderStatusHistory : audita
+Service "1" --> "0..*" ServiceOrderServiceLine : realizado
+Product "1" --> "0..*" ServiceOrderProductLine : consumido
+
+classDef default fill:#ffffff,stroke:#111827,stroke-width:1px,color:#111827;
