@@ -1,0 +1,504 @@
+name: Coordinated environment stop
+run-name: lifecycle:${{ inputs.stage || 'prd' }}:close:${{ inputs.session_id || inputs.started_at || github.run_id }}:${{ inputs.close_request_id || github.run_id }}:${{ inputs.lifecycle_dispatch_id || github.run_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Manual close is allowed for a validated HML or PRD session.
+        required: false
+        default: prd
+        type: choice
+        options: [hml, prd]
+      session_id:
+        description: Coordinator-provided session ID; required for HML close.
+        required: false
+        type: string
+      started_at:
+        description: Coordinator-provided UTC session start, YYYY-MM-DDTHH:MM:SSZ.
+        required: false
+        type: string
+      close_request_id:
+        description: Unique caller ID used to correlate automatic close requests.
+        required: false
+        type: string
+      session_token:
+        description: Signed coordinator session capability; coordinated dispatches validate it.
+        required: false
+        type: string
+      lifecycle_dispatch_id:
+        description: Optional correlation ID for an orchestrated close.
+        required: false
+        type: string
+  schedule:
+    - cron: "0 1 2-6 11 *" # PRD close at 22:00 BRT, 1-5 November.
+
+permissions:
+  actions: write
+  contents: read
+  id-token: write
+
+concurrency:
+  group: environment-lifecycle
+  cancel-in-progress: false
+
+jobs:
+  resolve_session:
+    if: github.event_name != 'schedule' || vars.ENVIRONMENT_SCHEDULE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: operations
+    permissions:
+      contents: read
+    outputs:
+      stage: ${{ steps.window.outputs.stage }}
+      session_id: ${{ steps.window.outputs.session_id }}
+      started_at: ${{ steps.window.outputs.started_at }}
+      session_mode: ${{ steps.window.outputs.session_mode }}
+      cleanup_end_utc: ${{ steps.window.outputs.cleanup_end_utc }}
+      teardown_deadline_utc: ${{ steps.window.outputs.teardown_deadline_utc }}
+      audit_start_utc: ${{ steps.window.outputs.audit_start_utc }}
+      teardown_allowed: ${{ steps.window.outputs.teardown_allowed }}
+      session_authorized: ${{ steps.authorize.outputs.session_authorized }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve the exact session and operation deadlines
+        id: window
+        env:
+          REQUESTED_STAGE: ${{ inputs.stage || 'prd' }}
+          REQUESTED_SESSION_ID: ${{ inputs.session_id }}
+          REQUESTED_STARTED_AT: ${{ inputs.started_at }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/resolve_lifecycle_session.py \
+            --action teardown \
+            --stage "$REQUESTED_STAGE" \
+            --session-id "$REQUESTED_SESSION_ID" \
+            --started-at "$REQUESTED_STARTED_AT" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Authorize the manual session or verify its coordinator capability
+        id: authorize
+        env:
+          ENVIRONMENT_STAGE: ${{ steps.window.outputs.stage }}
+          ENVIRONMENT_SESSION_ID: ${{ steps.window.outputs.session_id }}
+          ENVIRONMENT_WINDOW_STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+          LIFECYCLE_DISPATCH_ID: ${{ inputs.lifecycle_dispatch_id }}
+          REQUESTED_EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$LIFECYCLE_DISPATCH_ID" ]]; then
+            [[ "$LIFECYCLE_DISPATCH_ID" =~ ^[0-9a-f]{32}$ ]] || {
+              echo "::error::The lifecycle dispatch ID must be 32 lowercase hexadecimal characters."
+              exit 1
+            }
+            python3 .github/scripts/validate_environment_window.py --action teardown
+          elif [[ "$REQUESTED_EVENT_NAME" != "workflow_dispatch" && "$REQUESTED_EVENT_NAME" != "schedule" ]]; then
+            echo "::error::The lifecycle close requires a supported workflow event."
+            exit 1
+          fi
+          echo "session_authorized=true" >> "$GITHUB_OUTPUT"
+
+  close:
+    needs: resolve_session
+    if: needs.resolve_session.result == 'success' && needs.resolve_session.outputs.teardown_allowed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: operations
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+      K8S_INFRA_REPOSITORY: ${{ vars.K8S_INFRA_REPOSITORY }}
+      K8S_INFRA_REF: ${{ vars.K8S_INFRA_REF }}
+      DATABASE_INFRA_REPOSITORY: ${{ vars.DATABASE_INFRA_REPOSITORY }}
+      DATABASE_INFRA_REF: ${{ vars.DATABASE_INFRA_REF }}
+      ALERT_TOPIC_ARN: ${{ vars.LIFECYCLE_ALERT_TOPIC_ARN }}
+      EDGE_JWT_SECRET_ARN: ${{ vars.EDGE_JWT_SECRET_ARN }}
+      EDGE_ENABLE_CUSTOM_DOMAINS: ${{ vars.EDGE_ENABLE_CUSTOM_DOMAINS }}
+      EDGE_DISABLE_EXECUTE_API_ENDPOINT: ${{ vars.EDGE_DISABLE_EXECUTE_API_ENDPOINT }}
+      PRD_DAILY_COST_FLOOR_USD: ${{ vars.PRD_DAILY_COST_FLOOR_USD }}
+      HML_DAILY_COST_FLOOR_USD: ${{ vars.HML_DAILY_COST_FLOOR_USD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Refuse teardown work after its absolute deadline
+        timeout-minutes: 1
+        env:
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/assert_lifecycle_deadline.py --deadline-utc "$TEARDOWN_END"
+
+      - name: Check that this session needs a close
+        id: close_decision
+        timeout-minutes: 5
+        env:
+          STAGE: ${{ needs.resolve_session.outputs.stage }}
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          CLOSE_REQUEST_ID: ${{ inputs.close_request_id }}
+        run: >-
+          python3 .github/scripts/assert_lifecycle_close_needed.py
+          --stage "$STAGE"
+          --session-id "$SESSION_ID"
+          --started-at "$STARTED_AT"
+          --close-request-id "$CLOSE_REQUEST_ID"
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Sign the resolved lifecycle session capability
+        if: steps.close_decision.outputs.close_needed == 'true'
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+        run: python3 .github/scripts/sign_lifecycle_session.py
+
+      - name: Record that no close is needed
+        if: steps.close_decision.outputs.close_needed == 'false'
+        env:
+          DECISION: ${{ steps.close_decision.outputs.decision }}
+        run: echo "$DECISION" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Validate required coordination, alert, and edge inputs
+        if: steps.close_decision.outputs.close_needed == 'true'
+        timeout-minutes: 2
+        env:
+          STAGE: ${{ needs.resolve_session.outputs.stage }}
+          AWS_EDGE_LIFECYCLE_ROLE_ARN: ${{ secrets.AWS_EDGE_LIFECYCLE_ROLE_ARN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$AWS_REGION" == "us-east-1" ]] || { echo "::error::AWS_REGION must be us-east-1."; exit 1; }
+          [[ "$EXPECTED_AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || { echo "::error::AWS_ACCOUNT_ID is missing or invalid."; exit 1; }
+          [[ -n "$LIFECYCLE_CROSS_REPO_TOKEN" ]] || { echo "::error::LIFECYCLE_CROSS_REPO_TOKEN is required; there is no GITHUB_TOKEN fallback."; exit 1; }
+          [[ "$K8S_INFRA_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$K8S_INFRA_REF" == "main" ]] || { echo "::error::Set K8S_INFRA_REPOSITORY and K8S_INFRA_REF=main."; exit 1; }
+          [[ "$DATABASE_INFRA_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$DATABASE_INFRA_REF" == "main" ]] || { echo "::error::Set DATABASE_INFRA_REPOSITORY and DATABASE_INFRA_REF=main."; exit 1; }
+          [[ "$AWS_EDGE_LIFECYCLE_ROLE_ARN" =~ ^arn:aws:iam::${EXPECTED_AWS_ACCOUNT_ID}:role/.+$ ]] || { echo "::error::AWS_EDGE_LIFECYCLE_ROLE_ARN is required in the expected account."; exit 1; }
+          [[ "$EDGE_JWT_SECRET_ARN" =~ ^arn:aws:secretsmanager:us-east-1:${EXPECTED_AWS_ACCOUNT_ID}:secret:.+$ ]] || { echo "::error::EDGE_JWT_SECRET_ARN must be a non-secret ARN reference in the expected account."; exit 1; }
+          [[ "$EDGE_ENABLE_CUSTOM_DOMAINS" == "true" || "$EDGE_ENABLE_CUSTOM_DOMAINS" == "false" ]] || { echo "::error::Set EDGE_ENABLE_CUSTOM_DOMAINS explicitly to true or false."; exit 1; }
+          [[ "$EDGE_DISABLE_EXECUTE_API_ENDPOINT" == "true" || "$EDGE_DISABLE_EXECUTE_API_ENDPOINT" == "false" ]] || { echo "::error::Set EDGE_DISABLE_EXECUTE_API_ENDPOINT explicitly to true or false."; exit 1; }
+
+      - name: Cancel and wait for this session's app deployment
+        if: steps.close_decision.outputs.close_needed == 'true'
+        timeout-minutes: 12
+        env:
+          STAGE: ${{ needs.resolve_session.outputs.stage }}
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cancel_lifecycle_app_deploys.py
+          --stage "$STAGE" --session-id "$SESSION_ID" --timeout-seconds 600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Configure the narrow public-edge lifecycle role
+        if: steps.close_decision.outputs.close_needed == 'true'
+        timeout-minutes: 3
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_EDGE_LIFECYCLE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify the edge role is in the expected account
+        if: steps.close_decision.outputs.close_needed == 'true'
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_account="$(aws sts get-caller-identity --query Account --output text)"
+          [[ "$actual_account" == "$EXPECTED_AWS_ACCOUNT_ID" ]] || { echo "::error::Unexpected AWS account for edge reconciliation."; exit 1; }
+
+      - name: Reconcile the public edge into maintenance while preserving its URL
+        if: steps.close_decision.outputs.close_needed == 'true'
+        timeout-minutes: 43
+        env:
+          EDGE_RECONCILIATION_MODE: maintenance
+          TEARDOWN_DEADLINE_UTC: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+          TF_VAR_jwt_secret_arn: ${{ vars.EDGE_JWT_SECRET_ARN }}
+          TF_VAR_enable_custom_domains: ${{ vars.EDGE_ENABLE_CUSTOM_DOMAINS }}
+          TF_VAR_disable_execute_api_endpoint: ${{ vars.EDGE_DISABLE_EXECUTE_API_ENDPOINT }}
+        run: bash .github/scripts/reconcile_public_edge.sh
+
+      - name: Destroy the ephemeral database after edge maintenance
+        if: steps.close_decision.outputs.close_needed == 'true'
+        timeout-minutes: 40
+        env:
+          STAGE: ${{ needs.resolve_session.outputs.stage }}
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$DATABASE_INFRA_REPOSITORY" --workflow destroy.yml --ref "$DATABASE_INFRA_REF"
+          --cancel-active-workflow apply.yml --cancel-title-prefix "database/$SESSION_ID/apply/"
+          --expected-title "database/$SESSION_ID/teardown/destroy"
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"confirm\":\"destroy\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name database_destroy --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Plan NAT shutdown without touching persistent network resources
+        if: steps.close_decision.outputs.close_needed == 'true'
+        id: nat_plan
+        timeout-minutes: 40
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow ci.yml --ref "$K8S_INFRA_REF"
+          --expected-title "$SESSION_ID-foundation-nat-disable"
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"foundation\",\"operation\":\"nat-disable\",\"enable_nat_gateway\":\"false\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name nat_plan --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Apply the exact NAT shutdown plan
+        if: steps.close_decision.outputs.close_needed == 'true'
+        timeout-minutes: 40
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          PLAN_ID: ${{ steps.nat_plan.outputs.nat_plan_plan_id }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow apply.yml --ref "$K8S_INFRA_REF"
+          --expected-title "$SESSION_ID-foundation-nat-disable-apply"
+          --inputs "{\"stack\":\"foundation\",\"plan_id\":\"$PLAN_ID\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"operation\":\"nat-disable\",\"enable_nat_gateway\":\"false\",\"confirm\":\"apply\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name nat_apply --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Plan full platform stack teardown
+        if: steps.close_decision.outputs.close_needed == 'true'
+        id: platform_destroy_plan
+        timeout-minutes: 40
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow destroy.yml --ref "$K8S_INFRA_REF"
+          --expected-title "$SESSION_ID-platform-all-plan"
+          --inputs "{\"operation\":\"plan\",\"stack\":\"platform\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"\",\"confirm\":\"\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name platform_destroy --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Apply the reviewed platform destroy plan
+        if: steps.close_decision.outputs.close_needed == 'true'
+        timeout-minutes: 40
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          PLAN_ID: ${{ steps.platform_destroy_plan.outputs.platform_destroy_plan_id }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow destroy.yml --ref "$K8S_INFRA_REF"
+          --expected-title "$SESSION_ID-platform-all-destroy"
+          --inputs "{\"operation\":\"destroy\",\"stack\":\"platform\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"destroy\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name platform_destroy_apply --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Plan compute-only foundation teardown, preserving VPC, subnets, and SSM
+        if: steps.close_decision.outputs.close_needed == 'true'
+        id: foundation_destroy_plan
+        timeout-minutes: 40
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow destroy.yml --ref "$K8S_INFRA_REF"
+          --expected-title "$SESSION_ID-foundation-compute-plan"
+          --inputs "{\"operation\":\"plan\",\"stack\":\"foundation\",\"scope\":\"compute\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"\",\"confirm\":\"\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name foundation_destroy --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Apply the reviewed compute-only foundation destroy plan
+        if: steps.close_decision.outputs.close_needed == 'true'
+        timeout-minutes: 40
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          PLAN_ID: ${{ steps.foundation_destroy_plan.outputs.foundation_destroy_plan_id }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow destroy.yml --ref "$K8S_INFRA_REF"
+          --expected-title "$SESSION_ID-foundation-compute-destroy"
+          --inputs "{\"operation\":\"destroy\",\"stack\":\"foundation\",\"scope\":\"compute\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"destroy\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name foundation_destroy_apply --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+  audit:
+    needs: [resolve_session, close]
+    if: always() && needs.resolve_session.outputs.session_authorized == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    environment: operations
+    permissions:
+      actions: write
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+      K8S_INFRA_REPOSITORY: ${{ vars.K8S_INFRA_REPOSITORY }}
+      K8S_INFRA_REF: ${{ vars.K8S_INFRA_REF }}
+      APP_REPOSITORY: ${{ github.repository }}
+      APP_REF: ${{ needs.resolve_session.outputs.stage == 'prd' && 'main' || 'develop' }}
+      DATABASE_INFRA_REPOSITORY: ${{ vars.DATABASE_INFRA_REPOSITORY }}
+      DATABASE_INFRA_REF: ${{ vars.DATABASE_INFRA_REF }}
+      SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+      STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+      SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+      CLEANUP_END: ${{ needs.resolve_session.outputs.cleanup_end_utc }}
+      AUDIT_START: ${{ needs.resolve_session.outputs.audit_start_utc }}
+      STAGE: ${{ needs.resolve_session.outputs.stage }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Wait until the reserved read-only audit window opens
+        timeout-minutes: 45
+        run: >-
+          python3 .github/scripts/wait_until_utc.py
+          --target-utc "$AUDIT_START"
+          --deadline-utc "$CLEANUP_END"
+
+      - name: Fail closed while any correlated lifecycle mutation remains active
+        timeout-minutes: 3
+        run: python3 .github/scripts/assert_no_active_lifecycle_runs.py --wait-seconds 60 --poll-seconds 15
+
+      - name: Sign the resolved lifecycle session capability for read-only audit
+        timeout-minutes: 1
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+        run: python3 .github/scripts/sign_lifecycle_session.py
+
+      - name: Dispatch the read-only orphan audit after teardown failure when no mutation remains
+        timeout-minutes: 16
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow orphan-audit.yml --ref "$K8S_INFRA_REF"
+          --expected-title "$SESSION_ID-all-orphan-audit"
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name orphan_audit --timeout-seconds 900
+          --deadline-utc "$CLEANUP_END"
+
+      - name: Configure read-only Cost Explorer identity after audit
+        id: cost_reader
+        if: always()
+        timeout-minutes: 2
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_COST_READER_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Capture post-cycle estimate and observed billing separately
+        if: always() && steps.cost_reader.outcome == 'success'
+        timeout-minutes: 2
+        env:
+          PRD_COST_FLOOR: ${{ vars.PRD_DAILY_COST_FLOOR_USD }}
+          HML_COST_FLOOR: ${{ vars.HML_DAILY_COST_FLOOR_USD }}
+        run: |
+          set -euo pipefail
+          estimate="$HML_COST_FLOOR"
+          if [[ "$STAGE" == "prd" ]]; then estimate="$PRD_COST_FLOOR"; fi
+          [[ "$estimate" =~ ^[0-9]+([.][0-9]+)?$ ]] || estimate=unavailable
+          python3 .github/scripts/capture_lifecycle_cost.py \
+            --stage "$STAGE" \
+            --session-id "$SESSION_ID" \
+            --phase after \
+            --expected-account-id "$EXPECTED_AWS_ACCOUNT_ID" \
+            --estimate-daily-floor-usd "$estimate" \
+            --output lifecycle-cost-after.json
+
+      - name: Record the close and reserved audit outcome
+        if: always()
+        run: |
+          {
+            echo "### Environment close lifecycle"
+            echo "- Stage: $STAGE"
+            echo "- Session: $SESSION_ID"
+            echo "- Teardown work deadline (UTC): ${{ needs.resolve_session.outputs.teardown_deadline_utc }}"
+            echo "- Audit window starts (UTC): ${{ needs.resolve_session.outputs.audit_start_utc }}"
+            echo "- Cleanup deadline (UTC): $CLEANUP_END"
+            echo "- The independent read-only audit runs after teardown success, failure, or a late close request."
+            echo "- Public URL is kept on the persistent edge in maintenance mode."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload post-cycle cost evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifecycle-cost-${{ needs.resolve_session.outputs.session_id || github.run_id }}-after
+          path: lifecycle-cost-after.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+  alert-close-failure:
+    needs: [resolve_session, close, audit]
+    if: >-
+      always() && needs.resolve_session.outputs.session_authorized == 'true' &&
+      (needs.close.result == 'failure' || needs.audit.result != 'success' ||
+      needs.resolve_session.outputs.teardown_allowed != 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: operations
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      ALERT_TOPIC_ARN: ${{ vars.LIFECYCLE_ALERT_TOPIC_ARN }}
+      SESSION_ID: ${{ needs.resolve_session.outputs.session_id || inputs.session_id || github.run_id }}
+      STAGE: ${{ needs.resolve_session.outputs.stage || inputs.stage || 'prd' }}
+      TEARDOWN_ALLOWED: ${{ needs.resolve_session.outputs.teardown_allowed || 'false' }}
+    steps:
+      - name: Configure the lifecycle alert role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.LIFECYCLE_ALERT_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Alert that the environment close or orphan audit failed
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ALERT_TOPIC_ARN" =~ ^arn:aws:sns:us-east-1:${EXPECTED_AWS_ACCOUNT_ID}:[A-Za-z0-9_-]+$ ]] || {
+            echo "::error::Lifecycle alert destination is unavailable; inspect the failed close run immediately."
+            exit 1
+          }
+          aws sns publish \
+            --topic-arn "$ALERT_TOPIC_ARN" \
+            --subject "Auto Shop environment close lifecycle failed" \
+            --message "The ${STAGE} session ${SESSION_ID} did not complete teardown and its required pre-23:00 BRT orphan audit (teardown_allowed=${TEARDOWN_ALLOWED}). Inspect the failed GitHub Actions run and perform the documented partial-failure recovery."

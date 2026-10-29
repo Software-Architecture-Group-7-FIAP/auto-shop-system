@@ -41,6 +41,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Test staging session validator
+        run: python -m unittest discover -s .github/scripts -p 'test_*.py'
       - name: Install Poetry
         run: pipx install poetry
       - name: Validate lock file
@@ -101,12 +103,14 @@ jobs:
           set -euo pipefail
           image_reference="${IMAGE_REFERENCE,,}"
           for environment in local staging production; do
-            for phase in foundation migration app ingress; do
+            for phase in foundation migration seed app ingress; do
               output="$(mktemp)"
               kubectl kustomize "k8s/overlays/${environment}/${phase}" \
-                | sed "s#registry.example.com/auto-shop-system:__IMAGE_TAG__#${image_reference}#g" \
+                | sed \
+                  -e "s#registry.example.com/auto-shop-system:__IMAGE_TAG__#${image_reference}#g" \
+                  -e 's#__ALLOW_SYNTHETIC_SEED_IN_PRD__#false#g' \
                 > "$output"
-              if grep -Eiq 'secrets\.example|:latest' "$output"; then
+              if grep -Eiq 'secrets\.example|:latest|__ALLOW_SYNTHETIC_SEED_IN_PRD__' "$output"; then
                 echo "Unsafe value found in ${environment}/${phase}"
                 exit 1
               fi
@@ -300,6 +304,8 @@ jobs:
           kubectl wait --for=condition=available deployment/postgres --namespace auto-shop --timeout=180s
           kubectl apply -k k8s/overlays/local/migration
           kubectl wait --for=condition=complete job/auto-shop-migrate --namespace auto-shop --timeout=300s
+          kubectl apply -k k8s/overlays/local/seed
+          kubectl wait --for=condition=complete job/auto-shop-seed --namespace auto-shop --timeout=300s
           kubectl apply -k k8s/overlays/local/app
           kubectl rollout status deployment/auto-shop-backend --namespace auto-shop --timeout=300s
           kubectl apply -k k8s/overlays/local/ingress

@@ -14,7 +14,7 @@ Este repositório contém a definição da infraestrutura. Isso não significa q
 - Dois buckets S3 privados e distribuições CloudFront para o Angular, com OAC.
 - Certificado ACM para `api.oficina-workshop.com.br`, `app-hml.oficina-workshop.com.br` e `app.oficina-workshop.com.br`.
 - Logs de acesso da API e logs do WAF no CloudWatch.
-- Roles opcionais de GitHub OIDC para deploy no Kubernetes e publicação do frontend.
+- Roles opcionais de GitHub OIDC para deploy no Kubernetes, publicação do frontend e preflight read-only do ciclo de vida.
 
 ## Mapeamento dos ambientes
 
@@ -23,10 +23,11 @@ Este repositório contém a definição da infraestrutura. Isso não significa q
 | `staging` | `hml` | `auto-shop-hml` | `app-hml.oficina-workshop.com.br` |
 | `production` | `prd` | `auto-shop-prd` | `app.oficina-workshop.com.br` |
 
-A stack upstream precisa exportar os parâmetros abaixo sob `upstream_ssm_prefix` (padrão `/auto-shop/staging`):
+A stack upstream precisa exportar os parâmetros abaixo sob o prefixo fixo `/auto-shop/staging`, compartilhado com o preflight read-only da Lambda:
 
 - `network/vpc-id`
 - `network/workload-private-subnet-ids`
+- `network/lambda-security-group-id`
 - `eks/cluster-name`
 - `gateway/internal-alb-arn`
 - `gateway/listener-arn/hml` and `gateway/listener-arn/prd`
@@ -35,6 +36,8 @@ A stack upstream precisa exportar os parâmetros abaixo sob `upstream_ssm_prefix
 - `database/iam/owner-read-policy-arn`
 
 Os fluxos de sessão do EKS e do banco são pré-requisitos separados para a issue #87 e precisam ser coordenados com os repositórios responsáveis.
+
+Quando `enable_github_oidc = true`, esta stack também cria a role estável `auto-shop-staging-github-auth-preflight` e publica seu ARN no output `github_auth_preflight_role_arn`. O workflow de abertura constrói o ARN a partir da variável `AWS_ACCOUNT_ID`; não é necessário copiar um ARN para um secret. A trust policy exige o OIDC audience `sts.amazonaws.com` e o subject deste repositório no environment `operations`. A policy read-only permite somente `ssm:GetParameters` nos cinco contratos SSM de auth/rede usados pelo preflight e `lambda:GetFunctionConfiguration` nas funções `customer-cpf-auth-homolog` e `customer-cpf-auth-prod` (ajuste `auth_lambda_function_name` se o nome-base aprovado mudar). A role não lê Secrets Manager, não altera recursos e não autoriza deploy.
 
 O contrato upstream publica um ARN de Lambda por stage: `/auth/customer-token/function-arn/hml` e `/auth/customer-token/function-arn/prd`. A API Gateway usa o ARN correspondente a `hml` ou `prd`; o plan depende que os dois parametros existam. A Lambda e publicada pelo repositorio `lambda-auth` e sua alteracao correspondente ainda precisa passar pelo PR upstream.
 
