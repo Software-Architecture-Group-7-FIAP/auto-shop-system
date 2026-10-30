@@ -120,7 +120,7 @@ jobs:
               echo "::error::Emergency cleanup requires a correlated signed capability."
               exit 1
             }
-            python3 .github/scripts/validate_environment_window.py --action teardown --emergency-teardown
+            python3 .github/scripts/validate_environment_window.py --action teardown --emergency-hml-teardown
           elif [[ -n "$LIFECYCLE_DISPATCH_ID" ]]; then
             [[ "$LIFECYCLE_DISPATCH_ID" =~ ^[0-9a-f]{32}$ ]] || {
               echo "::error::The lifecycle dispatch ID must be 32 lowercase hexadecimal characters."

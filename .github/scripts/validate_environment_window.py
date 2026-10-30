@@ -104,6 +104,7 @@ def validate_environment_window(
     started_at: str,
     now: datetime,
     emergency_teardown: bool = False,
+    emergency_hml_teardown: bool = False,
 ) -> timedelta | None:
     if stage not in SUPPORTED_STAGES:
         raise EnvironmentWindowError("ENVIRONMENT_STAGE must be hml or prd.")
@@ -113,7 +114,9 @@ def validate_environment_window(
         )
     if now.tzinfo is None or now.utcoffset() != timedelta(0):
         raise EnvironmentWindowError("The current time must be UTC-aware.")
-    if emergency_teardown and (stage != "hml" or action != "teardown"):
+    if emergency_teardown and stage != "prd":
+        raise EnvironmentWindowError("The existing emergency teardown flag is available only for PRD.")
+    if emergency_hml_teardown and (stage != "hml" or action != "teardown"):
         raise EnvironmentWindowError("Emergency cleanup is available only for HML teardown.")
 
     _require_session_gate(
@@ -136,13 +139,13 @@ def validate_environment_window(
         local_now = now.astimezone(BRT)
         hml_cutoff = datetime.combine(HML_LAST_DAY, time(23, 0), tzinfo=BRT)
         local_start = start.astimezone(BRT)
-        if not emergency_teardown and local_now >= hml_cutoff:
+        if not emergency_hml_teardown and local_now >= hml_cutoff:
             raise EnvironmentWindowError(
                 "HML lifecycle actions are authorized only before 23:00 BRT on 31/10/2026."
             )
         if local_start.date() > HML_LAST_DAY:
             raise EnvironmentWindowError("Emergency cleanup cannot target a session after the HML lifecycle.")
-        if not emergency_teardown and local_start.date() != local_now.date():
+        if not emergency_hml_teardown and local_start.date() != local_now.date():
             raise EnvironmentWindowError("An HML session must start on the current BRT day.")
         start_time = local_start.time().replace(tzinfo=None)
         if not time(7, 0) <= start_time <= time(17, 0):
@@ -159,7 +162,7 @@ def validate_environment_window(
                 local_start.date(), time(23, 0), tzinfo=BRT
             ).astimezone(timezone.utc),
         )
-        if action == "teardown" and emergency_teardown:
+        if action == "teardown" and emergency_hml_teardown:
             if now < cleanup_end:
                 raise EnvironmentWindowError(
                     "Emergency HML cleanup is allowed only after the normal cleanup window expires."
@@ -189,11 +192,16 @@ def main() -> int:
     parser.add_argument("--action", choices=sorted(SUPPORTED_ACTIONS), required=True)
     parser.add_argument("--stage", choices=sorted(SUPPORTED_STAGES))
     parser.add_argument("--emergency-teardown", action="store_true")
+    parser.add_argument("--emergency-hml-teardown", action="store_true")
     arguments = parser.parse_args()
+
+    if arguments.emergency_teardown and arguments.emergency_hml_teardown:
+        print("::error::Choose only one emergency teardown mode.", file=sys.stderr)
+        return 1
 
     stage = arguments.stage or os.environ.get("ENVIRONMENT_STAGE", "")
     try:
-        if arguments.emergency_teardown:
+        if arguments.emergency_hml_teardown:
             verify_emergency_hml_cleanup(
                 signing_key=os.environ.get("LIFECYCLE_SESSION_SIGNING_KEY", ""),
                 token=os.environ.get("LIFECYCLE_SESSION_TOKEN", ""),
@@ -218,6 +226,7 @@ def main() -> int:
             started_at=os.environ.get("ENVIRONMENT_WINDOW_STARTED_AT", ""),
             now=datetime.now(timezone.utc),
             emergency_teardown=arguments.emergency_teardown,
+            emergency_hml_teardown=arguments.emergency_hml_teardown,
         )
     except (EnvironmentWindowError, LifecycleSessionAuthError) as error:
         print(f"::error::{error}", file=sys.stderr)

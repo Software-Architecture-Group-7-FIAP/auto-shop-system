@@ -249,7 +249,7 @@ def test_emergency_window_allows_old_hml_close_but_normal_close_remains_time_bou
         "now": datetime(2026, 11, 2, 2, 0, tzinfo=timezone.utc),
     }
 
-    assert WINDOW.validate_environment_window(**values, emergency_teardown=True) == timedelta(0)
+    assert WINDOW.validate_environment_window(**values, emergency_hml_teardown=True) == timedelta(0)
     with pytest.raises(WINDOW.EnvironmentWindowError):
         WINDOW.validate_environment_window(**values)
 
@@ -292,6 +292,6 @@ def test_stop_workflow_requires_a_signed_hml_capability_for_emergency_cleanup() 
     )
 
     assert "emergency_cleanup" in workflow
-    assert "--emergency-teardown" in workflow
+    assert "--emergency-hml-teardown" in workflow
     assert '"$EMERGENCY_CLEANUP" == "true"' in workflow
     assert "CLOSE_REQUEST_ID: ${{ inputs.close_request_id }}" in workflow
