@@ -36,12 +36,6 @@ variable "upstream_ssm_prefix" {
   }
 }
 
-variable "backend_base_url" {
-  description = "Legacy target retained for the unconnected auth-login Lambda pending its decommission."
-  type        = string
-  default     = "https://api.oficina-workshop.com.br/hml"
-}
-
 variable "api_domain_name" {
   description = "Public API custom domain managed outside Route 53 (Registro.br)."
   type        = string
@@ -96,10 +90,28 @@ variable "throttle_rate_limit" {
   default     = 50
 }
 
+variable "waf_regional_rate_limit" {
+  description = "Coarse Regional WAF cap per source IP; CloudFront WAF applies the viewer-specific limits."
+  type        = number
+  default     = 20000
+}
+
 variable "waf_rate_limit" {
-  description = "WAF rate-based rule limit per 5-minute window per IP for the customer token endpoint."
+  description = "CloudFront WAF rate-based rule limit per 5-minute window per viewer IP for customer-token requests."
   type        = number
   default     = 100
+}
+
+variable "waf_auth_rate_limit" {
+  description = "CloudFront WAF rate-based rule limit per 5-minute window per viewer IP for authentication requests."
+  type        = number
+  default     = 300
+}
+
+variable "waf_public_rate_limit" {
+  description = "CloudFront WAF rate-based rule limit per 5-minute window per viewer IP for public and customer API requests."
+  type        = number
+  default     = 1000
 }
 
 variable "enable_alb_security_group_rules" {

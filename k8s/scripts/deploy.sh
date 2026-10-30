@@ -2,10 +2,19 @@
 # Bash deploy for CI/CD (staging/production). Local NGINX Ingress remains in deploy.ps1.
 set -euo pipefail
 
+if [[ ! -d /dev/shm || ! -w /dev/shm ]]; then
+  echo "A writable tmpfs at /dev/shm is required for deployment temporary files." >&2
+  exit 1
+fi
+export TMPDIR=/dev/shm
+umask 077
+
 ENVIRONMENT="${1:?environment (staging|production)}"
 IMAGE_REFERENCE="${2:?immutable image reference}"
 CONFIRM_PRODUCTION="${3:-}"
 MIGRATION_DATABASE_SECRET_ARN="${MIGRATION_DATABASE_SECRET_ARN:-}"
+SERVICE_ORDER_EVENT_BUS_NAME="${SERVICE_ORDER_EVENT_BUS_NAME:-}"
+SERVICE_ORDER_PUBLISHER_ROLE_ARN="${SERVICE_ORDER_PUBLISHER_ROLE_ARN:-}"
 LIFECYCLE_SESSION_ID="${LIFECYCLE_SESSION_ID:-${GITHUB_RUN_ID:-local-$(date -u +%Y%m%dT%H%M%SZ)}}"
 ALLOW_SYNTHETIC_SEED_IN_PRD="${ALLOW_SYNTHETIC_SEED_IN_PRD:-false}"
 
@@ -21,8 +30,18 @@ if [[ "${ENVIRONMENT}" != "staging" && "${ENVIRONMENT}" != "production" ]]; then
   exit 1
 fi
 
-if [[ ! "${MIGRATION_DATABASE_SECRET_ARN}" =~ ^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+ ]]; then
+if [[ ! "${MIGRATION_DATABASE_SECRET_ARN}" =~ ^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$ ]]; then
   echo "A valid migration database secret ARN from the approved SSM parameter is required."
+  exit 1
+fi
+
+if [[ ! "${SERVICE_ORDER_EVENT_BUS_NAME}" =~ ^[A-Za-z0-9._-]{1,256}$ ]]; then
+  echo "A valid EventBridge bus name from the approved SSM parameter is required."
+  exit 1
+fi
+
+if [[ ! "${SERVICE_ORDER_PUBLISHER_ROLE_ARN}" =~ ^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$ ]]; then
+  echo "A valid service-order publisher role ARN from the approved SSM parameter is required."
   exit 1
 fi
 
@@ -56,6 +75,23 @@ if [[ ! -d "${OVERLAY_ROOT}" ]]; then
   exit 1
 fi
 
+assert_pod_identity_agent_ready() {
+  local agent_status ready desired
+  if ! agent_status="$(kubectl get daemonset eks-pod-identity-agent \
+    --namespace kube-system \
+    --output='jsonpath={.status.numberReady} {.status.desiredNumberScheduled}' \
+    2>/dev/null)"; then
+    echo "The EKS Pod Identity Agent is missing; install the EKS add-on before deploying."
+    exit 1
+  fi
+
+  read -r ready desired <<< "${agent_status}"
+  if [[ -z "${desired}" || "${desired}" == "0" || "${ready}" != "${desired}" ]]; then
+    echo "The EKS Pod Identity Agent is not ready on every worker node."
+    exit 1
+  fi
+}
+
 release_suffix() {
   printf '%s:%s' "${IMAGE_REFERENCE}" "${LIFECYCLE_SESSION_ID}" \
     | sha256sum | awk '{print substr($1,1,12)}'
@@ -79,6 +115,8 @@ render_phase() {
   rendered="${rendered//registry.example.com\/auto-shop-system:__IMAGE_TAG__/${IMAGE_REFERENCE}}"
   rendered="${rendered//auto-shop-system:__IMAGE_TAG__/${IMAGE_REFERENCE}}"
   rendered="${rendered//__MIGRATION_DATABASE_SECRET_ARN__/${MIGRATION_DATABASE_SECRET_ARN}}"
+  rendered="${rendered//__SERVICE_ORDER_EVENT_BUS_NAME__/${SERVICE_ORDER_EVENT_BUS_NAME}}"
+  rendered="${rendered//__SERVICE_ORDER_PUBLISHER_ROLE_ARN__/${SERVICE_ORDER_PUBLISHER_ROLE_ARN}}"
   if [[ "${phase}" == "migration" ]]; then
     rendered="${rendered//name: auto-shop-migrate/name: ${MIGRATION_JOB}}"
   fi
@@ -86,7 +124,7 @@ render_phase() {
     rendered="${rendered//name: auto-shop-seed/name: ${SEED_JOB}}"
     rendered="${rendered//__ALLOW_SYNTHETIC_SEED_IN_PRD__/${ALLOW_SYNTHETIC_SEED_IN_PRD}}"
   fi
-  if grep -Eq '__IMAGE_TAG__|__MIGRATION_DATABASE_SECRET_ARN__|__ALLOW_SYNTHETIC_SEED_IN_PRD__' <<< "${rendered}"; then
+  if grep -Eq '__IMAGE_TAG__|__MIGRATION_DATABASE_SECRET_ARN__|__SERVICE_ORDER_EVENT_BUS_NAME__|__SERVICE_ORDER_PUBLISHER_ROLE_ARN__|__ALLOW_SYNTHETIC_SEED_IN_PRD__' <<< "${rendered}"; then
     echo "Unresolved deployment placeholder in ${ENVIRONMENT}/${phase}"
     exit 1
   fi
@@ -118,6 +156,42 @@ ensure_secret() {
   for key in DATABASE_URL SECRET_KEY INVERTEXTO_API_TOKEN SMTP_USER SMTP_PASSWORD DEMO_ADMIN_PASSWORD; do
     assert_secret_key "${key}"
   done
+}
+
+assert_redis_secret_key() {
+  local key="$1"
+  local b64
+  b64="$(kubectl get secret auto-shop-redis-credentials --namespace "${NAMESPACE}" \
+    --output "jsonpath={.data.${key}}" 2>/dev/null || true)"
+  if [[ -z "${b64}" ]]; then
+    echo "Secret auto-shop-redis-credentials missing key ${key}"
+    exit 1
+  fi
+}
+
+ensure_redis_credentials() {
+  if kubectl get secret auto-shop-redis-credentials --namespace "${NAMESPACE}" \
+    --output name >/dev/null 2>&1; then
+    assert_redis_secret_key REDIS_PASSWORD
+    assert_redis_secret_key REDIS_URL
+    return
+  fi
+
+  command -v openssl >/dev/null
+  local password_file url_file redis_password redis_url
+  password_file="$(mktemp)"
+  url_file="$(mktemp)"
+  TEMP_FILES+=("${password_file}" "${url_file}")
+  redis_password="$(openssl rand -hex 32)"
+  redis_url="redis://:${redis_password}@auto-shop-redis:6379/0"
+  printf '%s' "${redis_password}" > "${password_file}"
+  printf '%s' "${redis_url}" > "${url_file}"
+  kubectl create secret generic auto-shop-redis-credentials \
+    --namespace "${NAMESPACE}" \
+    --from-file="REDIS_PASSWORD=${password_file}" \
+    --from-file="REDIS_URL=${url_file}" \
+    --dry-run=client --output=yaml | kubectl apply --filename=-
+  unset redis_password redis_url
 }
 
 wait_migration() {
@@ -158,14 +232,17 @@ smoke_test() {
   exit 1
 }
 
+assert_pod_identity_agent_ready
 kubectl create namespace "${NAMESPACE}" --dry-run=client --output=yaml | kubectl apply --filename=-
 ensure_secret
+ensure_redis_credentials
 apply_phase foundation
 apply_phase migration
 wait_migration
 apply_phase seed
 wait_seed
 apply_phase app
+kubectl rollout status deployment/auto-shop-redis --namespace "${NAMESPACE}" --timeout=180s
 kubectl rollout status deployment/auto-shop-backend --namespace "${NAMESPACE}" --timeout=300s
 smoke_test
 echo "Auto Shop ${ENVIRONMENT} deployment completed successfully."

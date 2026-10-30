@@ -1,9 +1,10 @@
 locals {
   upstream_parameter_suffixes = {
-    vpc_id             = "network/vpc-id"
-    private_subnet_ids = "network/workload-private-subnet-ids"
-    eks_cluster_name   = "eks/cluster-name"
-    alb_arn            = "gateway/internal-alb-arn"
+    vpc_id                = "network/vpc-id"
+    private_subnet_ids    = "network/workload-private-subnet-ids"
+    eks_cluster_name      = "eks/cluster-name"
+    eks_oidc_provider_arn = "eks/oidc-provider-arn"
+    alb_arn               = "gateway/internal-alb-arn"
   }
 }
 
@@ -35,12 +36,16 @@ data "aws_ssm_parameter" "customer_auth_lambda_arn" {
   name = "${trimsuffix(var.upstream_ssm_prefix, "/")}/auth/customer-token/function-arn/${each.key}"
 }
 
-data "aws_ssm_parameter" "migration_owner_secret_arn" {
-  name = "${trimsuffix(var.upstream_ssm_prefix, "/")}/database/secrets/owner-arn"
+data "aws_ssm_parameter" "migration_secret_arn" {
+  for_each = local.api_stages
+
+  name = "${trimsuffix(var.upstream_ssm_prefix, "/")}/database/secrets/migrations-${each.key}-arn"
 }
 
-data "aws_ssm_parameter" "migration_owner_secret_read_policy_arn" {
-  name = "${trimsuffix(var.upstream_ssm_prefix, "/")}/database/iam/owner-read-policy-arn"
+data "aws_ssm_parameter" "migration_secret_read_policy_arn" {
+  for_each = local.api_stages
+
+  name = "${trimsuffix(var.upstream_ssm_prefix, "/")}/database/iam/migrations-${each.key}-read-policy-arn"
 }
 
 locals {

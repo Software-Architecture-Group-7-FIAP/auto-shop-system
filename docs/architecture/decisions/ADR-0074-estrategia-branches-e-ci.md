@@ -46,8 +46,9 @@ Falha em um repositório não cancela pipelines dos outros.
 
 ### Autenticação de deploy (#90)
 
-- Build/push: `GITHUB_TOKEN` → private GHCR, tag `sha-<7 chars>`.
-- Deploy: GitHub Actions reads GHCR with a read-only `GITHUB_TOKEN`, verifies the commit label, and mirrors the immutable image into private ECR through OIDC. EKS nodes pull from ECR using their AWS identity; no long-lived GHCR token or Kubernetes pull secret is stored.
+- Build/push: `GITHUB_TOKEN` → public GHCR, immutable tag `sha-<7 chars>`.
+- Deploy: before AWS authentication, GitHub Actions verifies anonymous GHCR access and deploys the same immutable image directly. EKS pulls from public GHCR; the deploy job needs no `packages: read`, ECR mirror, registry credential, or Kubernetes pull secret.
+- Existing ECR images are legacy artifacts and remain untouched until a separate retention review.
 - Deploy K8s: OIDC → role AWS por Environment (`staging` / `production`).
 - Gate: `DEPLOY_STAGING_ENABLED` / `DEPLOY_PRODUCTION_ENABLED` até cluster staging (#87) existir.
 

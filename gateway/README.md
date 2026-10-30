@@ -2,13 +2,17 @@
 
 The API Gateway routes web-session login, refresh, logout, and admin requests to the FastAPI backend. Customer token and JWKS routes invoke the customer-auth Lambda published for each stage.
 
-## auth_login (legacy)
+## Login routes
 
-The legacy proxy Lambda remains in the Terraform source, but the API Gateway login route targets FastAPI directly so it can set the web-session cookies expected by Angular. Do not use this Lambda for browser session login.
+API Gateway forwards `POST /auth/login` directly to FastAPI at
+`/api/v1/auth/gateway-login`. The backend path is not published as a separate
+API Gateway resource. There is no login proxy Lambda; the public alias issues a
+Bearer token for the Postman staging flow and does not set browser session
+cookies.
 
 ## jwt_authorizer
 
-The TOKEN authorizer checks HS256 JWTs and adds username and sessionId to the API Gateway context.
+The REQUEST authorizer checks HS256 JWTs from either the `Authorization: Bearer` header or the `oficina_access` HttpOnly cookie. It requires audience `gateway` for bearer tokens and `web` for cookie sessions. API Gateway policy caching is disabled, and the backend revalidates the forwarded bearer token or cookie.
 
 Environment:
 

@@ -8,6 +8,7 @@ data:
   AWS_REGION: "us-east-1"
   MIGRATION_DATABASE_NAME: "autoshop_prd"
   MIGRATION_DATABASE_SECRET_ARN: "__MIGRATION_DATABASE_SECRET_ARN__"
+  SERVICE_ORDER_EVENT_BUS_NAME: "__SERVICE_ORDER_EVENT_BUS_NAME__"
   APP_BASE_URL: "https://api.oficina-workshop.com.br/prd"
   FRONTEND_PUBLIC_URL: "https://app.oficina-workshop.com.br"
   CORS_ALLOWED_ORIGINS: "https://app.oficina-workshop.com.br"
