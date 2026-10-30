@@ -32,10 +32,12 @@ A stack upstream precisa exportar os parâmetros abaixo sob o prefixo fixo `/aut
 - `gateway/internal-alb-arn`
 - `gateway/listener-arn/hml` and `gateway/listener-arn/prd`
 - `auth/customer-token/function-arn/hml` and `auth/customer-token/function-arn/prd`
-- `database/secrets/owner-arn`
-- `database/iam/owner-read-policy-arn`
+- `database/secrets/migrations-hml-arn`
+- `database/secrets/migrations-prd-arn`
+- `database/iam/migrations-hml-read-policy-arn`
+- `database/iam/migrations-prd-read-policy-arn`
 
-Os fluxos de sessão do EKS e do banco são pré-requisitos separados para a issue #87 e precisam ser coordenados com os repositórios responsáveis.
+As roles de migration e as associacoes Pod Identity por ambiente pertencem a este repositorio. Elas leem somente os ARNs `migrations-hml` ou `migrations-prd` e a policy correspondente publicados por `database-infra`. O master `owner` fica exclusivo do bootstrap em `k8s-infra`. Os fluxos de sessao do EKS e do banco sao pre-requisitos separados para a issue #87 e precisam ser coordenados com os repositorios responsaveis.
 
 Quando `enable_github_oidc = true`, esta stack também cria a role estável `auto-shop-staging-github-auth-preflight` e publica seu ARN no output `github_auth_preflight_role_arn`. O workflow de abertura constrói o ARN a partir da variável `AWS_ACCOUNT_ID`; não é necessário copiar um ARN para um secret. A trust policy exige o OIDC audience `sts.amazonaws.com` e o subject deste repositório no environment `operations`. A policy read-only permite somente `ssm:GetParameters` nos cinco contratos SSM de auth/rede usados pelo preflight e `lambda:GetFunctionConfiguration` nas funções `customer-cpf-auth-homolog` e `customer-cpf-auth-prod` (ajuste `auth_lambda_function_name` se o nome-base aprovado mudar). A role não lê Secrets Manager, não altera recursos e não autoriza deploy.
 

@@ -68,6 +68,15 @@ class EnvironmentWorkflowContractTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertNotIn("21:30", self.read(name))
 
+    def test_staging_and_production_deployments_use_separate_migration_secrets(self) -> None:
+        staging = (WORKFLOWS / "cd-staging.yml").read_text(encoding="utf-8")
+        production = (WORKFLOWS / "cd-prod.yml").read_text(encoding="utf-8")
+
+        self.assertIn("/database/secrets/migrations-hml-arn", staging)
+        self.assertIn("/database/secrets/migrations-prd-arn", production)
+        self.assertNotIn("/database/secrets/owner-arn", staging)
+        self.assertNotIn("/database/secrets/owner-arn", production)
+
 
 if __name__ == "__main__":
     unittest.main()

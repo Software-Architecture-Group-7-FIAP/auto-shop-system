@@ -19,7 +19,7 @@ RDS_CA_BUNDLE = (
 )
 
 
-def _load_owner_database_url() -> str:
+def _load_migration_database_url() -> str:
     secret_arn = os.environ.get("MIGRATION_DATABASE_SECRET_ARN")
     database_name = os.environ.get("MIGRATION_DATABASE_NAME")
     if not secret_arn or not database_name:
@@ -41,7 +41,27 @@ def _load_owner_database_url() -> str:
     password = secret.get("password")
     host = secret.get("host")
     port = secret.get("port")
-    if not all((username, password, host, port)):
+    if not all(
+        isinstance(value, str) and value
+        for value in (username, password, host, port)
+    ):
+        raise RuntimeError("Migration database credentials are invalid")
+
+    expected_environment = {
+        "autoshop_hml": "hml",
+        "autoshop_prd": "prd",
+    }.get(database_name)
+    if (
+        expected_environment is None
+        or username != f"autoshop_migrations_{expected_environment}"
+    ):
+        raise RuntimeError("Migration database credentials are invalid")
+
+    try:
+        port_number = int(port)
+    except ValueError:
+        raise RuntimeError("Migration database credentials are invalid") from None
+    if not 1 <= port_number <= 65535:
         raise RuntimeError("Migration database credentials are invalid")
 
     return URL.create(
@@ -49,7 +69,7 @@ def _load_owner_database_url() -> str:
         username=username,
         password=password,
         host=host,
-        port=int(port),
+        port=port_number,
         database=database_name,
         query={
             "sslmode": "verify-full",
@@ -60,7 +80,10 @@ def _load_owner_database_url() -> str:
 
 def _migration_config() -> tuple[str, int, bool]:
     if os.environ.get("MIGRATION_DATABASE_SECRET_ARN"):
-        return _load_owner_database_url(), 2, True
+        return _load_migration_database_url(), 2, True
+
+    if os.environ.get("APP_ENV", "").lower() in {"staging", "production", "prod"}:
+        raise RuntimeError("Migration database configuration is incomplete")
 
     from src.config import settings
 
@@ -68,7 +91,7 @@ def _migration_config() -> tuple[str, int, bool]:
 
 
 def run_migrations() -> int:
-    database_url, connect_timeout, use_owner_identity = _migration_config()
+    database_url, connect_timeout, use_migration_identity = _migration_config()
 
     try:
         connection = psycopg2.connect(
@@ -82,7 +105,7 @@ def run_migrations() -> int:
         with connection:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_lock(%s)", (MIGRATION_LOCK_KEY,))
-            if use_owner_identity:
+            if use_migration_identity:
                 migration_env = os.environ.copy()
                 migration_env.update(
                     {
