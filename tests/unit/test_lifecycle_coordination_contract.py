@@ -130,3 +130,18 @@ def test_upstream_ssm_prefix_matches_the_auth_preflight_contract() -> None:
     upstream_prefix = variables.split('variable "upstream_ssm_prefix" {', 1)[1].split("\n}", 1)[0]
 
     assert 'condition     = var.upstream_ssm_prefix == "/auto-shop/staging"' in upstream_prefix
+
+
+def test_private_ghcr_images_are_verified_and_mirrored_before_eks_deploy() -> None:
+    for workflow_name, deploy_command in (
+        ("cd-staging.yml", "./k8s/scripts/deploy.sh staging"),
+        ("cd-prod.yml", "./k8s/scripts/deploy.sh production"),
+    ):
+        workflow = (ROOT / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
+        mirror = workflow.index("scripts/mirror_ghcr_image_to_ecr.py")
+        deploy = workflow.index(deploy_command)
+
+        assert "packages: read" in workflow
+        assert "GITHUB_TOKEN: ${{ github.token }}" in workflow
+        assert mirror < deploy
+        assert "IMAGE_REFERENCE: ${{ steps.ecr_image.outputs.image_reference }}" in workflow

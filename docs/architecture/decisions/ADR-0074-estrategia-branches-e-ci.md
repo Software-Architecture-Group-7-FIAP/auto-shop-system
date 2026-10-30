@@ -46,7 +46,8 @@ Falha em um repositório não cancela pipelines dos outros.
 
 ### Autenticação de deploy (#90)
 
-- Build/push: `GITHUB_TOKEN` → GHCR, tag `sha-<7 chars>`.
+- Build/push: `GITHUB_TOKEN` → private GHCR, tag `sha-<7 chars>`.
+- Deploy: GitHub Actions reads GHCR with a read-only `GITHUB_TOKEN`, verifies the commit label, and mirrors the immutable image into private ECR through OIDC. EKS nodes pull from ECR using their AWS identity; no long-lived GHCR token or Kubernetes pull secret is stored.
 - Deploy K8s: OIDC → role AWS por Environment (`staging` / `production`).
 - Gate: `DEPLOY_STAGING_ENABLED` / `DEPLOY_PRODUCTION_ENABLED` até cluster staging (#87) existir.
 
