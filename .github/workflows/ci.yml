@@ -108,7 +108,7 @@ jobs:
               kubectl kustomize "k8s/overlays/${environment}/${phase}" \
                 | sed \
                   -e "s#registry.example.com/auto-shop-system:__IMAGE_TAG__#${image_reference}#g" \
-                  -e 's#__ALLOW_SYNTHETIC_SEED_IN_PRD__#false#g' \
+                  -e 's#__ALLOW_SYNTHETIC_SEED_IN_PRD__#"false"#g' \
                 > "$output"
               if grep -Eiq 'secrets\.example|:latest|__ALLOW_SYNTHETIC_SEED_IN_PRD__' "$output"; then
                 echo "Unsafe value found in ${environment}/${phase}"

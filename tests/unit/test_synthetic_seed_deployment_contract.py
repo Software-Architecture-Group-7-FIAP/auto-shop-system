@@ -40,7 +40,7 @@ def test_ci_renders_seed_manifests_and_runs_seed_after_migrations() -> None:
     workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert "for phase in foundation migration seed app ingress" in workflow
-    assert "s#__ALLOW_SYNTHETIC_SEED_IN_PRD__#false#g" in workflow
+    assert 's#__ALLOW_SYNTHETIC_SEED_IN_PRD__#"false"#g' in workflow
     migration_wait = workflow.index(
         "kubectl wait --for=condition=complete job/auto-shop-migrate"
     )
