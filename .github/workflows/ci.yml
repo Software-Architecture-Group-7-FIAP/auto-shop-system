@@ -290,9 +290,11 @@ jobs:
           trap 'rm -f "$secret_file"' EXIT
           db_password="$(openssl rand -hex 24)"
           secret_key="$(openssl rand -hex 32)"
+          demo_admin_password="$(openssl rand -hex 32)"
           {
             printf 'DATABASE_URL=postgresql://oficina:%s@postgres-service:5432/oficina\n' "$db_password"
             printf 'DB_NAME=oficina\nDB_USER=oficina\nDB_PASSWORD=%s\n' "$db_password"
+            printf 'DEMO_ADMIN_PASSWORD=%s\n' "$demo_admin_password"
             printf 'SECRET_KEY=%s\nINVERTEXTO_API_TOKEN=local-ci-token\nSMTP_USER=\nSMTP_PASSWORD=\n' "$secret_key"
           } > "$secret_file"
           kubectl apply -k k8s/overlays/local/foundation

@@ -41,6 +41,8 @@ def test_ci_renders_seed_manifests_and_runs_seed_after_migrations() -> None:
 
     assert "for phase in foundation migration seed app ingress" in workflow
     assert 's#__ALLOW_SYNTHETIC_SEED_IN_PRD__#"false"#g' in workflow
+    assert 'demo_admin_password="$(openssl rand -hex 32)"' in workflow
+    assert "DEMO_ADMIN_PASSWORD=%s\\n" in workflow
     migration_wait = workflow.index(
         "kubectl wait --for=condition=complete job/auto-shop-migrate"
     )
