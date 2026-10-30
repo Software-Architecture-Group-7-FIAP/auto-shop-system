@@ -17,17 +17,90 @@ AUDIT_RESERVE = timedelta(minutes=15)
 TEARDOWN_MARGIN = timedelta(minutes=5)
 
 
+def resolve_emergency_hml_teardown(
+    *, stage: str, session_id: str, started_at: str, now: datetime
+) -> dict[str, str | bool]:
+    """Create a short, HML-only deadline for an expired session's fallback teardown."""
+    if stage != "hml":
+        raise ValueError("Emergency cleanup is available only for HML sessions")
+    if now.tzinfo is None or now.utcoffset() != timedelta(0):
+        raise ValueError("Emergency cleanup time must be UTC-aware")
+    try:
+        start = datetime.strptime(started_at, UTC_FORMAT).replace(tzinfo=timezone.utc)
+    except ValueError as error:
+        raise ValueError("Emergency HML started_at must use UTC format YYYY-MM-DDTHH:MM:SSZ") from error
+    if start.strftime(UTC_FORMAT) != started_at:
+        raise ValueError("Emergency HML started_at must use UTC format YYYY-MM-DDTHH:MM:SSZ")
+
+    local_start = start.astimezone(BRT)
+    expected_session_id = f"hml-{local_start.date().isoformat()}"
+    if session_id != expected_session_id:
+        raise ValueError("Emergency HML session ID must match its BRT start date")
+    if local_start.date() > HML_LAST_DAY:
+        raise ValueError("Emergency cleanup cannot target a session after the HML lifecycle")
+    if not time(7, 0) <= local_start.time().replace(tzinfo=None) <= time(17, 0):
+        raise ValueError("Emergency HML session start is outside the authorized daily window")
+
+    session_end = min(
+        start + timedelta(hours=5),
+        datetime.combine(local_start.date(), time(22, 0), tzinfo=BRT).astimezone(timezone.utc),
+    )
+    original_cleanup_end = min(
+        session_end + timedelta(hours=1),
+        datetime.combine(local_start.date(), time(23, 0), tzinfo=BRT).astimezone(timezone.utc),
+    )
+    if now < original_cleanup_end:
+        raise ValueError("Emergency HML cleanup is allowed only after the normal cleanup window expires")
+
+    teardown_deadline = now + timedelta(minutes=40)
+    cleanup_end = now + timedelta(hours=1)
+    audit_start = now + timedelta(minutes=45)
+    return {
+        "stage": "hml",
+        "session_id": session_id,
+        "started_at": started_at,
+        "session_mode": "hml",
+        "session_end_utc": session_end.astimezone(timezone.utc).strftime(UTC_FORMAT),
+        "cleanup_end_utc": cleanup_end.strftime(UTC_FORMAT),
+        "teardown_deadline_utc": teardown_deadline.strftime(UTC_FORMAT),
+        "audit_start_utc": audit_start.strftime(UTC_FORMAT),
+        "teardown_allowed": now < teardown_deadline,
+        "work_deadline_utc": teardown_deadline.strftime(UTC_FORMAT),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--action", choices=("start", "teardown"), required=True)
     parser.add_argument("--stage", choices=("hml", "prd"), default="prd")
     parser.add_argument("--started-at", default="")
     parser.add_argument("--session-id", default="")
+    parser.add_argument("--emergency-hml-teardown", action="store_true")
     parser.add_argument("--github-output", required=True)
     arguments = parser.parse_args()
 
     now = datetime.now(timezone.utc)
     local_now = now.astimezone(BRT)
+    if arguments.emergency_hml_teardown:
+        if arguments.action != "teardown":
+            print("::error::Emergency HML cleanup is valid only for teardown.", file=sys.stderr)
+            return 1
+        try:
+            resolved = resolve_emergency_hml_teardown(
+                stage=arguments.stage,
+                session_id=arguments.session_id,
+                started_at=arguments.started_at,
+                now=now,
+            )
+        except ValueError as error:
+            print(f"::error::{error}", file=sys.stderr)
+            return 1
+        with open(arguments.github_output, "a", encoding="utf-8") as output_file:
+            for key, value in resolved.items():
+                output_file.write(f"{key}={str(value).lower() if isinstance(value, bool) else value}\n")
+        print(f"Resolved emergency teardown for {arguments.session_id}.")
+        return 0
+
     if arguments.stage == "prd":
         if not FIRST_PRD_DAY <= local_now.date() <= LAST_PRD_DAY:
             print("::error::PRD lifecycle is authorized only from 01 through 05 November 2026 BRT.", file=sys.stderr)

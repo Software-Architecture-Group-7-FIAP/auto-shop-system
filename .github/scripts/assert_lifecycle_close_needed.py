@@ -8,7 +8,7 @@ import json
 import os
 import re
 import sys
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -18,9 +18,10 @@ from zoneinfo import ZoneInfo
 API_ROOT = "https://api.github.com"
 BRT = ZoneInfo("America/Sao_Paulo")
 SESSION_PATTERN = re.compile(r"^(?:hml|prd)-(\d{4}-\d{2}-\d{2})$")
-ACTIVE_STATUSES = {"queued", "requested", "waiting", "in_progress", "pending"}
+ACTIVE_STATUSES = {"queued", "requested", "waiting", "in_progress", "pending", "canceling"}
 FIRST_MUTATION_MARKER = "Apply the exact K8s foundation opening plan"
 RUN_TITLE_SUFFIX = re.compile(r"(?::[0-9a-f]{32}|:\d+)$")
+HML_LAST_DAY = date(2026, 10, 31)
 
 
 def _matches_opening_title(title: str, base_title: str) -> bool:
@@ -32,26 +33,43 @@ def _matches_opening_title(title: str, base_title: str) -> bool:
 
 def _runs(repository: str, workflow: str, local_day: date, token: str) -> list[dict[str, object]]:
     day_start = datetime.combine(local_day, time.min, tzinfo=BRT).astimezone(timezone.utc)
-    query = urlencode({
-        "created": ">=" + day_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "per_page": "100",
-    })
-    request = Request(
-        f"{API_ROOT}/repos/{repository}/actions/workflows/{workflow}/runs?{query}",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "auto-shop-lifecycle-coordinator",
-        },
-    )
-    with urlopen(request, timeout=30) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    if not isinstance(payload, dict) or not isinstance(payload.get("workflow_runs"), list):
-        raise ValueError("GitHub returned an invalid workflow run listing")
-    if int(payload.get("total_count", 0)) > 100:
-        raise ValueError(f"More than 100 {workflow} runs prevent a safe idempotency check")
-    return [run for run in payload["workflow_runs"] if isinstance(run, dict)]
+    runs: list[dict[str, object]] = []
+    page = 1
+    total_count: int | None = None
+    while True:
+        query = urlencode({
+            "created": ">=" + day_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "per_page": "100",
+            "page": str(page),
+        })
+        request = Request(
+            f"{API_ROOT}/repos/{repository}/actions/workflows/{workflow}/runs?{query}",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {token}",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "auto-shop-lifecycle-coordinator",
+            },
+        )
+        with urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if not isinstance(payload, dict) or not isinstance(payload.get("workflow_runs"), list):
+            raise ValueError("GitHub returned an invalid workflow run listing")
+        count = payload.get("total_count")
+        if not isinstance(count, int):
+            raise ValueError("GitHub returned an invalid workflow run count")
+        if total_count is None:
+            total_count = count
+            if total_count > 1000:
+                raise ValueError(f"More than 1000 {workflow} runs prevent a safe idempotency check")
+        page_runs = payload["workflow_runs"]
+        if not all(isinstance(run, dict) for run in page_runs):
+            raise ValueError("GitHub returned malformed workflow run entries")
+        runs.extend(page_runs)
+        if len(runs) >= total_count or not page_runs:
+            break
+        page += 1
+    return runs
 
 
 def _runs_for_brt_day(runs: list[dict[str, object]], local_day: date) -> list[dict[str, object]]:
@@ -66,9 +84,29 @@ def _runs_for_brt_day(runs: list[dict[str, object]], local_day: date) -> list[di
     return result
 
 
+def has_started_mutating_job(jobs: list[dict[str, object]]) -> bool:
+    """Check every opening attempt so reruns cannot hide an earlier mutation."""
+    open_jobs = [job for job in jobs if job.get("name") == "open"]
+    for job in open_jobs:
+        if job.get("conclusion") == "skipped":
+            continue
+        steps = job.get("steps")
+        if not isinstance(steps, list):
+            raise ValueError("A coordinator open job has no readable step list")
+        markers = [
+            step for step in steps
+            if isinstance(step, dict) and step.get("name") == FIRST_MUTATION_MARKER
+        ]
+        if len(markers) != 1:
+            raise ValueError("The expected first-mutation marker is missing or ambiguous; refusing teardown")
+        if markers[0].get("started_at"):
+            return True
+    return False
+
+
 def _opening_mutation_started(repository: str, run_id: object, token: str) -> bool:
     request = Request(
-        f"{API_ROOT}/repos/{repository}/actions/runs/{run_id}/jobs?per_page=100",
+        f"{API_ROOT}/repos/{repository}/actions/runs/{run_id}/jobs?filter=all&per_page=100",
         headers={
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",
@@ -85,23 +123,8 @@ def _opening_mutation_started(repository: str, run_id: object, token: str) -> bo
         raise ValueError("GitHub returned an invalid job count")
     if total_count > 100:
         raise ValueError("Too many jobs prevent a safe opening-mutation check")
-    open_jobs = [job for job in payload["jobs"] if isinstance(job, dict) and job.get("name") == "open"]
-    if len(open_jobs) > 1:
-        raise ValueError("Multiple coordinator open jobs were found; refusing teardown")
-    if not open_jobs:
-        return False
-    if open_jobs[0].get("conclusion") == "skipped":
-        return False
-    steps = open_jobs[0].get("steps")
-    if not isinstance(steps, list):
-        raise ValueError("The coordinator open job has no readable step list")
-    markers = [
-        step for step in steps
-        if isinstance(step, dict) and step.get("name") == FIRST_MUTATION_MARKER
-    ]
-    if len(markers) != 1:
-        raise ValueError("The expected first-mutation marker is missing or ambiguous; refusing teardown")
-    return bool(markers[0].get("started_at"))
+    jobs = [job for job in payload["jobs"] if isinstance(job, dict)]
+    return has_started_mutating_job(jobs)
 
 
 def main() -> int:
@@ -110,6 +133,7 @@ def main() -> int:
     parser.add_argument("--session-id", required=True)
     parser.add_argument("--started-at", required=True)
     parser.add_argument("--close-request-id", default="")
+    parser.add_argument("--emergency-cleanup", action="store_true")
     parser.add_argument("--github-output", required=True)
     arguments = parser.parse_args()
 
@@ -127,6 +151,9 @@ def main() -> int:
     if not match or not arguments.session_id.startswith(f"{arguments.stage}-"):
         print("::error::The resolved session ID is not valid for the requested lifecycle stage.", file=sys.stderr)
         return 1
+    if arguments.emergency_cleanup and arguments.stage != "hml":
+        print("::error::Emergency cleanup is available only for HML sessions.", file=sys.stderr)
+        return 1
     try:
         session_day = date.fromisoformat(match.group(1))
         started_at = datetime.strptime(arguments.started_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
@@ -136,7 +163,24 @@ def main() -> int:
     if started_at.astimezone(BRT).date() != session_day:
         print("::error::The resolved session start does not belong to the session's BRT date.", file=sys.stderr)
         return 1
-    if datetime.now(timezone.utc).astimezone(BRT).date() != session_day:
+    now = datetime.now(timezone.utc)
+    if arguments.emergency_cleanup:
+        local_start = started_at.astimezone(BRT)
+        if local_start.date() > HML_LAST_DAY:
+            print("::error::Emergency cleanup cannot target a session after the HML lifecycle.", file=sys.stderr)
+            return 1
+        session_end = min(
+            started_at + timedelta(hours=5),
+            datetime.combine(session_day, time(22, 0), tzinfo=BRT).astimezone(timezone.utc),
+        )
+        cleanup_end = min(
+            session_end + timedelta(hours=1),
+            datetime.combine(session_day, time(23, 0), tzinfo=BRT).astimezone(timezone.utc),
+        )
+        if now < cleanup_end:
+            print("::error::Emergency cleanup is allowed only after the normal HML cleanup window expires.", file=sys.stderr)
+            return 1
+    elif now.astimezone(BRT).date() != session_day:
         print("::error::The close guard is outside the session's BRT calendar day.", file=sys.stderr)
         return 1
 
@@ -180,9 +224,9 @@ def main() -> int:
                     output_file.write(f"decision={reason}\n")
                 print(reason)
                 return 0
-            close_runs = _runs_for_brt_day(
-                _runs(repository, "environment-stop.yml", session_day, token), session_day
-            )
+            close_runs = _runs(repository, "environment-stop.yml", session_day, token)
+            if not arguments.emergency_cleanup:
+                close_runs = _runs_for_brt_day(close_runs, session_day)
             close_prefix = f"lifecycle:{arguments.stage}:close:{arguments.session_id}"
             if arguments.stage == "prd":
                 close_prefix = f"lifecycle:{arguments.stage}:close:"

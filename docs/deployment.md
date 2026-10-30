@@ -48,7 +48,11 @@ O pipeline atual funciona assim:
 | Push em `develop` | `staging` | `auto-shop-hml` | `hml` | `app-hml.oficina-workshop.com.br` |
 | Push em `main` | `production` | `auto-shop-prd` | `prd` | `app.oficina-workshop.com.br` |
 
-Os workflows publicam a imagem do backend no GHCR. O deploy só roda quando `DEPLOY_STAGING_ENABLED` ou `DEPLOY_PRODUCTION_ENABLED` está ligado no repositório. O frontend é publicado depois que o backend do mesmo ambiente termina com sucesso. Mantenha os gates desligados até a infraestrutura, os GitHub Environments e os smoke checks necessários estarem prontos. O fluxo `session-up`/`session-down` e o teardown agendado pedidos pela issue #87 ainda não estão implementados neste repositório.
+As mudanças de produto entram por pull requests de branches de trabalho para `develop`. A passagem para `main` é feita por um único pull request de release com `develop` como origem; não abra pull requests de feature diretamente para `main`.
+
+Os workflows publicam a imagem do backend no GHCR. O deploy só roda quando `DEPLOY_STAGING_ENABLED` ou `DEPLOY_PRODUCTION_ENABLED` está ligado no repositório. O frontend é publicado depois que o backend do mesmo ambiente termina com sucesso. Mantenha os gates desligados até a infraestrutura, os GitHub Environments e os smoke checks necessários estarem prontos. Os workflows coordenados de abertura e fechamento e o fechamento automático normal estão implementados.
+
+Depois que a mudança for promovida a `main` pelo PR de release, o workflow `environment-hml-cleanup.yml` roda diariamente às 02:00 UTC como contingência independente para sessões HML expiradas. Ele procura uma única abertura HML na branch padrão que tenha iniciado uma mutação de infraestrutura e ainda não tenha fechamento bem-sucedido ou ativo. Se houver ambiguidade, abertura ainda ativa ou mais de uma sessão pendente, a descoberta falha sem iniciar destruição. A contingência espera o fim da janela normal de limpeza e então envia uma capability HML, assinada especificamente para emergência e vinculada ao fechamento solicitado, ao workflow `environment-stop.yml` em `develop`; esse workflow aplica o mesmo teardown coordenado com um prazo emergencial de 40 minutos e reserva 15 minutos para auditoria. A contingência não adquire o grupo de concorrência `environment-lifecycle`, pois o workflow de parada é responsável por esse bloqueio e a contingência aguarda sua conclusão.
 
 Antes do deploy, o ambiente precisa existir e publicar os parâmetros SSM documentados em [`infra/aws/README.md`](../infra/aws/README.md). O secret `auto-shop-secrets` é fornecido pelo mecanismo externo aprovado; nunca passe seu conteúdo por Terraform, logs ou artefatos. O job de CI busca do SSM o nome do cluster e os destinos S3/CloudFront. A role OIDC precisa do acesso ao namespace correspondente configurado no EKS.
 
@@ -56,7 +60,7 @@ O script `k8s/scripts/deploy.sh` cria o namespace, verifica as chaves do segredo
 
 O ConfigMap define `API_ROOT_PATH` como `/hml` ou `/prd`. O cliente valida JWT RS256 via JWKS publicado pela Lambda de autenticacao. O issuer, audience, CORS, URLs e as rotas publicas precisam permanecer coerentes entre a API, a Lambda e os dois frontends. `/docs`, `/redoc` e `/openapi.json` nao sao publicados pelo API Gateway. A API Gateway envia OPTIONS do token de cliente a Lambda e as rotas de sessao ao middleware CORS do backend.
 
-Ainda faltam a publicação do ARN da Lambda no SSM pela stack `lambda-auth`, a coordenação da sessão entre repositórios upstream, os fluxos de negócio em `hml` e `prd`, evidência de HPA no EKS e teardown sem órfãos. O smoke local em Kind valida manifests e comportamento local; não substitui essas evidências. A issue #87 permanece aberta.
+Ainda faltam a publicação do ARN da Lambda no SSM pela stack `lambda-auth`, a validação do ciclo completo entre repositórios upstream, os fluxos de negócio em `hml` e `prd`, evidência de HPA no EKS e comprovação de teardown sem órfãos. O smoke local em Kind valida manifests e comportamento local; não substitui essas evidências. A issue #87 permanece aberta até essas evidências serem registradas.
 
 ## Domínio e ativação
 
