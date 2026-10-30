@@ -116,7 +116,13 @@ jobs:
                 echo "Production-like overlay contains a local, HTTP, or unresolved value: ${environment}/${phase}"
                 exit 1
               fi
-              if [[ "$phase" == "app" ]] && grep -Eq '^[[:space:]]+replicas:' "$output"; then
+              if [[ "$phase" == "app" ]] && awk '
+                /^---$/ { kind = ""; name = ""; next }
+                /^kind: / { kind = $2 }
+                /^  name: / && kind == "Deployment" { name = $2 }
+                /^  replicas:/ && kind == "Deployment" && name == "auto-shop-backend" { found = 1 }
+                END { exit !found }
+              ' "$output"; then
                 echo "The HPA must own Deployment replicas in ${environment}/${phase}"
                 exit 1
               fi

@@ -161,10 +161,10 @@ def test_cd_workflows_check_anonymous_image_access_before_aws_authentication():
 
     for workflow_path in workflows:
         workflow = workflow_path.read_text(encoding="utf-8")
-        assert 'run: docker pull "${IMAGE_REFERENCE}"' in workflow
-        assert workflow.index("Verify image is pullable without credentials") < workflow.index(
-            "Configure AWS credentials (OIDC)"
-        )
+        assert "run: docker pull \"${IMAGE_REFERENCE}\"" in workflow
+        pull_check_index = workflow.index("Verify image is pullable without credentials")
+        aws_auth_index = workflow.index("Configure AWS credentials (OIDC)")
+        assert pull_check_index < aws_auth_index
 
 
 def test_ci_and_cd_kubernetes_tools_match_the_staging_baseline():
@@ -181,6 +181,7 @@ def test_ci_and_cd_kubernetes_tools_match_the_staging_baseline():
     assert "version: v1.37.1" in production_workflow
     assert ci_workflow.count("version: v0.32.0") == 2
     assert ci_workflow.count("node_image: kindest/node:v1.36.1") == 2
+    assert "name == \"auto-shop-backend\"" in ci_workflow
 
 
 def test_terraform_block_addresses_are_unique():
