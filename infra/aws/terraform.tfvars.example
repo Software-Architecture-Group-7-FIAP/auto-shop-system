@@ -5,6 +5,10 @@ environment  = "staging"
 # SSM prefix exported by the upstream network and Kubernetes stacks.
 upstream_ssm_prefix = "/auto-shop/staging"
 
+# Customer-auth token and JWKS routes use their stage-specific Lambda from SSM.
+# FastAPI routes use the stage-specific backend_base_url.
+backend_base_url = "https://api.oficina-workshop.com.br/hml"
+
 api_domain_name = "api.oficina-workshop.com.br"
 
 frontend_domains = {

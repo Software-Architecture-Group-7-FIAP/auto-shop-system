@@ -16,6 +16,7 @@ Este repositório contém a definição da infraestrutura. Isso não significa q
 - Logs de acesso da API e logs do WAF no CloudWatch.
 - Roles opcionais de GitHub OIDC separadas para deploy do backend e publicação do frontend.
 - EventBridge por stage, SNS para alertas por e-mail, DLQs SQS e roles IRSA para o publisher de falhas de OS (#117).
+- Roles opcionais de GitHub OIDC para deploy no Kubernetes, publicação do frontend e preflight read-only do ciclo de vida.
 
 ## Mapeamento dos ambientes
 
@@ -24,10 +25,11 @@ Este repositório contém a definição da infraestrutura. Isso não significa q
 | `staging` | `hml` | `auto-shop-hml` | `app-hml.oficina-workshop.com.br` |
 | `production` | `prd` | `auto-shop-prd` | `app.oficina-workshop.com.br` |
 
-A stack upstream precisa exportar os parâmetros abaixo sob `upstream_ssm_prefix` (padrão `/auto-shop/staging`):
+A stack upstream precisa exportar os parâmetros abaixo sob o prefixo fixo `/auto-shop/staging`, compartilhado com o preflight read-only da Lambda:
 
 - `network/vpc-id`
 - `network/workload-private-subnet-ids`
+- `network/lambda-security-group-id`
 - `eks/cluster-name`
 - `eks/oidc-provider-arn`
 - `gateway/internal-alb-arn`
@@ -38,9 +40,11 @@ A stack upstream precisa exportar os parâmetros abaixo sob `upstream_ssm_prefix
 
 Os fluxos de sessão do EKS e do banco são pré-requisitos separados para a issue #87 e precisam ser coordenados com os repositórios responsáveis.
 
-O contrato upstream publica um ARN de Lambda por stage: `/auth/customer-token/function-arn/hml` e `/auth/customer-token/function-arn/prd`. A API Gateway usa o ARN correspondente a `hml` ou `prd`; o plan depende que os dois parametros existam. A Lambda e publicada pelo repositorio `lambda-auth` e sua alteracao correspondente ainda precisa passar pelo PR upstream.
+Quando `enable_github_oidc = true`, esta stack também cria a role estável `auto-shop-staging-github-auth-preflight` e publica seu ARN no output `github_auth_preflight_role_arn`. O workflow de abertura constrói o ARN a partir da variável `AWS_ACCOUNT_ID`; não é necessário copiar um ARN para um secret. A trust policy exige o OIDC audience `sts.amazonaws.com` e o subject deste repositório no environment `operations`. A policy read-only permite somente `ssm:GetParameters` nos cinco contratos SSM de auth/rede usados pelo preflight e `lambda:GetFunctionConfiguration` nas funções `lambda-auth-hml` e `lambda-auth-prd`. A role não lê Secrets Manager, não altera recursos e não autoriza deploy.
 
-Há outra diferença de contrato a resolver antes de declarar a integração de JWT concluída: a ADR define o issuer na raiz do domínio da API, enquanto o JWKS é publicado sob os base paths `/hml` e `/prd`. Confirme que o Lambda emite esse issuer e que os dois documentos JWKS correspondem às chaves usadas nos tokens.
+O Terraform do repositório `lambda-auth` pode publicar um ARN por stage em `/auth/customer-token/function-arn/hml` e `/auth/customer-token/function-arn/prd`, usando `function_arn_ssm_parameter_name`. A publicação fica desativada por padrão; configure o caminho correspondente ao stage e use state separado para cada função. O API Gateway invoca a Lambda correspondente ao stage; o valor do ARN não é segredo.
+
+O contrato de cliente usa `iss=https://api.oficina-workshop.com.br` e `aud=auto-shop-api` nos dois stages. O issuer permanece na raiz da API; HML usa `https://api.oficina-workshop.com.br/hml/.well-known/jwks.json` e PRD usa `https://api.oficina-workshop.com.br/prd/.well-known/jwks.json`. Os overlays Kubernetes já declaram esses valores. Configure `jwt_issuer` e `jwt_audience` do Terraform `lambda-auth` com os mesmos valores; o módulo publica somente o ARN da função no SSM. Antes de habilitar deploy, o smoke da sessão deve confirmar que cada JWKS contém o `kid` ativo do token daquele stage.
 
 ## Entradas e revisão Terraform
 

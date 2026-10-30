@@ -58,7 +58,7 @@ locals {
           security_group_id = security_group_id
         }
       ]
-    ]) : rule.key => rule
+    ]) : rule.key => rule if var.enable_alb_security_group_rules
   }
 }
 

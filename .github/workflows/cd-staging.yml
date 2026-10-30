@@ -1,32 +1,125 @@
 name: CD Staging
+run-name: lifecycle:${{ inputs.session_id || format('push-{0}', github.run_id) }}:app-deploy:${{ inputs.lifecycle_dispatch_id || github.run_id }}
 
 on:
   push:
     branches: [develop]
+  workflow_dispatch:
+    inputs:
+      session_id:
+        description: Coordinator-provided HML session ID
+        required: true
+        type: string
+      started_at:
+        description: Coordinator-provided UTC session start, YYYY-MM-DDTHH:MM:SSZ
+        required: true
+        type: string
+      session_mode:
+        description: Authorized HML window
+        required: true
+        type: choice
+        options: [hml]
+      session_token:
+        description: Signed coordinator session capability; validation fails if missing.
+        required: false
+        type: string
+      lifecycle_dispatch_id:
+        description: Optional coordinator correlation ID.
+        required: false
+        type: string
 
 permissions:
   contents: read
-  packages: write
-  id-token: write
 
 concurrency:
   group: cd-staging-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  lifecycle-authorization:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate coordinator inputs and static HML gates
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_SESSION_ID: ${{ inputs.session_id }}
+          REQUESTED_STARTED_AT: ${{ inputs.started_at }}
+          REQUESTED_SESSION_MODE: ${{ inputs.session_mode }}
+          SESSION_MODE: ${{ inputs.session_mode }}
+          LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+          STAGING_ACTIVE: ${{ vars.STAGING_ACTIVE || 'false' }}
+          STAGING_SESSION_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
+          AUTHORIZED_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
+          DEPLOY_STAGING_ENABLED: ${{ vars.DEPLOY_STAGING_ENABLED || 'false' }}
+          DEPLOY_STAGING_FRONTEND_ENABLED: ${{ vars.DEPLOY_STAGING_FRONTEND_ENABLED || 'false' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            echo "Push builds do not deploy; environment changes require a coordinator-backed workflow_dispatch."
+            exit 0
+          fi
+          [[ "$DEPLOY_STAGING_ENABLED" == "true" && "$DEPLOY_STAGING_FRONTEND_ENABLED" == "true" ]] || {
+            echo "::error::Both HML backend and frontend deploy gates must be true."
+            exit 1
+          }
+          [[ "$STAGING_ACTIVE" == "true" && "$STAGING_SESSION_AUTHORIZED" == "true" && "$AUTHORIZED_SESSION_MODE" == "hml" ]] || {
+            echo "::error::HML static authorization gates are not enabled."
+            exit 1
+          }
+          [[ "$REQUESTED_SESSION_MODE" == "hml" ]] || { echo "::error::session_mode must be hml."; exit 1; }
+          ENVIRONMENT_ACTIVE="$STAGING_ACTIVE" \
+            ENVIRONMENT_WINDOW_AUTHORIZED="$STAGING_SESSION_AUTHORIZED" \
+            ENVIRONMENT_SESSION_ID="$REQUESTED_SESSION_ID" \
+            ENVIRONMENT_WINDOW_STARTED_AT="$REQUESTED_STARTED_AT" \
+            SESSION_MODE="$REQUESTED_SESSION_MODE" \
+            ENVIRONMENT_STAGE=hml \
+            python3 .github/scripts/validate_environment_window.py --action operate
+
   build-push:
+    needs: lifecycle-authorization
+    if: always() && (github.event_name == 'push' || needs.lifecycle-authorization.result == 'success')
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/reusable-build-push.yml
     secrets: inherit
 
   deploy-staging:
-    needs: build-push
-    if: vars.DEPLOY_STAGING_ENABLED == 'true'
+    needs: [build-push, lifecycle-authorization]
+    if: github.event_name == 'workflow_dispatch' && vars.DEPLOY_STAGING_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment: staging
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
     env:
       IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Require the authorized HML operating window
+        env:
+          ENVIRONMENT_ACTIVE: ${{ vars.STAGING_ACTIVE }}
+          ENVIRONMENT_WINDOW_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED }}
+          ENVIRONMENT_SESSION_ID: ${{ inputs.session_id }}
+          ENVIRONMENT_WINDOW_STARTED_AT: ${{ inputs.started_at }}
+          ENVIRONMENT_STAGE: hml
+          SESSION_MODE: ${{ inputs.session_mode }}
+          LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+        shell: bash
+        run: python3 .github/scripts/validate_environment_window.py --action operate
 
       - name: Verify image is pullable without credentials
         run: docker pull "${IMAGE_REFERENCE}"
@@ -95,6 +188,7 @@ jobs:
 
       - name: Deploy to staging
         env:
+          IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
           MIGRATION_DATABASE_SECRET_ARN: ${{ steps.eks.outputs.migration_secret_arn }}
           SERVICE_ORDER_EVENT_BUS_NAME: ${{ steps.eks.outputs.service_order_event_bus_name }}
           SERVICE_ORDER_PUBLISHER_ROLE_ARN: ${{ steps.eks.outputs.service_order_publisher_role_arn }}
@@ -102,16 +196,31 @@ jobs:
 
   deploy-staging-frontend:
     needs: deploy-staging
-    if: vars.DEPLOY_STAGING_FRONTEND_ENABLED == 'true'
+    if: github.event_name == 'workflow_dispatch' && vars.DEPLOY_STAGING_ENABLED == 'true' && vars.DEPLOY_STAGING_FRONTEND_ENABLED == 'true'
+    permissions:
+      contents: read
+      id-token: write
     uses: ./.github/workflows/reusable-frontend-deploy.yml
     with:
       github_environment: staging
       api_stage: hml
+      session_id: ${{ inputs.session_id }}
+      started_at: ${{ inputs.started_at }}
+      session_mode: ${{ inputs.session_mode }}
+      session_token: ${{ inputs.session_token }}
     secrets: inherit
 
+  deploy-staging-frontend-skipped:
+    needs: deploy-staging
+    if: always() && github.event_name == 'push' && vars.DEPLOY_STAGING_ENABLED == 'true' && vars.DEPLOY_STAGING_FRONTEND_ENABLED != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Frontend deployment gated
+        run: 'echo "Frontend staging deploy skipped: set DEPLOY_STAGING_FRONTEND_ENABLED=true after approval."'
+
   deploy-staging-skipped:
-    needs: build-push
-    if: vars.DEPLOY_STAGING_ENABLED != 'true'
+    needs: [build-push, lifecycle-authorization]
+    if: always() && github.event_name == 'push' && vars.DEPLOY_STAGING_ENABLED != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Deploy gated until staging infra (#87)
@@ -122,3 +231,11 @@ jobs:
           echo "Deploy staging ignorado: defina a variável de repositório DEPLOY_STAGING_ENABLED=true."
           echo "No Environment staging: AWS_REGION e o secret AWS_DEPLOY_ROLE_ARN; o nome do cluster vem do SSM."
           echo "Ver .github/CD.md"
+
+  push-deploy-gated:
+    needs: [build-push, lifecycle-authorization]
+    if: always() && github.event_name == 'push' && vars.DEPLOY_STAGING_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep HML changes behind the lifecycle coordinator
+        run: echo "Push build completed; HML deploy requires workflow_dispatch with a validated session_id, started_at, and session_mode."

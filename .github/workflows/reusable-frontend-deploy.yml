@@ -11,6 +11,22 @@ on:
         description: API stage selected by this frontend distribution's API origin.
         required: true
         type: string
+      session_id:
+        description: Coordinator-provided session identifier.
+        required: true
+        type: string
+      started_at:
+        description: Coordinator-provided UTC session start.
+        required: true
+        type: string
+      session_mode:
+        description: Coordinator-authorized session mode.
+        required: true
+        type: string
+      session_token:
+        description: Signed coordinator session capability.
+        required: true
+        type: string
       ssm_parameter_prefix:
         description: Prefix containing the stage-specific S3 and CloudFront deployment targets.
         required: false
@@ -24,6 +40,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment:
       name: ${{ inputs.github_environment }}
     defaults:
@@ -31,6 +48,29 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Require the authorized environment operating window
+        env:
+          ENVIRONMENT_ACTIVE: ${{ inputs.github_environment == 'staging' && vars.STAGING_ACTIVE || vars.ENVIRONMENT_ACTIVE }}
+          ENVIRONMENT_WINDOW_AUTHORIZED: ${{ inputs.github_environment == 'staging' && vars.STAGING_SESSION_AUTHORIZED || vars.ENVIRONMENT_WINDOW_AUTHORIZED }}
+          ENVIRONMENT_SESSION_ID: ${{ inputs.session_id }}
+          ENVIRONMENT_WINDOW_STARTED_AT: ${{ inputs.started_at }}
+          ENVIRONMENT_STAGE: ${{ inputs.api_stage }}
+          SESSION_MODE: ${{ inputs.session_mode }}
+          LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          local_hour="$(TZ=America/Sao_Paulo date +%H)"
+          if [[ "${ENVIRONMENT_STAGE}" == "prd" && "${local_hour}" -lt 7 ]]; then
+            action=start
+          else
+            action=operate
+          fi
+          python3 .github/scripts/validate_environment_window.py --action "${action}"
 
       - uses: actions/setup-node@v4
         with:

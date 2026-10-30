@@ -10,6 +10,8 @@ locals {
     "health/*",
     ".well-known/*",
   ])
+
+  api_origin_domain = var.enable_custom_domains ? var.api_domain_name : "${aws_api_gateway_rest_api.main.id}.execute-api.${data.aws_region.current.region}.amazonaws.com"
 }
 
 resource "aws_s3_bucket" "frontend" {
@@ -34,6 +36,49 @@ resource "aws_s3_bucket_public_access_block" "frontend" {
   restrict_public_buckets = true
 }
 
+resource "aws_s3_bucket_ownership_controls" "frontend" {
+  for_each = local.api_stages
+
+  bucket = aws_s3_bucket.frontend[each.key].id
+
+  rule {
+    object_ownership = "BucketOwnerEnforced"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "frontend" {
+  for_each = local.api_stages
+
+  bucket = aws_s3_bucket.frontend[each.key].id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "frontend" {
+  for_each = local.api_stages
+
+  bucket = aws_s3_bucket.frontend[each.key].id
+
+  rule {
+    id     = "expire-replaced-frontend-assets"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 7
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.frontend]
+}
+
 resource "aws_s3_bucket_server_side_encryption_configuration" "frontend" {
   for_each = local.api_stages
 
@@ -52,6 +97,39 @@ resource "aws_cloudfront_origin_access_control" "frontend" {
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
+}
+
+resource "aws_cloudfront_response_headers_policy" "security" {
+  name    = "${local.name_prefix}-frontend-security-headers"
+  comment = "Browser security headers for the Auto Shop frontend and proxied API."
+
+  security_headers_config {
+    content_security_policy {
+      content_security_policy = "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+      override                = true
+    }
+
+    content_type_options {
+      override = true
+    }
+
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+
+    referrer_policy {
+      referrer_policy = "strict-origin-when-cross-origin"
+      override        = true
+    }
+
+    strict_transport_security {
+      access_control_max_age_sec = 31536000
+      include_subdomains         = true
+      preload                    = true
+      override                   = true
+    }
+  }
 }
 
 resource "aws_cloudfront_function" "spa_rewrite" {
@@ -95,7 +173,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   }
 
   origin {
-    domain_name = var.enable_custom_domains ? var.api_domain_name : "${aws_api_gateway_rest_api.main.id}.execute-api.${var.aws_region}.amazonaws.com"
+    domain_name = local.api_origin_domain
     origin_id   = "api-gateway-${each.key}"
     origin_path = "/${each.key}"
 
@@ -108,12 +186,13 @@ resource "aws_cloudfront_distribution" "frontend" {
   }
 
   default_cache_behavior {
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "frontend-s3-${each.key}"
-    viewer_protocol_policy = "redirect-to-https"
-    compress               = true
-    cache_policy_id        = local.cloudfront_cache_policy_ids.caching_optimized
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD"]
+    target_origin_id           = "frontend-s3-${each.key}"
+    viewer_protocol_policy     = "redirect-to-https"
+    compress                   = true
+    cache_policy_id            = local.cloudfront_cache_policy_ids.caching_optimized
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
 
     function_association {
       event_type   = "viewer-request"
@@ -125,14 +204,15 @@ resource "aws_cloudfront_distribution" "frontend" {
     for_each = local.frontend_api_paths
 
     content {
-      path_pattern             = ordered_cache_behavior.value
-      allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
-      cached_methods           = ["GET", "HEAD"]
-      target_origin_id         = "api-gateway-${each.key}"
-      viewer_protocol_policy   = "redirect-to-https"
-      compress                 = true
-      cache_policy_id          = local.cloudfront_cache_policy_ids.caching_disabled
-      origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+      path_pattern               = ordered_cache_behavior.value
+      allowed_methods            = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+      cached_methods             = ["GET", "HEAD"]
+      target_origin_id           = "api-gateway-${each.key}"
+      viewer_protocol_policy     = "redirect-to-https"
+      compress                   = true
+      cache_policy_id            = local.cloudfront_cache_policy_ids.caching_disabled
+      origin_request_policy_id   = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+      response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
     }
   }
 
@@ -172,6 +252,28 @@ data "aws_iam_policy_document" "frontend_bucket" {
       test     = "StringEquals"
       variable = "AWS:SourceArn"
       values   = [aws_cloudfront_distribution.frontend[each.key].arn]
+    }
+  }
+
+
+  statement {
+    sid     = "DenyInsecureTransport"
+    effect  = "Deny"
+    actions = ["s3:*"]
+    resources = [
+      aws_s3_bucket.frontend[each.key].arn,
+      "${aws_s3_bucket.frontend[each.key].arn}/*",
+    ]
+
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["false"]
     }
   }
 }

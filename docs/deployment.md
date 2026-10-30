@@ -48,7 +48,7 @@ O pipeline atual funciona assim:
 | Push em `develop` | `staging` | `auto-shop-hml` | `hml` | `app-hml.oficina-workshop.com.br` |
 | Push em `main` | `production` | `auto-shop-prd` | `prd` | `app.oficina-workshop.com.br` |
 
-Os workflows publicam a imagem do backend no GHCR. O deploy do backend só roda quando `DEPLOY_STAGING_ENABLED` ou `DEPLOY_PRODUCTION_ENABLED` está ligado no repositório. O deploy do frontend exige também o gate separado `DEPLOY_STAGING_FRONTEND_ENABLED` ou `DEPLOY_PRODUCTION_FRONTEND_ENABLED`; mantenha esses gates ausentes ou `false` até a publicação do frontend ser autorizada. Habilitar o deploy do backend não publica o frontend. Mantenha os gates do backend desligados até a infraestrutura, os GitHub Environments e os smoke checks necessários estarem prontos. O fluxo `session-up`/`session-down` e o teardown agendado pedidos pela issue #87 ainda não estão implementados neste repositório.
+Os workflows publicam a imagem do backend no GHCR. O deploy do backend só roda por `workflow_dispatch` com sessão validada e quando `DEPLOY_STAGING_ENABLED` ou `DEPLOY_PRODUCTION_ENABLED` está ligado no repositório. O deploy do frontend exige também o gate separado `DEPLOY_STAGING_FRONTEND_ENABLED` ou `DEPLOY_PRODUCTION_FRONTEND_ENABLED`; mantenha esses gates ausentes ou `false` até a publicação do frontend ser autorizada. Habilitar o deploy do backend não publica o frontend. Mantenha os gates do backend desligados até a infraestrutura, os GitHub Environments e os smoke checks necessários estarem prontos. Os workflows de abertura, health check e encerramento da issue #87 estão implementados; o ciclo completo ainda depende da infraestrutura e dos contratos upstream.
 
 Antes do deploy, o ambiente precisa existir e publicar os parâmetros SSM documentados em [`infra/aws/README.md`](../infra/aws/README.md). O secret `auto-shop-secrets` é fornecido pelo mecanismo externo aprovado; nunca passe seu conteúdo por Terraform, logs ou artefatos. O job de backend lê do SSM o cluster e os parâmetros de migrations/EventBridge; o job de frontend lê separadamente os destinos S3/CloudFront. As roles OIDC são distintas: a role de backend recebe acesso ao namespace correspondente no EKS, sem permissão de publicação do frontend.
 
@@ -56,13 +56,17 @@ O script `k8s/scripts/deploy.sh` cria o namespace, valida as chaves do segredo d
 
 O ConfigMap define `API_ROOT_PATH` como `/hml` ou `/prd`. O cliente valida JWT RS256 via JWKS publicado pela Lambda de autenticacao. O issuer, audience, CORS, URLs e as rotas publicas precisam permanecer coerentes entre a API, a Lambda e os dois frontends. `/docs`, `/redoc` e `/openapi.json` nao sao publicados pelo API Gateway. A API Gateway envia OPTIONS do token de cliente a Lambda e as rotas de sessao ao middleware CORS do backend.
 
-Ainda faltam a publicação do ARN da Lambda no SSM pela stack `lambda-auth`, a coordenação da sessão entre repositórios upstream, os fluxos de negócio em `hml` e `prd`, evidência de HPA no EKS e teardown sem órfãos. O smoke local em Kind valida manifests e comportamento local; não substitui essas evidências. A issue #87 permanece aberta.
+Ainda faltam provisionar os recursos AWS e parâmetros SSM, publicar os registros DNS e validar os certificados ACM, executar os fluxos de negócio em HML, registrar evidência do HPA no EKS e comprovar teardown sem órfãos. A integração de ARN da Lambda por stage está implementada no Terraform, mas os parâmetros ainda não existem na conta. O smoke local em Kind valida manifests e comportamento local; não substitui essas evidências. A issue #87 permanece aberta.
 
 ## Domínio e ativação
 
 O código Terraform mantém `enable_custom_domains = false` até que os CNAMEs de validação ACM estejam publicados no Registro.br. Depois da validação do certificado, o plano deve incluir o domínio `api.oficina-workshop.com.br`, base paths `hml`/`prd` e aliases CloudFront dos dois frontends. Faça os smoke checks públicos nos dois stages e só então avalie desabilitar o endpoint `execute-api` em um plano separado.
 
 Não existe autorização implícita para `terraform apply` ou deploy. Antes de qualquer sessão AWS, confira custo, região, conta, recursos e teardown conforme o ADR-0064; cada apply exige validação específica. O custo por sessão ainda precisa incluir CloudFront/S3, WAFs, ACM/domínio e o ciclo completo de criação e destruição.
+
+## Registry visibility decision
+
+The GHCR package is intended to remain public. Build workflows publish immutable `sha-<commit>` images. Before requesting AWS credentials, deploy workflows verify anonymous GHCR access; EKS nodes pull that same public image directly. Deploy jobs need no `packages: read` permission, ECR mirror, registry credential, or Kubernetes `imagePullSecret`. The existing ECR repository and images are legacy artifacts and remain untouched until a separate retention review. Keep deployment gates disabled until the anonymous pull check succeeds.
 
 ## Terraform local
 

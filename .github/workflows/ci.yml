@@ -41,6 +41,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Test staging session validator
+        run: python -m unittest discover -s .github/scripts -p 'test_*.py'
       - name: Install Poetry
         run: pipx install poetry
       - name: Validate lock file
@@ -101,14 +103,17 @@ jobs:
           set -euo pipefail
           image_reference="${IMAGE_REFERENCE,,}"
           for environment in local staging production; do
-            for phase in foundation migration app ingress; do
+            for phase in foundation migration seed app ingress; do
               output="$(mktemp)"
               kubectl kustomize "k8s/overlays/${environment}/${phase}" \
                 | sed "s#registry.example.com/auto-shop-system:__IMAGE_TAG__#${image_reference}#g" \
                 | sed "s#__SERVICE_ORDER_EVENT_BUS_NAME__#auto-shop-service-orders-${environment}#g" \
                 | sed "s#__SERVICE_ORDER_PUBLISHER_ROLE_ARN__#arn:aws:iam::000000000000:role/ci-placeholder#g" \
+                | sed \
+                  -e "s#registry.example.com/auto-shop-system:__IMAGE_TAG__#${image_reference}#g" \
+                  -e 's#__ALLOW_SYNTHETIC_SEED_IN_PRD__#"false"#g' \
                 > "$output"
-              if grep -Eiq 'secrets\.example|:latest' "$output"; then
+              if grep -Eiq 'secrets\.example|:latest|__ALLOW_SYNTHETIC_SEED_IN_PRD__' "$output"; then
                 echo "Unsafe value found in ${environment}/${phase}"
                 exit 1
               fi
@@ -296,9 +301,11 @@ jobs:
           trap 'rm -f "$secret_file"' EXIT
           db_password="$(openssl rand -hex 24)"
           secret_key="$(openssl rand -hex 32)"
+          demo_admin_password="$(openssl rand -hex 32)"
           {
             printf 'DATABASE_URL=postgresql://oficina:%s@postgres-service:5432/oficina\n' "$db_password"
             printf 'DB_NAME=oficina\nDB_USER=oficina\nDB_PASSWORD=%s\n' "$db_password"
+            printf 'DEMO_ADMIN_PASSWORD=%s\n' "$demo_admin_password"
             printf 'SECRET_KEY=%s\nINVERTEXTO_API_TOKEN=local-ci-token\nSMTP_USER=\nSMTP_PASSWORD=\n' "$secret_key"
           } > "$secret_file"
           kubectl apply -k k8s/overlays/local/foundation
@@ -310,6 +317,8 @@ jobs:
           kubectl wait --for=condition=available deployment/postgres --namespace auto-shop --timeout=180s
           kubectl apply -k k8s/overlays/local/migration
           kubectl wait --for=condition=complete job/auto-shop-migrate --namespace auto-shop --timeout=300s
+          kubectl apply -k k8s/overlays/local/seed
+          kubectl wait --for=condition=complete job/auto-shop-seed --namespace auto-shop --timeout=300s
           kubectl apply -k k8s/overlays/local/app
           kubectl rollout status deployment/auto-shop-backend --namespace auto-shop --timeout=300s
           kubectl apply -k k8s/overlays/local/ingress

@@ -232,7 +232,8 @@ Todos os parâmetros abaixo são Standard `String` ou `StringList`, região `us-
 | `/auto-shop/staging/domain/api-url` | `String` | `k8s-infra` | app, `lambda-auth` e `auto-shop-system/infra/aws` |
 | `/auto-shop/staging/domain/frontend-url` | `String` | `k8s-infra` | app e pipeline de publicação do Angular |
 | `/auto-shop/staging/gateway/internal-alb-listener-arn` | `String` | `k8s-infra` após criar o ALB | `auto-shop-system/infra/aws` para a integração VPC Link |
-| `/auto-shop/staging/auth/customer-token/function-arn` | `String` | `lambda-auth` | `auto-shop-system/infra/aws` para integração direta do API Gateway |
+| `/auto-shop/staging/auth/customer-token/function-arn/hml` | `String` | `lambda-auth` | `auto-shop-system/infra/aws` para integração direta do API Gateway HML |
+| `/auto-shop/staging/auth/customer-token/function-arn/prd` | `String` | `lambda-auth` | `auto-shop-system/infra/aws` para integração direta do API Gateway PRD |
 | `/auto-shop/staging/database/host` | `String` | `database-infra` | workflows de deploy de `k8s-infra` e `lambda-auth` materializam a configuração da aplicação/Lambda |
 | `/auto-shop/staging/database/port` | `String` | `database-infra` | workflows de deploy de `k8s-infra` e `lambda-auth` |
 | `/auto-shop/staging/database/security-group-id` | `String` | `database-infra` | `lambda-auth` para validar a regra de rede; infraestrutura de aplicação se necessário |
@@ -248,9 +249,6 @@ Todos os parâmetros abaixo são Standard `String` ou `StringList`, região `us-
 | `/auto-shop/staging/database/iam/migrations-prd-read-policy-arn` | `String` | `database-infra` | role de Pod Identity para migrations PRD, limitada ao secret PRD |
 | `/auto-shop/staging/database/iam/lambda-read-policy-arn/hml` | `String` | `database-infra` | role da Lambda hml em `lambda-auth` |
 | `/auto-shop/staging/database/iam/lambda-read-policy-arn/prd` | `String` | `database-infra` | role da Lambda prd em `lambda-auth` |
-| `/auto-shop/staging/auth/customer-jwt/issuer` | `String` | `lambda-auth` | aplicação valida `CUSTOMER_JWT_ISSUER` |
-| `/auto-shop/staging/auth/customer-jwt/audience` | `String` | `lambda-auth` | aplicação valida `CUSTOMER_JWT_AUDIENCE` |
-| `/auto-shop/staging/auth/customer-jwt/jwks-url` | `String` | `lambda-auth` | aplicação valida JWT via `CUSTOMER_JWT_JWKS_URL` |
 | `/auto-shop/staging/events/service-order-bus-name` | `String` | `auto-shop-system/infra/aws` | aplicação; seu IAM só recebe `events:PutEvents` no ARN do bus |
 | `/auto-shop/staging/events/service-order-bus-name/prd` | `String` | `auto-shop-system/infra/aws` | aplicação PRD; seu IAM só recebe `events:PutEvents` no ARN do bus PRD |
 | `/auto-shop/staging/events/service-order-publisher-role-arn/hml` | `String` | `auto-shop-system/infra/aws` | pipeline lê o ARN e injeta na ServiceAccount da aplicação HML |
@@ -264,7 +262,7 @@ O bucket S3 privado de state em `us-east-1` usa Block Public Access, versionamen
 
 ### Identidade JWT e entrada pública
 
-O contrato do JWT de cliente fica alinhado nos dois repositórios: issuer `https://api.oficina-workshop.com.br`, audience `auto-shop-api`, JWKS `https://api.oficina-workshop.com.br/.well-known/jwks.json`, algoritmo RS256 com assinatura em KMS e `kid` igual no token e no JWKS. Criar uma chave de assinatura por sessão e usar `kid=staging-<session-id>` único; tokens não sobrevivem ao teardown. No teardown, agendar exclusão da chave KMS com a janela mínima de sete dias; ela fica desabilitada durante a espera. A AWS não cobra armazenamento mensal por uma chave marcada para exclusão; contabilizar as chamadas KMS que excedam a faixa gratuita. RDS/Secrets Manager usam as chaves gerenciadas pela AWS quando compatíveis, evitando CMKs adicionais. A aplicação consome as referências públicas do SSM, nunca a chave privada. A chave KMS e os segredos de banco não são publicados no SSM.
+O contrato JWT de cliente usa issuer `https://api.oficina-workshop.com.br` e audience `auto-shop-api` nos dois stages. O JWKS é específico por stage: `https://api.oficina-workshop.com.br/hml/.well-known/jwks.json` em HML e `https://api.oficina-workshop.com.br/prd/.well-known/jwks.json` em PRD. O issuer permanece na raiz do domínio; os base paths selecionam o conjunto de chaves. A Lambda assina RS256 com KMS e o `kid` do token deve existir no JWKS daquele stage. Esses valores são configuração pública dos overlays Kubernetes; `lambda-auth` publica somente o ARN da função no SSM. Criar uma chave de assinatura por sessão e usar `kid=staging-<session-id>` único; tokens não sobrevivem ao teardown. No teardown, agendar exclusão da chave KMS com a janela mínima de sete dias; ela fica desabilitada durante a espera. A AWS não cobra armazenamento mensal por uma chave marcada para exclusão; contabilizar as chamadas KMS que excedam a faixa gratuita. RDS/Secrets Manager usam as chaves gerenciadas pela AWS quando compatíveis, evitando CMKs adicionais. A aplicação nunca consome nem publica a chave privada.
 
 O Angular usa `https://app-hml.oficina-workshop.com.br` em homologação e `https://app.oficina-workshop.com.br` em produção; CORS permite somente a origem do ambiente correspondente. O API Gateway usa `api.oficina-workshop.com.br` com base paths separados para `hml` e `prd`. CloudFront serve os arquivos de cada ambiente de seu bucket S3 privado via OAC. O certificado ACM anexado ao CloudFront fica em `us-east-1` e cobre os aliases usados; certificados regionais do API Gateway/ALB são independentes quando necessário. DNS ficará no Registro.br; validar delegação e registros atuais antes de publicar os CNAMEs de validação e destino. Desabilitar `execute-api` somente após domínio e smoke test ativos.
 

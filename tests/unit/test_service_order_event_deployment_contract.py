@@ -61,14 +61,6 @@ def test_kubernetes_deploy_injects_only_the_resolved_bus_and_irsa_role():
     assert "SERVICE_ORDER_PUBLISHER_ROLE_ARN" in production_workflow
     assert "__SERVICE_ORDER_EVENT_BUS_NAME__" in ci_workflow
     assert "__SERVICE_ORDER_PUBLISHER_ROLE_ARN__" in ci_workflow
-    assert (
-        "if: vars.DEPLOY_STAGING_FRONTEND_ENABLED == 'true'"
-        in staging_workflow
-    )
-    assert (
-        "if: vars.DEPLOY_PRODUCTION_FRONTEND_ENABLED == 'true'"
-        in production_workflow
-    )
     staging_frontend_job = staging_workflow.split("deploy-staging-frontend:", 1)[1].split(
         "deploy-staging-skipped:", 1
     )[0]
@@ -77,8 +69,14 @@ def test_kubernetes_deploy_injects_only_the_resolved_bus_and_irsa_role():
     )[0]
     assert "needs: deploy-staging" in staging_frontend_job
     assert "needs: deploy-production" in production_frontend_job
-    assert "DEPLOY_STAGING_ENABLED == 'true'" not in staging_frontend_job
-    assert "DEPLOY_PRODUCTION_ENABLED == 'true'" not in production_frontend_job
+    assert (
+        "if: github.event_name == 'workflow_dispatch' && vars.DEPLOY_STAGING_ENABLED == 'true'"
+        " && vars.DEPLOY_STAGING_FRONTEND_ENABLED == 'true'"
+    ) in staging_frontend_job
+    assert (
+        "if: github.event_name == 'workflow_dispatch' && vars.DEPLOY_PRODUCTION_ENABLED == 'true'"
+        " && vars.DEPLOY_PRODUCTION_FRONTEND_ENABLED == 'true'"
+    ) in production_frontend_job
     assert "[A-Za-z0-9][A-Za-z0-9_-]{0,99}" in staging_workflow
     assert "[A-Za-z0-9][A-Za-z0-9_-]{0,99}" in production_workflow
     assert "secret:[A-Za-z0-9/_+=.@-]+$" in staging_workflow

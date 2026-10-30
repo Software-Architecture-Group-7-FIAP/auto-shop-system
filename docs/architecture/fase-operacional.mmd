@@ -3,7 +3,7 @@ flowchart TB
         PR["Pull request → develop/main"]
         CI["ci.yml<br/>testes, segurança, gateway,<br/>Terraform K8s/AWS, smoke, frontend"]
         Merge["Merge"]
-        CD["cd-staging / cd-prod<br/>GHCR sha-tag + deploy.sh"]
+        CD["cd-staging / cd-prod<br/>GHCR sha-tag + ECR mirror + deploy.sh"]
         PR --> CI --> Merge --> CD
     end
 
@@ -53,7 +53,9 @@ flowchart TB
     LLogin -->|"gateway-login HS256 aud=gateway"| POD
     LCustomer -.->|"RS256 aud=auto-shop-api"| POD
 
-    GHCR --> POD
+    GHCR --> ECR
+    ECR[("Private ECR<br/>auto-shop-system:sha-…")]
+    ECR --> POD
     POD --> PG
     POD --> EB
     POD --> LOGS
