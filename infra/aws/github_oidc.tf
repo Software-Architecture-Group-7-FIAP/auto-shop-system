@@ -14,9 +14,9 @@ variable "github_repository" {
 }
 
 variable "auth_lambda_function_name" {
-  description = "Base function name published by lambda-auth; environment suffixes homolog and prod are appended."
+  description = "Base function name published by lambda-auth; environment suffixes hml and prd are appended."
   type        = string
-  default     = "customer-cpf-auth"
+  default     = "lambda-auth"
 
   validation {
     condition     = can(regex("^[A-Za-z0-9_-]{1,46}$", var.auth_lambda_function_name))
@@ -183,8 +183,8 @@ data "aws_iam_policy_document" "github_auth_preflight" {
     effect  = "Allow"
     actions = ["lambda:GetFunctionConfiguration"]
     resources = [
-      "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${var.auth_lambda_function_name}-homolog",
-      "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${var.auth_lambda_function_name}-prod",
+      "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${var.auth_lambda_function_name}-hml",
+      "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${var.auth_lambda_function_name}-prd",
     ]
   }
 }

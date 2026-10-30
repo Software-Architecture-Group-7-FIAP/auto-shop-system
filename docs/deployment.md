@@ -66,7 +66,7 @@ Não existe autorização implícita para `terraform apply` ou deploy. Antes de 
 
 ## Registry visibility decision
 
-The GHCR package remains private. Authorized deployment jobs read the immutable `sha-<commit>` image with a read-only `GITHUB_TOKEN`, verify its source revision, and mirror it to the private ECR repository `auto-shop-system` with the GitHub OIDC deployment role. The EKS nodes pull the ECR image through their AWS identity; no long-lived GHCR token or Kubernetes `imagePullSecret` is needed. The private ECR lifecycle policy retains the ten most recent SHA-tagged images.
+The GHCR package remains public. Build workflows publish immutable `sha-<commit>` images. Before requesting AWS credentials, each deploy workflow checks anonymous GHCR manifest access with `docker manifest inspect`; the EKS nodes then pull the same public GHCR image directly. Deployment jobs need no `packages: read` permission, ECR mirror, registry credential, or Kubernetes `imagePullSecret`. The existing ECR repository and its images are legacy artifacts and remain untouched until a separate retention review.
 
 ## Terraform local
 

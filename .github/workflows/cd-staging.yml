@@ -101,7 +101,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      packages: read
     env:
       IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
     steps:
@@ -122,21 +121,20 @@ jobs:
         shell: bash
         run: python3 .github/scripts/validate_environment_window.py --action operate
 
+      - name: Require anonymous access to the public GHCR release image
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! docker manifest inspect "$IMAGE_REFERENCE" >/dev/null; then
+            echo "::error::The release image must be publicly readable from GHCR before AWS credentials are requested."
+            exit 1
+          fi
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-
-      - name: Mirror the private release image to ECR
-        id: ecr_image
-        env:
-          AWS_REGION: ${{ vars.AWS_REGION }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          image_reference="$(python3 scripts/mirror_ghcr_image_to_ecr.py "$IMAGE_REFERENCE")"
-          echo "image_reference=$image_reference" >> "$GITHUB_OUTPUT"
 
       - uses: azure/setup-kubectl@v4
         with:
@@ -174,7 +172,6 @@ jobs:
 
       - name: Deploy to staging
         env:
-          IMAGE_REFERENCE: ${{ steps.ecr_image.outputs.image_reference }}
           MIGRATION_DATABASE_SECRET_ARN: ${{ steps.eks.outputs.migration_secret_arn }}
         run: ./k8s/scripts/deploy.sh staging "${IMAGE_REFERENCE}"
 

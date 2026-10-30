@@ -26,7 +26,7 @@ DATABASE_SECRET_IDS = {
     "hml": "auto-shop/staging/hml/lambda-auth",
     "prd": "auto-shop/staging/prd/lambda-auth",
 }
-LAMBDA_ENVIRONMENTS = {"hml": "homolog", "prd": "prod"}
+LAMBDA_ENVIRONMENTS = {"hml": "hml", "prd": "prd"}
 ACCOUNT_ID_PATTERN = re.compile(r"^[0-9]{12}$")
 VPC_ID_PATTERN = re.compile(r"^vpc-[0-9a-f]{8,17}$")
 SUBNET_ID_PATTERN = re.compile(r"^subnet-[0-9a-f]{8,17}$")
