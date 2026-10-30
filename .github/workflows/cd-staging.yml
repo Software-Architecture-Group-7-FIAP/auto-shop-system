@@ -1,0 +1,40 @@
+name: HML application deployment dispatch contract
+run-name: HML application deployment contract (${{ github.ref }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_id:
+        description: Coordinator-provided HML session ID.
+        required: true
+        type: string
+      started_at:
+        description: Coordinator-provided UTC session start.
+        required: true
+        type: string
+      session_mode:
+        description: Authorized HML window.
+        required: true
+        type: choice
+        options: [hml]
+      session_token:
+        description: Signed coordinator session capability.
+        required: false
+        type: string
+      lifecycle_dispatch_id:
+        description: Optional coordinator correlation ID.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  reject-default-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the lifecycle workflow from develop
+        shell: bash
+        run: |
+          echo "::error::Dispatch this workflow on the develop branch. The default-branch contract performs no AWS actions."
+          exit 1

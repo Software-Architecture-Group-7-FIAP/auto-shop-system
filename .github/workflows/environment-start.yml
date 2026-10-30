@@ -1,0 +1,28 @@
+name: HML lifecycle start dispatch contract
+run-name: HML start dispatch contract (${{ github.ref }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: HML sessions only. Select develop to run the lifecycle workflow.
+        required: true
+        type: choice
+        options: [hml]
+      started_at:
+        description: Optional UTC session start.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  reject-default-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the lifecycle workflow from develop
+        shell: bash
+        run: |
+          echo "::error::Dispatch this workflow on the develop branch. The default-branch contract performs no AWS actions."
+          exit 1

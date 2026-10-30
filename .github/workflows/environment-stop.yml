@@ -1,0 +1,45 @@
+name: HML lifecycle stop dispatch contract
+run-name: HML stop dispatch contract (${{ github.ref }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: HML sessions only.
+        required: false
+        default: hml
+        type: choice
+        options: [hml]
+      session_id:
+        description: Coordinator-provided session identifier.
+        required: false
+        type: string
+      started_at:
+        description: Coordinator-provided UTC session start.
+        required: false
+        type: string
+      close_request_id:
+        description: Unique caller ID for an automatic close request.
+        required: false
+        type: string
+      session_token:
+        description: Signed coordinator session capability.
+        required: false
+        type: string
+      lifecycle_dispatch_id:
+        description: Optional lifecycle correlation ID.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  reject-default-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the lifecycle workflow from develop
+        shell: bash
+        run: |
+          echo "::error::Dispatch this workflow on the develop branch. The default-branch contract performs no AWS actions."
+          exit 1
