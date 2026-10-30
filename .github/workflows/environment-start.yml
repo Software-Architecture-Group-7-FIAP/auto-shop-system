@@ -380,10 +380,11 @@ jobs:
           STARTED_AT: ${{ steps.window.outputs.started_at }}
           SESSION_MODE: ${{ steps.window.outputs.session_mode }}
           WORK_DEADLINE: ${{ steps.window.outputs.stage == 'prd' && steps.window.outputs.health_alert_deadline_utc || steps.window.outputs.work_deadline_utc }}
+          HEALTH_REF: ${{ steps.window.outputs.stage == 'prd' && 'main' || 'develop' }}
           HEALTH_TITLE: lifecycle:${{ steps.window.outputs.session_id }}:health:${{ steps.window.outputs.stage }}
         run: >-
           python3 .github/scripts/cross_repo_lifecycle.py
-          --repository "$GITHUB_REPOSITORY" --workflow environment-health.yml --ref main
+          --repository "$GITHUB_REPOSITORY" --workflow environment-health.yml --ref "$HEALTH_REF"
           --expected-title "$HEALTH_TITLE"
           --inputs "{\"stage\":\"$STAGE\",\"started_at\":\"$STARTED_AT\",\"session_id\":\"$SESSION_ID\",\"session_mode\":\"$SESSION_MODE\"}"
           --github-output "$GITHUB_OUTPUT" --output-name health --timeout-seconds 900 --deadline-utc "$WORK_DEADLINE"
@@ -499,7 +500,7 @@ jobs:
       - name: Dispatch and wait for the HML full close lifecycle
         run: >-
           python3 .github/scripts/cross_repo_lifecycle.py
-          --repository "$GITHUB_REPOSITORY" --workflow environment-stop.yml --ref main
+          --repository "$GITHUB_REPOSITORY" --workflow environment-stop.yml --ref develop
           --expected-title "lifecycle:hml:close:$SESSION_ID:$CLOSE_REQUEST_ID"
           --inputs "{\"stage\":\"hml\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"close_request_id\":\"$CLOSE_REQUEST_ID\"}"
           --github-output "$GITHUB_OUTPUT" --output-name hml_close --timeout-seconds 3600
