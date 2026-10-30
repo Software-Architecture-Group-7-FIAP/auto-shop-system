@@ -26,9 +26,14 @@ variable "environment" {
 }
 
 variable "upstream_ssm_prefix" {
-  description = "SSM prefix exported by the upstream staging stacks."
+  description = "Fixed SSM prefix exported by the upstream staging stacks and read by the auth preflight role."
   type        = string
   default     = "/auto-shop/staging"
+
+  validation {
+    condition     = var.upstream_ssm_prefix == "/auto-shop/staging"
+    error_message = "upstream_ssm_prefix must match the shared /auto-shop/staging contract used by the auth preflight."
+  }
 }
 
 variable "backend_base_url" {
@@ -95,6 +100,12 @@ variable "waf_rate_limit" {
   description = "WAF rate-based rule limit per 5-minute window per IP for the customer token endpoint."
   type        = number
   default     = 100
+}
+
+variable "enable_alb_security_group_rules" {
+  description = "Manage the API Gateway VPC Link and internal ALB listener security-group references. Disable only during the coordinated overnight maintenance window."
+  type        = bool
+  default     = true
 }
 
 variable "enable_waf_managed_rules" {

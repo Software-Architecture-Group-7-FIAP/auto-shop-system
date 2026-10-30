@@ -64,6 +64,10 @@ O código Terraform mantém `enable_custom_domains = false` até que os CNAMEs d
 
 Não existe autorização implícita para `terraform apply` ou deploy. Antes de qualquer sessão AWS, confira custo, região, conta, recursos e teardown conforme o ADR-0064; cada apply exige validação específica. O custo por sessão ainda precisa incluir CloudFront/S3, WAFs, ACM/domínio e o ciclo completo de criação e destruição.
 
+## Registry visibility decision
+
+The GHCR package remains private. Authorized deployment jobs read the immutable `sha-<commit>` image with a read-only `GITHUB_TOKEN`, verify its source revision, and mirror it to the private ECR repository `auto-shop-system` with the GitHub OIDC deployment role. The EKS nodes pull the ECR image through their AWS identity; no long-lived GHCR token or Kubernetes `imagePullSecret` is needed. The private ECR lifecycle policy retains the ten most recent SHA-tagged images.
+
 ## Terraform local
 
 O diretório [`infra/`](../infra/README.md) é uma alternativa declarativa para recursos Kubernetes em um cluster existente. Não provisiona a AWS. Use Terraform ou Kustomize para um ambiente, nunca os dois ao mesmo tempo no mesmo namespace. A stack da borda AWS é separada em [`infra/aws/`](../infra/aws/README.md).
