@@ -1,0 +1,110 @@
+name: New Relic HML ingest canary
+run-name: new-relic:hml-canary:${{ inputs.session_id }}:${{ github.run_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_id:
+        description: Coordinator-provided HML session ID
+        required: true
+        type: string
+      started_at:
+        description: Coordinator-provided UTC session start, YYYY-MM-DDTHH:MM:SSZ
+        required: true
+        type: string
+      session_mode:
+        description: Authorized HML window
+        required: true
+        type: choice
+        options: [hml]
+      session_token:
+        description: Signed coordinator session capability; validation fails if missing.
+        required: false
+        type: string
+      region:
+        description: New Relic account data region confirmed by the account owner
+        required: true
+        type: choice
+        options: [us]
+      confirm_hml_ingestion:
+        description: Confirm that this run sends one synthetic HML metric and consumes the account's ingest allowance
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: new-relic-hml-ingest-canary
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop' && inputs.confirm_hml_ingestion == true
+    runs-on: ubuntu-latest
+    environment: hml
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate coordinator inputs and HML session gates
+        env:
+          SOURCE_REF: ${{ github.ref }}
+          SESSION_ID: ${{ inputs.session_id }}
+          STARTED_AT: ${{ inputs.started_at }}
+          SESSION_MODE: ${{ inputs.session_mode }}
+          LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+          STAGING_ACTIVE: ${{ vars.STAGING_ACTIVE || 'false' }}
+          STAGING_SESSION_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
+          AUTHORIZED_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_REF" == "refs/heads/develop" ]] || {
+            echo "::error::The HML canary must run from develop."
+            exit 1
+          }
+          [[ "$STAGING_ACTIVE" == "true" && "$STAGING_SESSION_AUTHORIZED" == "true" && "$AUTHORIZED_SESSION_MODE" == "hml" ]] || {
+            echo "::error::HML static authorization gates are not enabled."
+            exit 1
+          }
+          [[ "$SESSION_MODE" == "hml" ]] || {
+            echo "::error::session_mode must be hml."
+            exit 1
+          }
+          ENVIRONMENT_ACTIVE="$STAGING_ACTIVE" \
+            ENVIRONMENT_WINDOW_AUTHORIZED="$STAGING_SESSION_AUTHORIZED" \
+            ENVIRONMENT_SESSION_ID="$SESSION_ID" \
+            ENVIRONMENT_WINDOW_STARTED_AT="$STARTED_AT" \
+            ENVIRONMENT_STAGE=hml \
+            SESSION_MODE="$SESSION_MODE" \
+            python3 .github/scripts/validate_environment_window.py --action operate
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Send one synthetic OTLP metric
+        id: canary
+        env:
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+          NEW_RELIC_REGION: ${{ inputs.region }}
+          CANARY_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/observability/new_relic_canary.py \
+            --region "$NEW_RELIC_REGION" \
+            --run-id "$CANARY_RUN_ID"
+          {
+            echo "### New Relic HML canary"
+            echo "Run ID: `$CANARY_RUN_ID`"
+            echo "A successful HTTP response acknowledges the OTLP request; confirm arrival with this NRQL query:"
+            echo '```sql'
+            echo "FROM Metric SELECT latest(auto_shop_new_relic_ingest_canary) WHERE service.name = 'auto-shop-ingest-canary' AND deployment.environment = 'hml' AND canary.run_id = '$CANARY_RUN_ID' SINCE 30 minutes ago"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
