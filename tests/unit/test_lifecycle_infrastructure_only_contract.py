@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 
@@ -13,7 +14,6 @@ def test_start_is_limited_to_a_gated_infrastructure_only_hml_session() -> None:
     assert "K8S_HML_TERRAFORM_ROOT_READY" in hml_gate
     assert "--window-end-inclusive 2026-11-05" in workflow
     assert "--session-scope infrastructure-only" in workflow
-    assert "session_scope" in workflow and "infrastructure-only" in workflow
     assert "environment: operations" in workflow
     role = workflow.index("Configure the narrow lifecycle start role")
     authorize = workflow.index("lifecycle_session_ledger.py authorize-open")
@@ -57,21 +57,35 @@ def test_start_dispatches_the_guarded_database_bootstrap_after_hml_infrastructur
     )
     assert '--repository "$DATABASE_INFRA_REPOSITORY" --workflow apply.yml --ref main' in database_step
     assert "--authorization-action open" in database_step
-    assert "session_scope" in database_step
-    assert "infrastructure-only" in database_step
-    assert "phase" in database_step
-    assert "bootstrap" in database_step
+    assert "session_scope" not in database_step
+    dispatch_input_line = next(line for line in database_step.splitlines() if "--inputs " in line)
+    serialized_inputs = dispatch_input_line.split("--inputs ", 1)[1].strip()
+    dispatch_inputs = json.loads(json.loads(serialized_inputs))
+    assert set(dispatch_inputs) == {"session_id", "started_at", "session_mode", "phase"}
+    assert dispatch_inputs["phase"] == "bootstrap"
     assert "--output-name database_bootstrap" in database_step
+    assert "--session-scope infrastructure-only" in workflow
+
+
+def test_start_child_dispatches_match_declared_workflow_input_contracts() -> None:
+    workflow = (WORKFLOWS / "environment-start.yml").read_text(encoding="utf-8")
+    dispatch_lines = [line for line in workflow.splitlines() if "--inputs " in line]
+
+    assert len(dispatch_lines) == 7
+    assert all("session_scope" not in line for line in dispatch_lines)
 
 
 def test_stop_is_limited_to_infrastructure_only_hml_and_verifies_teardown() -> None:
     workflow = (WORKFLOWS / "environment-stop.yml").read_text(encoding="utf-8")
 
     assert "--stage hml" in workflow
-    assert "session_scope" in workflow and "infrastructure-only" in workflow
+    assert "REQUESTED_SESSION_SCOPE" in workflow and "infrastructure-only" in workflow
     assert "orphan-audit.yml" in workflow
     assert "lifecycle_session_ledger.py finalize-close" in workflow
     assert "capture_lifecycle_cost.py" in workflow
+    dispatch_lines = [line for line in workflow.splitlines() if "--inputs " in line]
+    assert dispatch_lines
+    assert all("session_scope" not in line for line in dispatch_lines)
     for excluded in ("cloudfront", "api gateway", "EDGE_", "reconcile_public_edge"):
         assert excluded.lower() not in workflow.lower()
 

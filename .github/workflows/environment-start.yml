@@ -276,7 +276,7 @@ jobs:
           python3 .github/scripts/cross_repo_lifecycle.py \
             --repository "$K8S_INFRA_REPOSITORY" --workflow ci.yml --ref main \
             --expected-title "$SESSION_ID-foundation-open" --authorization-action open \
-            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"stack\":\"foundation\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\"}" \
+            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"foundation\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\"}" \
             --github-output "$GITHUB_OUTPUT" --output-name foundation --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
 
       - name: Apply the exact K8s foundation opening plan
@@ -292,7 +292,7 @@ jobs:
           python3 .github/scripts/cross_repo_lifecycle.py \
             --repository "$K8S_INFRA_REPOSITORY" --workflow apply.yml --ref main \
             --expected-title "$SESSION_ID-foundation-open-apply" --authorization-action open \
-            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"stack\":\"foundation\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}" \
+            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"foundation\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}" \
             --github-output "$GITHUB_OUTPUT" --output-name foundation_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
 
       - name: Plan the K8s platform opening
@@ -308,7 +308,7 @@ jobs:
           python3 .github/scripts/cross_repo_lifecycle.py \
             --repository "$K8S_INFRA_REPOSITORY" --workflow ci.yml --ref main \
             --expected-title "$SESSION_ID-platform-open" --authorization-action open \
-            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"stack\":\"platform\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\"}" \
+            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"platform\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\"}" \
             --github-output "$GITHUB_OUTPUT" --output-name platform --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
 
       - name: Apply the exact K8s platform opening plan
@@ -324,7 +324,7 @@ jobs:
           python3 .github/scripts/cross_repo_lifecycle.py \
             --repository "$K8S_INFRA_REPOSITORY" --workflow apply.yml --ref main \
             --expected-title "$SESSION_ID-platform-open-apply" --authorization-action open \
-            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"stack\":\"platform\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}" \
+            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"platform\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}" \
             --github-output "$GITHUB_OUTPUT" --output-name platform_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
 
       - name: Plan the isolated HML namespace opening
@@ -340,7 +340,7 @@ jobs:
           python3 .github/scripts/cross_repo_lifecycle.py \
             --repository "$K8S_INFRA_REPOSITORY" --workflow ci.yml --ref main \
             --expected-title "$SESSION_ID-hml-open" --authorization-action open \
-            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"stack\":\"hml\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\"}" \
+            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"hml\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\"}" \
             --github-output "$GITHUB_OUTPUT" --output-name environment --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
 
       - name: Apply the exact HML namespace opening plan
@@ -356,7 +356,7 @@ jobs:
           python3 .github/scripts/cross_repo_lifecycle.py \
             --repository "$K8S_INFRA_REPOSITORY" --workflow apply.yml --ref main \
             --expected-title "$SESSION_ID-hml-open-apply" --authorization-action open \
-            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"stack\":\"hml\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}" \
+            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"hml\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}" \
             --github-output "$GITHUB_OUTPUT" --output-name environment_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
 
       - name: Bootstrap the HML lifecycle database
@@ -370,7 +370,7 @@ jobs:
           --repository "$DATABASE_INFRA_REPOSITORY" --workflow apply.yml --ref main
           --expected-title "database/$SESSION_ID/apply/bootstrap"
           --authorization-action open
-          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"phase\":\"bootstrap\"}"
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"phase\":\"bootstrap\"}"
           --github-output "$GITHUB_OUTPUT" --output-name database_bootstrap --timeout-seconds 1200 --deadline-utc "$WORK_DEADLINE"
 
       - name: Record the infrastructure-only opening
