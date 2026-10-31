@@ -1,0 +1,30 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ManagePublicEdgeResources",
+      "Effect": "Allow",
+      "Action": [
+        "apigateway:*",
+        "cloudfront:*",
+        "acm:*",
+        "wafv2:*",
+        "route53:*",
+        "cloudwatch:*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ManageSecretsForEdge",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:us-east-1:035611741563:secret:*edge*",
+        "arn:aws:secretsmanager:us-east-1:035611741563:secret:*jwt*"
+      ]
+    }
+  ]
+}
