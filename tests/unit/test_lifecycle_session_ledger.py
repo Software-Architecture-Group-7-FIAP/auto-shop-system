@@ -21,7 +21,10 @@ RESOLVER = importlib.util.module_from_spec(RESOLVER_SPEC)
 RESOLVER_SPEC.loader.exec_module(RESOLVER)
 
 
-def test_authorization_records_the_configured_cross_repo_dispatch_actor(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("ref", ["main", "refs/heads/main"])
+def test_authorization_records_the_configured_cross_repo_dispatch_actor(
+    monkeypatch: pytest.MonkeyPatch, ref: str
+) -> None:
     now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
     state = {
         "status": "active",
@@ -56,7 +59,7 @@ def test_authorization_records_the_configured_cross_repo_dispatch_actor(monkeypa
         action="open",
         repository="Software-Architecture-Group-7-FIAP/database-infra",
         workflow="Apply database staging",
-        ref="main",
+        ref=ref,
         inputs={
             "session_id": "hml-2026-10-30",
             "started_at": "2026-10-30T12:00:00Z",
@@ -67,6 +70,7 @@ def test_authorization_records_the_configured_cross_repo_dispatch_actor(monkeypa
 
     assert writes[0]["Item"]["source_actor"] == {"S": "trusted-operator"}
     assert writes[0]["Item"]["dispatch_actor"] == {"S": "dispatch-bot[bot]"}
+    assert writes[0]["Item"]["target_ref"] == {"S": "refs/heads/main"}
 
 
 @pytest.mark.parametrize(
