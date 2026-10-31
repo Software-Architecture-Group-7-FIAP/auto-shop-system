@@ -166,9 +166,12 @@ def _inspect_retryable_run(run: dict[str, object], repository: str, token: str) 
         saw_successful_session_record = saw_successful_session_record or recorded
 
     if saw_recovery_attempt:
-        if conclusion != "failure" or not saw_successful_session_record:
+        if conclusion != "failure":
             return False, None
-        return True, str(run_id)
+        # A failed ledger-record step may have left no state, or its response may have
+        # been lost. Do not use that run as the owner: a later coordinator attempt must
+        # either hand off the older verified owner or fail closed against the ledger.
+        return True, str(run_id) if saw_successful_session_record else None
     return True, None
 
 

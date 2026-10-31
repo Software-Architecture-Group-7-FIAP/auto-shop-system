@@ -2,7 +2,7 @@ import importlib.util
 import io
 import json
 import tempfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import URLError
 
@@ -47,6 +47,15 @@ def _run(
         "conclusion": conclusion,
         "run_attempt": run_attempt,
     }
+
+
+def _brt_created_at(minutes_from_noon: int) -> str:
+    local_noon = datetime.now(timezone.utc).astimezone(GUARD.BRT).replace(
+        hour=12, minute=0, second=0, microsecond=0
+    )
+    return (local_noon + timedelta(minutes=minutes_from_noon)).astimezone(timezone.utc).isoformat().replace(
+        "+00:00", "Z"
+    )
 
 
 def _jobs_payload(
@@ -241,6 +250,37 @@ def test_failed_authorization_attempts_allow_only_verified_ledger_handoff(monkey
         assert output_path.read_text(encoding="utf-8") == f"recovery_source_run_id={PRIOR_RUN_ID}\n"
 
 
+def test_unrecorded_failed_retry_does_not_hide_the_older_verified_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    older_owner_run = _run(PRIOR_RUN_ID)
+    older_owner_run["created_at"] = _brt_created_at(-2)
+    unrecorded_retry_run = _run(PRIOR_RUN_ID + 1)
+    unrecorded_retry_run["created_at"] = _brt_created_at(-1)
+    current_run = _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")
+    with tempfile.TemporaryDirectory(prefix="lifecycle-guard-unrecorded-retry-test-") as temporary_directory:
+        output_path = Path(temporary_directory) / "github-output.txt"
+        monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+        _stub_api(
+            monkeypatch,
+            [
+                _listing(older_owner_run, unrecorded_retry_run, current_run),
+                _jobs_payload(
+                    open_conclusion="failure",
+                    steps=_recovery_steps(record_conclusion="success", plan_conclusion="failure"),
+                ),
+                _jobs_payload(
+                    open_conclusion="failure",
+                    steps=_recovery_steps(record_conclusion="failure", plan_conclusion="skipped"),
+                ),
+            ],
+        )
+
+        assert GUARD.main() == 0
+        assert output_path.read_text(encoding="utf-8") == f"recovery_source_run_id={PRIOR_RUN_ID}\n"
+
+
 def test_any_infrastructure_apply_in_any_attempt_blocks_recovery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -269,9 +309,9 @@ def test_any_infrastructure_apply_in_any_attempt_blocks_recovery(
 def test_recovery_chain_uses_the_most_recent_verified_owner_run(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_github_context(monkeypatch)
     older_run = _run(PRIOR_RUN_ID)
-    older_run["created_at"] = "2026-10-31T12:00:00Z"
+    older_run["created_at"] = _brt_created_at(-2)
     newer_run = _run(PRIOR_RUN_ID + 1)
-    newer_run["created_at"] = "2026-10-31T12:01:00Z"
+    newer_run["created_at"] = _brt_created_at(-1)
     with tempfile.TemporaryDirectory(prefix="lifecycle-guard-chain-test-") as temporary_directory:
         output_path = Path(temporary_directory) / "github-output.txt"
         monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))

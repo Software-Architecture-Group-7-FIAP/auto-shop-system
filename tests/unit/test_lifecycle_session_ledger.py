@@ -216,6 +216,111 @@ def test_safe_retry_handoff_transfers_only_the_matching_active_hml_owner(
     assert updates[0]["ExpressionAttributeValues"][":source_attempt"] == {"N": "2"}
 
 
+def test_safe_retry_handoff_reopens_only_a_matching_unclaimed_closed_hml_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started_at = "2026-10-30T12:00:00Z"
+    now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
+    stored = {
+        "status": "closed",
+        "closed_at": now - 30,
+        "operator": "trusted-operator",
+        "start_run_id": "123",
+        "start_run_attempt": 2,
+        "started_at": started_at,
+        "stage": "hml",
+        "session_mode": "hml",
+        "session_scope": "infrastructure-only",
+        "expires_at": now + 60,
+    }
+    updates: list[dict[str, object]] = []
+    monkeypatch.setattr(LEDGER, "_require_main_branch", lambda: None)
+    monkeypatch.setattr(LEDGER, "_operator", lambda **_kwargs: "trusted-operator")
+    monkeypatch.setattr(LEDGER, "_run_identity", lambda: ("456", 1))
+    monkeypatch.setattr(
+        LEDGER,
+        "_session_values",
+        lambda *_args: (
+            datetime(2026, 10, 30, 12, 0, tzinfo=timezone.utc),
+            datetime(2026, 10, 30, 14, 0, tzinfo=LEDGER.BRT),
+            now + 60,
+            now + 86400,
+        ),
+    )
+    monkeypatch.setattr(LEDGER.time, "time", lambda: now)
+    monkeypatch.setattr(LEDGER, "_get_item", lambda *_args, **_kwargs: stored)
+    monkeypatch.setattr(LEDGER, "_ddb", lambda _operation, request: updates.append(request) or {})
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_WORKFLOW", "HML infrastructure-only start")
+
+    LEDGER.authorize_open(
+        "hml-2026-10-30",
+        "hml",
+        started_at,
+        "hml",
+        session_scope="infrastructure-only",
+        safe_retry_source_run_id="123",
+    )
+
+    assert len(updates) == 1
+    assert "REMOVE closed_at" in str(updates[0]["UpdateExpression"])
+    assert "#status = :closed" in str(updates[0]["ConditionExpression"])
+    assert "attribute_not_exists(close_run_id)" in str(updates[0]["ConditionExpression"])
+    assert updates[0]["ExpressionAttributeValues"][":closed_at"] == {"N": str(now - 30)}
+
+
+def test_safe_retry_handoff_does_not_reopen_a_coordinator_closed_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
+    stored = {
+        "status": "closed",
+        "closed_at": now - 30,
+        "close_run_id": "stop-run",
+        "close_actor": "trusted-operator",
+        "close_run_attempt": 1,
+        "operator": "trusted-operator",
+        "start_run_id": "123",
+        "start_run_attempt": 2,
+        "started_at": "2026-10-30T12:00:00Z",
+        "stage": "hml",
+        "session_mode": "hml",
+        "session_scope": "infrastructure-only",
+        "expires_at": now + 60,
+    }
+    writes: list[dict[str, object]] = []
+    monkeypatch.setattr(LEDGER, "_require_main_branch", lambda: None)
+    monkeypatch.setattr(LEDGER, "_operator", lambda **_kwargs: "trusted-operator")
+    monkeypatch.setattr(LEDGER, "_run_identity", lambda: ("456", 1))
+    monkeypatch.setattr(
+        LEDGER,
+        "_session_values",
+        lambda *_args: (
+            datetime(2026, 10, 30, 12, 0, tzinfo=timezone.utc),
+            datetime(2026, 10, 30, 14, 0, tzinfo=LEDGER.BRT),
+            now + 60,
+            now + 86400,
+        ),
+    )
+    monkeypatch.setattr(LEDGER.time, "time", lambda: now)
+    monkeypatch.setattr(LEDGER, "_get_item", lambda *_args, **_kwargs: stored)
+    monkeypatch.setattr(LEDGER, "_ddb", lambda _operation, request: writes.append(request) or {})
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_WORKFLOW", "HML infrastructure-only start")
+
+    with pytest.raises(LEDGER.LedgerError, match="does not match the verified failed opening run"):
+        LEDGER.authorize_open(
+            "hml-2026-10-30",
+            "hml",
+            "2026-10-30T12:00:00Z",
+            "hml",
+            session_scope="infrastructure-only",
+            safe_retry_source_run_id="123",
+        )
+
+    assert writes == []
+
+
 def test_safe_retry_handoff_is_restricted_to_the_exact_start_workflow(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
