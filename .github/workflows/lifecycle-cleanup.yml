@@ -4,6 +4,7 @@ run-name: lifecycle:hml:expired-session-cleanup:${{ github.run_id }}
 on:
   schedule:
     - cron: "0 0-1,14-23 * * *"
+  workflow_dispatch:
 
 permissions:
   actions: write
