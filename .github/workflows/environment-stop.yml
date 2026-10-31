@@ -117,7 +117,16 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
 
       - name: Require the trusted lifecycle actor before AWS credentials
-          bash -c "set -euo pipefail; [[ "${GITHUB_ACTOR}" == "${LIFECYCLE_TRIGGERING_ACTOR}" ]] || { echo "::error::The triggering actor does not match."; exit 1; }; [[ -n "${LIFECYCLE_TRUSTED_OPERATORS}" ]] || { echo "::error::LIFECYCLE_TRUSTED_OPERATORS must be set."; exit 1; }; case ",${LIFECYCLE_TRUSTED_OPERATORS}," in   *,"${GITHUB_ACTOR}"*) ;;   *) echo "::error::GitHub actor not in allowlist."; exit 1;; esac; if [[ "$*" == *"require-dispatch-actor"* ]]; then   [[ -n "${LIFECYCLE_CROSS_REPO_ACTOR}" ]] || { echo "::error::LIFECYCLE_CROSS_REPO_ACTOR must be set."; exit 1; };   case ",${LIFECYCLE_TRUSTED_OPERATORS}," in     *,"${LIFECYCLE_CROSS_REPO_ACTOR}"*) ;;     *) echo "::error::Dispatch actor not in allowlist."; exit 1;;   esac; fi; echo Authorization passed."
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_ACTOR" == "$LIFECYCLE_TRIGGERING_ACTOR" ]] || { echo "::error::The triggering actor does not match."; exit 1; }
+          [[ -n "$LIFECYCLE_TRUSTED_OPERATORS" ]] || { echo "::error::LIFECYCLE_TRUSTED_OPERATORS must be set."; exit 1; }
+          case ",$LIFECYCLE_TRUSTED_OPERATORS," in
+            *,"$GITHUB_ACTOR"*) ;;
+            *) echo "::error::GitHub actor not in allowlist."; exit 1;;
+          esac
+          echo "Authorization passed for $GITHUB_ACTOR"
 
       - name: Configure the stop role to validate session authorization
         uses: aws-actions/configure-aws-credentials@v4
@@ -207,7 +216,13 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$SOURCE_REF" == "refs/heads/main" ]] || { echo "::error::HML lifecycle operations must run from main."; exit 1; }
-          bash -c "set -euo pipefail; [[ "${GITHUB_ACTOR}" == "${LIFECYCLE_TRIGGERING_ACTOR}" ]] || { echo "::error::The triggering actor does not match."; exit 1; }; [[ -n "${LIFECYCLE_TRUSTED_OPERATORS}" ]] || { echo "::error::LIFECYCLE_TRUSTED_OPERATORS must be set."; exit 1; }; case ",${LIFECYCLE_TRUSTED_OPERATORS}," in   *,"${GITHUB_ACTOR}"*) ;;   *) echo "::error::GitHub actor not in allowlist."; exit 1;; esac; if [[ "$*" == *"require-dispatch-actor"* ]]; then   [[ -n "${LIFECYCLE_CROSS_REPO_ACTOR}" ]] || { echo "::error::LIFECYCLE_CROSS_REPO_ACTOR must be set."; exit 1; };   case ",${LIFECYCLE_TRUSTED_OPERATORS}," in     *,"${LIFECYCLE_CROSS_REPO_ACTOR}"*) ;;     *) echo "::error::Dispatch actor not in allowlist."; exit 1;;   esac; fi; echo Authorization passed."
+          [[ "$GITHUB_ACTOR" == "$LIFECYCLE_TRIGGERING_ACTOR" ]] || { echo "::error::The triggering actor does not match."; exit 1; }
+          [[ -n "$LIFECYCLE_TRUSTED_OPERATORS" ]] || { echo "::error::LIFECYCLE_TRUSTED_OPERATORS must be set."; exit 1; }
+          case ",$LIFECYCLE_TRUSTED_OPERATORS," in
+            *,"$GITHUB_ACTOR"*) ;;
+            *) echo "::error::GitHub actor not in allowlist."; exit 1;;
+          esac
+          echo "Authorization passed for $GITHUB_ACTOR"
 
       - uses: actions/checkout@v4
         with:
