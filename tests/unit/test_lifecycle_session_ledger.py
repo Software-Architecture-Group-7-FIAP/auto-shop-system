@@ -22,7 +22,10 @@ RESOLVER = importlib.util.module_from_spec(RESOLVER_SPEC)
 RESOLVER_SPEC.loader.exec_module(RESOLVER)
 
 
-def test_ddb_error_reports_only_sanitized_aws_error_code(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("prefix", ["", "aws: [ERROR]: "])
+def test_ddb_error_reports_only_sanitized_aws_error_code(
+    monkeypatch: pytest.MonkeyPatch, prefix: str
+) -> None:
     monkeypatch.setenv("LIFECYCLE_TABLE_NAME", "lifecycle-ledger")
     monkeypatch.setattr(
         LEDGER.subprocess,
@@ -30,7 +33,7 @@ def test_ddb_error_reports_only_sanitized_aws_error_code(monkeypatch: pytest.Mon
         lambda *_args, **_kwargs: SimpleNamespace(
             returncode=254,
             stderr=(
-                "An error occurred (ValidationException) when calling the UpdateItem operation: "
+                f"{prefix}An error occurred (ValidationException) when calling the UpdateItem operation: "
                 "sensitive request detail"
             ),
             stdout="",
