@@ -337,13 +337,26 @@ def _handoff_failed_opening(
 
     condition = (
         "#operator = :actor AND #stage = :stage AND #mode = :mode AND #scope = :scope AND "
-        "start_run_id = :source_run AND start_run_attempt = :source_attempt AND "
-        "started_at = :started AND expires_at = :expires AND expires_at > :now"
+        "#start_run_id = :source_run AND #start_run_attempt = :source_attempt AND "
+        "#started_at = :started AND #expires_at = :expires AND #expires_at > :now"
     )
-    update_expression = (
-        "SET start_run_id = :new_run, start_run_attempt = :attempt, "
-        "retry_handoff_from_run_id = :source_run, retry_handoff_at = :now"
+    update_assignments = (
+        "#start_run_id = :new_run, #start_run_attempt = :attempt, "
+        "#retry_handoff_from_run_id = :source_run, #retry_handoff_at = :now"
     )
+    expression_names = {
+        "#status": "status",
+        "#operator": "operator",
+        "#stage": "stage",
+        "#mode": "session_mode",
+        "#scope": "session_scope",
+        "#start_run_id": "start_run_id",
+        "#start_run_attempt": "start_run_attempt",
+        "#started_at": "started_at",
+        "#expires_at": "expires_at",
+        "#retry_handoff_from_run_id": "retry_handoff_from_run_id",
+        "#retry_handoff_at": "retry_handoff_at",
+    }
     expression_values = {
         ":new_run": _s(run_id),
         ":attempt": _n(run_attempt),
@@ -359,18 +372,30 @@ def _handoff_failed_opening(
     }
     if reopen_unclaimed_closed_session:
         condition = (
-            "#status = :closed AND closed_at = :closed_at AND "
-            "attribute_not_exists(close_run_id) AND attribute_not_exists(close_actor) AND "
-            "attribute_not_exists(close_run_attempt) AND attribute_not_exists(close_lease_expires_at) AND "
-            "attribute_not_exists(close_started_at) AND attribute_not_exists(close_attempts) AND "
+            "#status = :closed AND #closed_at = :closed_at AND "
+            "attribute_not_exists(#close_run_id) AND attribute_not_exists(#close_actor) AND "
+            "attribute_not_exists(#close_run_attempt) AND attribute_not_exists(#close_lease_expires_at) AND "
+            "attribute_not_exists(#close_started_at) AND attribute_not_exists(#close_attempts) AND "
             + condition
         )
-        update_expression = f"SET #status = :active, {update_expression} REMOVE closed_at"
+        update_expression = f"SET #status = :active, {update_assignments} REMOVE #closed_at"
+        expression_names.update(
+            {
+                "#closed_at": "closed_at",
+                "#close_run_id": "close_run_id",
+                "#close_actor": "close_actor",
+                "#close_run_attempt": "close_run_attempt",
+                "#close_lease_expires_at": "close_lease_expires_at",
+                "#close_started_at": "close_started_at",
+                "#close_attempts": "close_attempts",
+            }
+        )
         expression_values[":closed"] = _s("closed")
         expression_values[":active"] = _s("active")
         expression_values[":closed_at"] = _n(closed_at)
     else:
         condition = "#status = :active AND " + condition
+        update_expression = f"SET {update_assignments}"
         expression_values[":active"] = _s("active")
 
     _ddb(
@@ -379,13 +404,7 @@ def _handoff_failed_opening(
             "Key": _key(session_id, "STATE"),
             "UpdateExpression": update_expression,
             "ConditionExpression": condition,
-            "ExpressionAttributeNames": {
-                "#status": "status",
-                "#operator": "operator",
-                "#stage": "stage",
-                "#mode": "session_mode",
-                "#scope": "session_scope",
-            },
+            "ExpressionAttributeNames": expression_names,
             "ExpressionAttributeValues": expression_values,
         },
     )
