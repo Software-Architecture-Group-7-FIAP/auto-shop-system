@@ -328,7 +328,7 @@ data "aws_iam_policy_document" "github_lifecycle_cost_reader_assume" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["${local.github_oidc_subject_prefix}:environment:hml-lifecycle"]
+      values   = ["${local.github_oidc_subject_prefix}:environment:operations"]
     }
   }
 }

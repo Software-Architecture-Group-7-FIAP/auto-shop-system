@@ -27,9 +27,21 @@ def test_lifecycle_trusts_use_exact_environment_subjects_and_supported_claims():
     assert 'token.actions.githubusercontent.com:workflow' not in terraform
     assert 'token.actions.githubusercontent.com:ref' not in terraform
     assert 'values   = ["${local.github_oidc_subject_prefix}:environment:operations"]' in terraform
-    assert 'values   = ["${local.github_oidc_subject_prefix}:environment:hml-lifecycle"]' in terraform
     assert 'repo:Software-Architecture-Group-7-FIAP@279547328/database-infra@1420971567:environment:staging' in terraform
     assert 'repo:Software-Architecture-Group-7-FIAP@279547328/k8s-infra@1431503198:environment:staging' in terraform
+
+
+def test_cost_reader_trust_matches_lifecycle_cost_capture_environment():
+    terraform = (INFRA / "lifecycle_iam.tf").read_text(encoding="utf-8")
+    cost_reader_trust = terraform.split(
+        'data "aws_iam_policy_document" "github_lifecycle_cost_reader_assume"', 1
+    )[1].split('data "aws_iam_policy_document" "github_lifecycle_cost_reader"', 1)[0]
+    assert 'values   = ["${local.github_oidc_subject_prefix}:environment:operations"]' in cost_reader_trust
+
+    for workflow_name in ("environment-start.yml", "environment-stop.yml"):
+        workflow = (ROOT / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
+        assert "role-to-assume: ${{ secrets.AWS_COST_READER_ROLE_ARN }}" in workflow
+        assert "environment: operations" in workflow
 
 
 def test_lifecycle_ledger_permissions_have_boundaries_and_nonempty_key_guards():
