@@ -1,0 +1,658 @@
+name: HML infrastructure-only stop
+run-name: lifecycle:hml:close:${{ inputs.session_id }}:${{ inputs.close_request_id || github.run_id }}:${{ inputs.lifecycle_dispatch_id || github.run_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: This coordinator supports HML infrastructure sessions only.
+        required: true
+        default: hml
+        type: choice
+        options: [hml]
+      session_id:
+        description: Exact HML session ID from the successful start workflow.
+        required: true
+        type: string
+      started_at:
+        description: Exact UTC session start emitted by the start workflow.
+        required: true
+        type: string
+      session_mode:
+        description: Coordinator-resolved HML mode.
+        required: true
+        default: hml
+        type: choice
+        options: [hml]
+      session_scope:
+        description: This coordinator closes infrastructure-only sessions.
+        required: true
+        default: infrastructure-only
+        type: choice
+        options: [infrastructure-only]
+      close_request_id:
+        description: Optional unique ID used to correlate scheduled cleanup requests.
+        required: false
+        type: string
+      lifecycle_dispatch_id:
+        description: Optional one-use coordinator authorization for automated close.
+        required: false
+        type: string
+
+permissions:
+  actions: write
+  contents: read
+  id-token: write
+
+env:
+  LIFECYCLE_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+  LIFECYCLE_TRUSTED_OPERATORS: ${{ vars.LIFECYCLE_TRUSTED_OPERATORS || '' }}
+  LIFECYCLE_CROSS_REPO_ACTOR: ${{ vars.LIFECYCLE_CROSS_REPO_ACTOR || '' }}
+
+concurrency:
+  group: environment-lifecycle
+  cancel-in-progress: false
+
+jobs:
+  resolve_session:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: operations
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      session_id: ${{ steps.window.outputs.session_id }}
+      started_at: ${{ steps.window.outputs.started_at }}
+      session_mode: ${{ steps.window.outputs.session_mode }}
+      cleanup_end_utc: ${{ steps.window.outputs.cleanup_end_utc }}
+      teardown_deadline_utc: ${{ steps.window.outputs.teardown_deadline_utc }}
+      audit_start_utc: ${{ steps.window.outputs.audit_start_utc }}
+      teardown_allowed: ${{ steps.window.outputs.teardown_allowed }}
+      session_authorized: ${{ steps.authorize.outputs.session_authorized }}
+      session_scope: ${{ steps.authorize.outputs.session_scope }}
+    env:
+      LIFECYCLE_TRUSTED_OPERATORS: ${{ vars.LIFECYCLE_TRUSTED_OPERATORS || '' }}
+      LIFECYCLE_CROSS_REPO_ACTOR: ${{ vars.LIFECYCLE_CROSS_REPO_ACTOR || '' }}
+    steps:
+      - name: Require main as the lifecycle coordinator source branch
+        env:
+          SOURCE_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_REF" == "refs/heads/main" ]] || {
+            echo "::error::HML lifecycle operations must run from main."
+            exit 1
+          }
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve the exact HML session and teardown deadlines
+        id: window
+        env:
+          REQUESTED_STAGE: ${{ inputs.stage || 'hml' }}
+          REQUESTED_SESSION_ID: ${{ inputs.session_id }}
+          REQUESTED_STARTED_AT: ${{ inputs.started_at }}
+          REQUESTED_SESSION_MODE: ${{ inputs.session_mode || 'hml' }}
+          REQUESTED_SESSION_SCOPE: ${{ inputs.session_scope || 'infrastructure-only' }}
+          CLEANUP_FLAG: ${{ startsWith(inputs.close_request_id, 'cleanup-') && inputs.lifecycle_dispatch_id != '' && '--cleanup-dispatch' || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_STAGE" == "hml" && "$REQUESTED_SESSION_MODE" == "hml" && \
+             "$REQUESTED_SESSION_SCOPE" == "infrastructure-only" ]] || {
+            echo "::error::This workflow closes infrastructure-only HML sessions only."
+            exit 1
+          }
+          python3 .github/scripts/resolve_lifecycle_session.py \
+            --action teardown \
+            --stage "$REQUESTED_STAGE" \
+            --session-id "$REQUESTED_SESSION_ID" \
+            --started-at "$REQUESTED_STARTED_AT" \
+            --session-mode "$REQUESTED_SESSION_MODE" \
+            $CLEANUP_FLAG \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Require the trusted lifecycle actor before AWS credentials
+        run: python3 .github/scripts/require_trusted_lifecycle_operator.py --require-dispatch-actor
+
+      - name: Configure the stop role to validate session authorization
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::035611741563:role/auto-shop/auto-shop-staging-github-lifecycle-stop
+          aws-region: ${{ vars.AWS_REGION }}
+          role-duration-seconds: 900
+
+      - name: Authorize the manual actor or consume the one-use cleanup dispatch
+        id: authorize
+        env:
+          LIFECYCLE_DISPATCH_ID: ${{ inputs.lifecycle_dispatch_id }}
+          CLOSE_REQUEST_ID: ${{ inputs.close_request_id }}
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          LIFECYCLE_TABLE_NAME: auto-shop-staging-lifecycle-sessions
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$LIFECYCLE_DISPATCH_ID" ]]; then
+            [[ "$LIFECYCLE_DISPATCH_ID" =~ ^[0-9a-f]{32}$ ]] || {
+              echo "::error::The lifecycle dispatch ID must contain 32 lowercase hexadecimal characters."
+              exit 1
+            }
+            python3 .github/scripts/lifecycle_session_ledger.py consume-dispatch \
+              --session-id "$SESSION_ID" \
+              --dispatch-id "$LIFECYCLE_DISPATCH_ID" \
+              --repository "$GITHUB_REPOSITORY" \
+              --workflow "$GITHUB_WORKFLOW" \
+              --ref "$GITHUB_REF" \
+              --expected-action stop \
+              --github-output "$GITHUB_OUTPUT"
+          elif [[ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]]; then
+            echo "::error::Manual HML close requires workflow_dispatch."
+            exit 1
+          fi
+          python3 .github/scripts/lifecycle_session_ledger.py resolve-session-scope \
+            --session-id "$SESSION_ID" \
+            --stage hml \
+            --started-at "$STARTED_AT" \
+            --dispatch-id "$LIFECYCLE_DISPATCH_ID" \
+            --github-output "$GITHUB_OUTPUT"
+          session_scope="$(awk -F= '$1 == "session_scope" {print $2}' "$GITHUB_OUTPUT" | tail -n 1)"
+          [[ "$session_scope" == "infrastructure-only" ]] || {
+            echo "::error::This coordinator only closes infrastructure-only HML sessions."
+            exit 1
+          }
+          echo "session_authorized=true" >> "$GITHUB_OUTPUT"
+
+  close:
+    needs: resolve_session
+    if: needs.resolve_session.result == 'success' && needs.resolve_session.outputs.teardown_allowed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    environment: operations
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    outputs:
+      close_needed: ${{ steps.close_decision.outputs.close_needed }}
+      database_destroy: ${{ steps.database_destroy.outcome }}
+      nat_plan: ${{ steps.nat_plan.outcome }}
+      nat_apply: ${{ steps.nat_apply.outcome }}
+      hml_destroy_plan: ${{ steps.hml_destroy_plan.outcome }}
+      hml_destroy_apply: ${{ steps.hml_destroy_apply.outcome }}
+      platform_destroy_plan: ${{ steps.platform_destroy_plan.outcome }}
+      platform_destroy_apply: ${{ steps.platform_destroy_apply.outcome }}
+      foundation_destroy_plan: ${{ steps.foundation_destroy_plan.outcome }}
+      foundation_destroy_apply: ${{ steps.foundation_destroy_apply.outcome }}
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      LIFECYCLE_TABLE_NAME: auto-shop-staging-lifecycle-sessions
+      LIFECYCLE_TRUSTED_OPERATORS: ${{ vars.LIFECYCLE_TRUSTED_OPERATORS || '' }}
+      LIFECYCLE_CROSS_REPO_ACTOR: ${{ vars.LIFECYCLE_CROSS_REPO_ACTOR || '' }}
+      LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+      K8S_INFRA_REPOSITORY: ${{ vars.K8S_INFRA_REPOSITORY }}
+      K8S_INFRA_REF: ${{ vars.K8S_INFRA_REF }}
+      DATABASE_INFRA_REPOSITORY: ${{ vars.DATABASE_INFRA_REPOSITORY }}
+      DATABASE_INFRA_REF: ${{ vars.DATABASE_INFRA_REF }}
+      EXPECTED_AWS_ACCOUNT_ID: "035611741563"
+    steps:
+      - name: Require main and the original trusted lifecycle actor
+        env:
+          SOURCE_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_REF" == "refs/heads/main" ]] || { echo "::error::HML lifecycle operations must run from main."; exit 1; }
+          python3 .github/scripts/require_trusted_lifecycle_operator.py --require-dispatch-actor
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Refuse teardown work after its absolute deadline
+        env:
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: python3 .github/scripts/assert_lifecycle_deadline.py --deadline-utc "$TEARDOWN_END"
+
+      - name: Check whether this HML session needs a close
+        id: close_decision
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          CLOSE_REQUEST_ID: ${{ inputs.close_request_id }}
+          CLEANUP_FLAG: ${{ startsWith(inputs.close_request_id, 'cleanup-') && inputs.lifecycle_dispatch_id != '' && '--cleanup-dispatch' || '' }}
+        run: >-
+          python3 .github/scripts/assert_lifecycle_close_needed.py
+          --stage hml
+          --session-id "$SESSION_ID"
+          --started-at "$STARTED_AT"
+          --close-request-id "$CLOSE_REQUEST_ID"
+          $CLEANUP_FLAG
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Configure the lifecycle stop role
+        if: steps.close_decision.outputs.close_needed == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::035611741563:role/auto-shop/auto-shop-staging-github-lifecycle-stop
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+
+      - name: Claim the close lease in the lifecycle ledger
+        if: steps.close_decision.outputs.close_needed == 'true'
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          DISPATCH_ID: ${{ inputs.lifecycle_dispatch_id }}
+        run: >-
+          python3 .github/scripts/lifecycle_session_ledger.py begin-close
+          --session-id "$SESSION_ID"
+          --stage hml
+          --started-at "$STARTED_AT"
+          --dispatch-id "$DISPATCH_ID"
+
+      - name: Record when no close is needed
+        if: steps.close_decision.outputs.close_needed == 'false'
+        env:
+          DECISION: ${{ steps.close_decision.outputs.decision }}
+        run: echo "$DECISION" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Validate the HML cross-repository teardown configuration
+        if: steps.close_decision.outputs.close_needed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$AWS_REGION" == "us-east-1" ]] || { echo "::error::AWS_REGION must be us-east-1."; exit 1; }
+          [[ -n "$LIFECYCLE_CROSS_REPO_TOKEN" ]] || { echo "::error::LIFECYCLE_CROSS_REPO_TOKEN is required."; exit 1; }
+          [[ "$K8S_INFRA_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$K8S_INFRA_REF" == "main" ]] || {
+            echo "::error::K8S_INFRA_REPOSITORY and K8S_INFRA_REF=main are required."
+            exit 1
+          }
+          [[ "$DATABASE_INFRA_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$DATABASE_INFRA_REF" == "main" ]] || {
+            echo "::error::DATABASE_INFRA_REPOSITORY and DATABASE_INFRA_REF=main are required."
+            exit 1
+          }
+
+      - name: Destroy the ephemeral HML database
+        if: steps.close_decision.outputs.close_needed == 'true'
+        id: database_destroy
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$DATABASE_INFRA_REPOSITORY" --workflow destroy.yml --ref main
+          --cancel-active-workflow apply.yml --cancel-title-prefix "database/$SESSION_ID/apply/"
+          --expected-title "database/$SESSION_ID/teardown/destroy"
+          --authorization-action close
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"confirm\":\"destroy\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name database_destroy --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Plan NAT shutdown
+        if: steps.close_decision.outputs.close_needed == 'true'
+        id: nat_plan
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow ci.yml --ref main
+          --expected-title "$SESSION_ID-foundation-nat-disable"
+          --authorization-action close
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"stack\":\"foundation\",\"operation\":\"nat-disable\",\"enable_nat_gateway\":\"false\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name nat_plan --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Apply the reviewed NAT shutdown plan
+        if: steps.close_decision.outputs.close_needed == 'true'
+        id: nat_apply
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          PLAN_ID: ${{ steps.nat_plan.outputs.nat_plan_plan_id }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow apply.yml --ref main
+          --expected-title "$SESSION_ID-foundation-nat-disable-apply"
+          --authorization-action close
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"stack\":\"foundation\",\"operation\":\"nat-disable\",\"enable_nat_gateway\":\"false\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name nat_apply --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Plan the isolated HML namespace teardown
+        if: steps.close_decision.outputs.close_needed == 'true'
+        id: hml_destroy_plan
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow destroy.yml --ref main
+          --expected-title "$SESSION_ID-hml-all-plan"
+          --authorization-action close
+          --inputs "{\"operation\":\"plan\",\"stack\":\"hml\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"plan_id\":\"\",\"confirm\":\"\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name hml_destroy --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Apply the reviewed HML namespace teardown plan
+        if: steps.close_decision.outputs.close_needed == 'true'
+        id: hml_destroy_apply
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          PLAN_ID: ${{ steps.hml_destroy_plan.outputs.hml_destroy_plan_id }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow destroy.yml --ref main
+          --expected-title "$SESSION_ID-hml-all-destroy"
+          --authorization-action close
+          --inputs "{\"operation\":\"destroy\",\"stack\":\"hml\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"destroy\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name hml_destroy_apply --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Plan the full K8s platform teardown
+        if: steps.close_decision.outputs.close_needed == 'true'
+        id: platform_destroy_plan
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow destroy.yml --ref main
+          --expected-title "$SESSION_ID-platform-all-plan"
+          --authorization-action close
+          --inputs "{\"operation\":\"plan\",\"stack\":\"platform\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"plan_id\":\"\",\"confirm\":\"\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name platform_destroy --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Apply the reviewed K8s platform teardown plan
+        if: steps.close_decision.outputs.close_needed == 'true'
+        id: platform_destroy_apply
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          PLAN_ID: ${{ steps.platform_destroy_plan.outputs.platform_destroy_plan_id }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow destroy.yml --ref main
+          --expected-title "$SESSION_ID-platform-all-destroy"
+          --authorization-action close
+          --inputs "{\"operation\":\"destroy\",\"stack\":\"platform\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"destroy\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name platform_destroy_apply --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Plan compute-only foundation teardown
+        if: steps.close_decision.outputs.close_needed == 'true'
+        id: foundation_destroy_plan
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow destroy.yml --ref main
+          --expected-title "$SESSION_ID-foundation-compute-plan"
+          --authorization-action close
+          --inputs "{\"operation\":\"plan\",\"stack\":\"foundation\",\"scope\":\"compute\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"plan_id\":\"\",\"confirm\":\"\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name foundation_destroy --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Apply the reviewed compute-only foundation teardown plan
+        if: steps.close_decision.outputs.close_needed == 'true'
+        id: foundation_destroy_apply
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          PLAN_ID: ${{ steps.foundation_destroy_plan.outputs.foundation_destroy_plan_id }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow destroy.yml --ref main
+          --expected-title "$SESSION_ID-foundation-compute-destroy"
+          --authorization-action close
+          --inputs "{\"operation\":\"destroy\",\"stack\":\"foundation\",\"scope\":\"compute\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"destroy\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name foundation_destroy_apply --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+  audit:
+    needs: [resolve_session, close]
+    if: >-
+      always() && needs.resolve_session.outputs.session_authorized == 'true' &&
+      needs.close.outputs.close_needed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    environment: operations
+    permissions:
+      actions: write
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      LIFECYCLE_TABLE_NAME: auto-shop-staging-lifecycle-sessions
+      LIFECYCLE_TRUSTED_OPERATORS: ${{ vars.LIFECYCLE_TRUSTED_OPERATORS || '' }}
+      LIFECYCLE_CROSS_REPO_ACTOR: ${{ vars.LIFECYCLE_CROSS_REPO_ACTOR || '' }}
+      LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+      K8S_INFRA_REPOSITORY: ${{ vars.K8S_INFRA_REPOSITORY }}
+      SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+      STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+      SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+      CLEANUP_END: ${{ needs.resolve_session.outputs.cleanup_end_utc }}
+      AUDIT_START: ${{ needs.resolve_session.outputs.audit_start_utc }}
+    steps:
+      - name: Require main and the trusted lifecycle actor
+        env:
+          SOURCE_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_REF" == "refs/heads/main" ]] || { echo "::error::HML lifecycle operations must run from main."; exit 1; }
+          python3 .github/scripts/require_trusted_lifecycle_operator.py --require-dispatch-actor
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure the lifecycle stop role for audit authorization
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::035611741563:role/auto-shop/auto-shop-staging-github-lifecycle-stop
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+
+      - name: Wait for the reserved read-only audit window
+        run: >-
+          python3 .github/scripts/wait_until_utc.py
+          --target-utc "$AUDIT_START"
+          --deadline-utc "$CLEANUP_END"
+
+      - name: Require all correlated lifecycle mutation runs to finish
+        run: python3 .github/scripts/assert_no_active_lifecycle_runs.py --wait-seconds 60 --poll-seconds 15
+
+      - name: Dispatch the read-only HML orphan audit
+        id: orphan_audit
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow orphan-audit.yml --ref main
+          --expected-title "$SESSION_ID-all-orphan-audit"
+          --authorization-action audit
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name orphan_audit --timeout-seconds 900
+          --deadline-utc "$CLEANUP_END"
+
+      - name: Persist teardown and audit outcomes in the lifecycle ledger
+        if: always()
+        env:
+          DATABASE_OUTCOME: ${{ needs.close.outputs.database_destroy || 'skipped' }}
+          NAT_PLAN_OUTCOME: ${{ needs.close.outputs.nat_plan || 'skipped' }}
+          NAT_APPLY_OUTCOME: ${{ needs.close.outputs.nat_apply || 'skipped' }}
+          HML_PLAN_OUTCOME: ${{ needs.close.outputs.hml_destroy_plan || 'skipped' }}
+          HML_APPLY_OUTCOME: ${{ needs.close.outputs.hml_destroy_apply || 'skipped' }}
+          PLATFORM_PLAN_OUTCOME: ${{ needs.close.outputs.platform_destroy_plan || 'skipped' }}
+          PLATFORM_APPLY_OUTCOME: ${{ needs.close.outputs.platform_destroy_apply || 'skipped' }}
+          FOUNDATION_PLAN_OUTCOME: ${{ needs.close.outputs.foundation_destroy_plan || 'skipped' }}
+          FOUNDATION_APPLY_OUTCOME: ${{ needs.close.outputs.foundation_destroy_apply || 'skipped' }}
+          AUDIT_OUTCOME: ${{ steps.orphan_audit.outcome || 'skipped' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          record_step() {
+            local step="$1"
+            local raw_outcome="$2"
+            local outcome=skipped
+            case "$raw_outcome" in
+              success) outcome=success ;;
+              failure|cancelled) outcome=failure ;;
+              skipped) outcome=skipped ;;
+              *) outcome=failure ;;
+            esac
+            python3 .github/scripts/lifecycle_session_ledger.py record-close-step \
+              --session-id "$SESSION_ID" --step "$step" --outcome "$outcome" \
+              --detail "workflow step outcome: $raw_outcome"
+          }
+          record_step database-destroy "$DATABASE_OUTCOME"
+          record_step nat-plan "$NAT_PLAN_OUTCOME"
+          record_step nat-apply "$NAT_APPLY_OUTCOME"
+          record_step hml-plan "$HML_PLAN_OUTCOME"
+          record_step hml-apply "$HML_APPLY_OUTCOME"
+          record_step platform-plan "$PLATFORM_PLAN_OUTCOME"
+          record_step platform-apply "$PLATFORM_APPLY_OUTCOME"
+          record_step foundation-plan "$FOUNDATION_PLAN_OUTCOME"
+          record_step foundation-apply "$FOUNDATION_APPLY_OUTCOME"
+          record_step orphan-audit "$AUDIT_OUTCOME"
+
+      - name: Finalize the ledger only after teardown and orphan audit succeed
+        if: >-
+          always() && needs.close.result == 'success' &&
+          needs.close.outputs.close_needed == 'true' && steps.orphan_audit.outcome == 'success'
+        run: python3 .github/scripts/lifecycle_session_ledger.py finalize-close --session-id "$SESSION_ID"
+
+      - name: Record the close and audit outcome
+        if: always()
+        run: |
+          {
+            echo "### HML infrastructure close lifecycle"
+            echo "- Session: $SESSION_ID"
+            echo "- Teardown work deadline (UTC): ${{ needs.resolve_session.outputs.teardown_deadline_utc }}"
+            echo "- Audit window starts (UTC): $AUDIT_START"
+            echo "- Cleanup deadline (UTC): $CLEANUP_END"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  post-cost-capture:
+    needs: [resolve_session, close, audit]
+    if: >-
+      always() && needs.resolve_session.outputs.session_authorized == 'true' &&
+      needs.resolve_session.outputs.teardown_allowed == 'true' &&
+      needs.close.outputs.close_needed == 'true'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: hml-lifecycle
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EXPECTED_AWS_ACCOUNT_ID: "035611741563"
+      AWS_COST_READER_ROLE_ARN: ${{ vars.AWS_COST_READER_ROLE_ARN || '' }}
+      HML_DAILY_COST_FLOOR_USD: ${{ vars.HML_DAILY_COST_FLOOR_USD || 'unavailable' }}
+      SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Require the trusted lifecycle actor
+        run: python3 .github/scripts/require_trusted_lifecycle_operator.py --require-dispatch-actor
+
+      - name: Configure the HML-only Cost Explorer reader
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_COST_READER_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+
+      - name: Capture observed post-teardown billing
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/capture_lifecycle_cost.py \
+            --stage hml \
+            --session-id "$SESSION_ID" \
+            --phase after \
+            --expected-account-id "$EXPECTED_AWS_ACCOUNT_ID" \
+            --estimate-daily-floor-usd "$HML_DAILY_COST_FLOOR_USD" \
+            --output lifecycle-cost-after.json
+
+      - name: Upload post-teardown cost evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifecycle-cost-${{ needs.resolve_session.outputs.session_id || github.run_id }}-after
+          path: lifecycle-cost-after.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+  alert-close-failure:
+    needs: [resolve_session, close, audit]
+    if: >-
+      always() && needs.resolve_session.outputs.session_authorized == 'true' &&
+      (needs.close.result == 'failure' ||
+      (needs.close.outputs.close_needed == 'true' && needs.audit.result != 'success') ||
+      needs.resolve_session.outputs.teardown_allowed != 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: operations
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ALERT_TOPIC_ARN: ${{ vars.LIFECYCLE_ALERT_TOPIC_ARN || '' }}
+      SESSION_ID: ${{ needs.resolve_session.outputs.session_id || inputs.session_id || github.run_id }}
+      TEARDOWN_ALLOWED: ${{ needs.resolve_session.outputs.teardown_allowed || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Require the trusted lifecycle actor
+        run: python3 .github/scripts/require_trusted_lifecycle_operator.py --require-dispatch-actor
+
+      - name: Configure the lifecycle alert role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.LIFECYCLE_ALERT_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Alert that teardown or orphan audit failed
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ALERT_TOPIC_ARN" =~ ^arn:aws:sns:us-east-1:035611741563:[A-Za-z0-9_-]+$ ]] || {
+            echo "::error::Lifecycle alert destination is unavailable; inspect the failed close run immediately."
+            exit 1
+          }
+          aws sns publish \
+            --topic-arn "$ALERT_TOPIC_ARN" \
+            --subject "Auto Shop HML infrastructure teardown failed" \
+            --message "HML session $SESSION_ID did not complete teardown and its required orphan audit (teardown_allowed=$TEARDOWN_ALLOWED). Inspect the failed GitHub Actions run and recover any remaining resources."

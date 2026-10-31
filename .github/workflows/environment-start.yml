@@ -1,0 +1,392 @@
+name: HML infrastructure-only start
+run-name: lifecycle:hml:open:${{ inputs.started_at || 'default-17-BRT' }}:${{ github.run_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      started_at:
+        description: Optional UTC session start; leave blank to resolve the current HML window.
+        required: false
+        type: string
+
+permissions:
+  actions: write
+  contents: read
+  id-token: write
+
+env:
+  LIFECYCLE_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+  LIFECYCLE_TRUSTED_OPERATORS: ${{ vars.LIFECYCLE_TRUSTED_OPERATORS || '' }}
+  LIFECYCLE_CROSS_REPO_ACTOR: ${{ vars.LIFECYCLE_CROSS_REPO_ACTOR || '' }}
+
+jobs:
+  hml-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    environment: hml-lifecycle
+    permissions:
+      contents: read
+    outputs:
+      staging_active: ${{ steps.gates.outputs.staging_active }}
+      staging_authorized: ${{ steps.gates.outputs.staging_authorized }}
+      session_mode: ${{ steps.gates.outputs.session_mode }}
+    steps:
+      - name: Require the approved HML lifecycle window
+        id: gates
+        env:
+          STAGING_ACTIVE: ${{ vars.STAGING_ACTIVE || 'false' }}
+          STAGING_SESSION_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
+          STAGING_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
+          K8S_HML_TERRAFORM_ROOT_READY: ${{ vars.K8S_HML_TERRAFORM_ROOT_READY || 'false' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$STAGING_ACTIVE" == "true" && "$STAGING_SESSION_AUTHORIZED" == "true" && \
+             "$STAGING_SESSION_MODE" == "hml" && "$K8S_HML_TERRAFORM_ROOT_READY" == "true" ]] || {
+            echo "::error::HML remains closed until all HML lifecycle gates and the isolated Terraform root are approved."
+            exit 1
+          }
+          {
+            echo "staging_active=$STAGING_ACTIVE"
+            echo "staging_authorized=$STAGING_SESSION_AUTHORIZED"
+            echo "session_mode=$STAGING_SESSION_MODE"
+          } >> "$GITHUB_OUTPUT"
+
+  cost-preflight:
+    needs: hml-gates
+    if: needs.hml-gates.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: hml-lifecycle
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      session_id: ${{ steps.window.outputs.session_id }}
+      started_at: ${{ steps.window.outputs.started_at }}
+      session_mode: ${{ steps.window.outputs.session_mode }}
+      work_deadline_utc: ${{ steps.window.outputs.work_deadline_utc }}
+      cleanup_end_utc: ${{ steps.window.outputs.cleanup_end_utc }}
+      artifact_name: lifecycle-cost-${{ steps.window.outputs.session_id }}-${{ github.run_attempt }}-before
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EXPECTED_AWS_ACCOUNT_ID: "035611741563"
+      AWS_COST_READER_ROLE_ARN: ${{ vars.AWS_COST_READER_ROLE_ARN || '' }}
+      HML_DAILY_COST_FLOOR_USD: ${{ vars.HML_DAILY_COST_FLOOR_USD || 'unavailable' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Require the trusted operator and validate the cost-reader configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/require_trusted_lifecycle_operator.py --require-dispatch-actor
+          [[ "$AWS_REGION" == "us-east-1" ]] || { echo "::error::AWS_REGION must be us-east-1."; exit 1; }
+          [[ "$AWS_COST_READER_ROLE_ARN" == "arn:aws:iam::${EXPECTED_AWS_ACCOUNT_ID}:role/auto-shop/auto-shop-staging-github-cost-reader" ]] || {
+            echo "::error::Set AWS_COST_READER_ROLE_ARN from the Terraform cost-reader role output."
+            exit 1
+          }
+          [[ "$HML_DAILY_COST_FLOOR_USD" =~ ^[0-9]+([.][0-9]+)?$ ]] || {
+            echo "::error::HML_DAILY_COST_FLOOR_USD must be a reviewed non-negative decimal."
+            exit 1
+          }
+
+      - name: Resolve the HML session window
+        id: window
+        env:
+          REQUESTED_STARTED_AT: ${{ inputs.started_at }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/resolve_lifecycle_session.py \
+            --action start \
+            --stage hml \
+            --started-at "$REQUESTED_STARTED_AT" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Assume the HML-only Cost Explorer reader
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_COST_READER_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+
+      - name: Capture current gross AWS billing and enforce the approved cap
+        env:
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/capture_lifecycle_cost.py \
+            --stage hml \
+            --session-id "$SESSION_ID" \
+            --phase before \
+            --expected-account-id "$EXPECTED_AWS_ACCOUNT_ID" \
+            --estimate-daily-floor-usd "$HML_DAILY_COST_FLOOR_USD" \
+            --output lifecycle-cost-before.json
+          python3 .github/scripts/guard_lifecycle_spend_cap.py \
+            --input lifecycle-cost-before.json \
+            --stage hml \
+            --session-id "$SESSION_ID" \
+            --expected-account-id "$EXPECTED_AWS_ACCOUNT_ID" \
+            --window-end-inclusive 2026-11-05
+
+      - name: Upload pre-session cost evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifecycle-cost-${{ steps.window.outputs.session_id }}-${{ github.run_attempt }}-before
+          path: lifecycle-cost-before.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+  open:
+    needs: [hml-gates, cost-preflight]
+    if: needs.hml-gates.result == 'success' && needs.cost-preflight.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    environment: operations
+    concurrency:
+      group: environment-lifecycle
+      cancel-in-progress: false
+    outputs:
+      session_id: ${{ needs.cost-preflight.outputs.session_id }}
+      started_at: ${{ needs.cost-preflight.outputs.started_at }}
+      session_mode: ${{ needs.cost-preflight.outputs.session_mode }}
+      work_deadline_utc: ${{ needs.cost-preflight.outputs.work_deadline_utc }}
+      cleanup_end_utc: ${{ needs.cost-preflight.outputs.cleanup_end_utc }}
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EXPECTED_AWS_ACCOUNT_ID: "035611741563"
+      LIFECYCLE_TABLE_NAME: auto-shop-staging-lifecycle-sessions
+      LIFECYCLE_TRUSTED_OPERATORS: ${{ vars.LIFECYCLE_TRUSTED_OPERATORS || '' }}
+      LIFECYCLE_CROSS_REPO_ACTOR: ${{ vars.LIFECYCLE_CROSS_REPO_ACTOR || '' }}
+      LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+      K8S_INFRA_REPOSITORY: ${{ vars.K8S_INFRA_REPOSITORY }}
+      K8S_INFRA_REF: ${{ vars.K8S_INFRA_REF }}
+      DATABASE_INFRA_REPOSITORY: ${{ vars.DATABASE_INFRA_REPOSITORY }}
+      DATABASE_INFRA_REF: ${{ vars.DATABASE_INFRA_REF }}
+      ALERT_TOPIC_ARN: ${{ vars.LIFECYCLE_ALERT_TOPIC_ARN || '' }}
+    steps:
+      - name: Require the lifecycle coordinator to run from main
+        env:
+          SOURCE_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_REF" == "refs/heads/main" ]] || {
+            echo "::error::HML lifecycle operations must run from main."
+            exit 1
+          }
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download and immediately revalidate the cost-cap evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.cost-preflight.outputs.artifact_name }}
+          path: lifecycle-cost-evidence
+
+      - name: Validate trusted actor, repository references, and alert configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/require_trusted_lifecycle_operator.py --require-dispatch-actor
+          [[ "$AWS_REGION" == "us-east-1" ]] || { echo "::error::AWS_REGION must be us-east-1."; exit 1; }
+          [[ -n "$LIFECYCLE_CROSS_REPO_TOKEN" ]] || { echo "::error::LIFECYCLE_CROSS_REPO_TOKEN is required."; exit 1; }
+          [[ "$K8S_INFRA_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$K8S_INFRA_REF" == "main" ]] || {
+            echo "::error::K8S_INFRA_REPOSITORY and K8S_INFRA_REF=main are required."
+            exit 1
+          }
+          [[ "$DATABASE_INFRA_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$DATABASE_INFRA_REF" == "main" ]] || {
+            echo "::error::DATABASE_INFRA_REPOSITORY and DATABASE_INFRA_REF=main are required."
+            exit 1
+          }
+          [[ "$ALERT_TOPIC_ARN" =~ ^arn:aws:sns:us-east-1:${EXPECTED_AWS_ACCOUNT_ID}:[A-Za-z0-9_-]+$ ]] || {
+            echo "::error::LIFECYCLE_ALERT_TOPIC_ARN must reference an SNS topic in the expected account."
+            exit 1
+          }
+
+      - name: Revalidate the approved spend cap immediately before opening
+        env:
+          SESSION_ID: ${{ needs.cost-preflight.outputs.session_id }}
+          HML_DAILY_COST_FLOOR_USD: ${{ vars.HML_DAILY_COST_FLOOR_USD || 'unavailable' }}
+        run: >-
+          python3 .github/scripts/guard_lifecycle_spend_cap.py
+          --input lifecycle-cost-evidence/lifecycle-cost-before.json
+          --stage hml
+          --session-id "$SESSION_ID"
+          --expected-account-id "$EXPECTED_AWS_ACCOUNT_ID"
+          --window-end-inclusive 2026-11-05
+
+      - name: Reject a second opening run for the same HML date
+        env:
+          GH_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+          LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+        run: python3 .github/scripts/assert_daily_lifecycle_unique.py --stage hml
+
+      - name: Configure the narrow lifecycle start role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::035611741563:role/auto-shop/auto-shop-staging-github-lifecycle-start
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+
+      - name: Require the existing persistent lifecycle ledger
+        env:
+          TABLE_NAME: auto-shop-staging-lifecycle-sessions
+        shell: bash
+        run: |
+          set -euo pipefail
+          table_status="$(aws dynamodb describe-table --table-name "$TABLE_NAME" --query 'Table.TableStatus' --output text)"
+          [[ "$table_status" == "ACTIVE" ]] || {
+            echo "::error::The persistent lifecycle ledger is not ACTIVE."
+            exit 1
+          }
+
+      - name: Verify the HML auth Lambda and SSM ARN contract without reading secrets
+        run: python3 .github/scripts/validate_auth_lambda_preflight.py
+
+      - name: Record the trusted operator and authorize an infrastructure-only session
+        env:
+          SESSION_ID: ${{ needs.cost-preflight.outputs.session_id }}
+          STARTED_AT: ${{ needs.cost-preflight.outputs.started_at }}
+          SESSION_MODE: ${{ needs.cost-preflight.outputs.session_mode }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/lifecycle_session_ledger.py authorize-open \
+            --session-id "$SESSION_ID" \
+            --stage hml \
+            --started-at "$STARTED_AT" \
+            --session-mode "$SESSION_MODE" \
+            --session-scope infrastructure-only
+
+      - name: Plan the K8s foundation opening
+        id: k8s_foundation
+        env:
+          SESSION_ID: ${{ needs.cost-preflight.outputs.session_id }}
+          STARTED_AT: ${{ needs.cost-preflight.outputs.started_at }}
+          SESSION_MODE: ${{ needs.cost-preflight.outputs.session_mode }}
+          WORK_DEADLINE: ${{ needs.cost-preflight.outputs.work_deadline_utc }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/cross_repo_lifecycle.py \
+            --repository "$K8S_INFRA_REPOSITORY" --workflow ci.yml --ref main \
+            --expected-title "$SESSION_ID-foundation-open" --authorization-action open \
+            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"stack\":\"foundation\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\"}" \
+            --github-output "$GITHUB_OUTPUT" --output-name foundation --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Apply the exact K8s foundation opening plan
+        id: foundation_apply
+        env:
+          SESSION_ID: ${{ needs.cost-preflight.outputs.session_id }}
+          STARTED_AT: ${{ needs.cost-preflight.outputs.started_at }}
+          SESSION_MODE: ${{ needs.cost-preflight.outputs.session_mode }}
+          PLAN_ID: ${{ steps.k8s_foundation.outputs.foundation_plan_id }}
+          WORK_DEADLINE: ${{ needs.cost-preflight.outputs.work_deadline_utc }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/cross_repo_lifecycle.py \
+            --repository "$K8S_INFRA_REPOSITORY" --workflow apply.yml --ref main \
+            --expected-title "$SESSION_ID-foundation-open-apply" --authorization-action open \
+            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"stack\":\"foundation\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}" \
+            --github-output "$GITHUB_OUTPUT" --output-name foundation_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Plan the K8s platform opening
+        id: k8s_platform
+        env:
+          SESSION_ID: ${{ needs.cost-preflight.outputs.session_id }}
+          STARTED_AT: ${{ needs.cost-preflight.outputs.started_at }}
+          SESSION_MODE: ${{ needs.cost-preflight.outputs.session_mode }}
+          WORK_DEADLINE: ${{ needs.cost-preflight.outputs.work_deadline_utc }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/cross_repo_lifecycle.py \
+            --repository "$K8S_INFRA_REPOSITORY" --workflow ci.yml --ref main \
+            --expected-title "$SESSION_ID-platform-open" --authorization-action open \
+            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"stack\":\"platform\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\"}" \
+            --github-output "$GITHUB_OUTPUT" --output-name platform --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Apply the exact K8s platform opening plan
+        id: platform_apply
+        env:
+          SESSION_ID: ${{ needs.cost-preflight.outputs.session_id }}
+          STARTED_AT: ${{ needs.cost-preflight.outputs.started_at }}
+          SESSION_MODE: ${{ needs.cost-preflight.outputs.session_mode }}
+          PLAN_ID: ${{ steps.k8s_platform.outputs.platform_plan_id }}
+          WORK_DEADLINE: ${{ needs.cost-preflight.outputs.work_deadline_utc }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/cross_repo_lifecycle.py \
+            --repository "$K8S_INFRA_REPOSITORY" --workflow apply.yml --ref main \
+            --expected-title "$SESSION_ID-platform-open-apply" --authorization-action open \
+            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"stack\":\"platform\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}" \
+            --github-output "$GITHUB_OUTPUT" --output-name platform_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Plan the isolated HML namespace opening
+        id: k8s_hml
+        env:
+          SESSION_ID: ${{ needs.cost-preflight.outputs.session_id }}
+          STARTED_AT: ${{ needs.cost-preflight.outputs.started_at }}
+          SESSION_MODE: ${{ needs.cost-preflight.outputs.session_mode }}
+          WORK_DEADLINE: ${{ needs.cost-preflight.outputs.work_deadline_utc }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/cross_repo_lifecycle.py \
+            --repository "$K8S_INFRA_REPOSITORY" --workflow ci.yml --ref main \
+            --expected-title "$SESSION_ID-hml-open" --authorization-action open \
+            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"stack\":\"hml\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\"}" \
+            --github-output "$GITHUB_OUTPUT" --output-name environment --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Apply the exact HML namespace opening plan
+        id: hml_apply
+        env:
+          SESSION_ID: ${{ needs.cost-preflight.outputs.session_id }}
+          STARTED_AT: ${{ needs.cost-preflight.outputs.started_at }}
+          SESSION_MODE: ${{ needs.cost-preflight.outputs.session_mode }}
+          PLAN_ID: ${{ steps.k8s_hml.outputs.environment_plan_id }}
+          WORK_DEADLINE: ${{ needs.cost-preflight.outputs.work_deadline_utc }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/cross_repo_lifecycle.py \
+            --repository "$K8S_INFRA_REPOSITORY" --workflow apply.yml --ref main \
+            --expected-title "$SESSION_ID-hml-open-apply" --authorization-action open \
+            --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"stack\":\"hml\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}" \
+            --github-output "$GITHUB_OUTPUT" --output-name environment_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Bootstrap the HML lifecycle database
+        env:
+          SESSION_ID: ${{ needs.cost-preflight.outputs.session_id }}
+          STARTED_AT: ${{ needs.cost-preflight.outputs.started_at }}
+          SESSION_MODE: ${{ needs.cost-preflight.outputs.session_mode }}
+          WORK_DEADLINE: ${{ needs.cost-preflight.outputs.work_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$DATABASE_INFRA_REPOSITORY" --workflow apply.yml --ref main
+          --expected-title "database/$SESSION_ID/apply/bootstrap"
+          --authorization-action open
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"session_scope\":\"infrastructure-only\",\"phase\":\"bootstrap\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name database_bootstrap --timeout-seconds 1200 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Record the infrastructure-only opening
+        env:
+          SESSION_ID: ${{ needs.cost-preflight.outputs.session_id }}
+          STARTED_AT: ${{ needs.cost-preflight.outputs.started_at }}
+          SESSION_END: ${{ needs.cost-preflight.outputs.work_deadline_utc }}
+        run: |
+          {
+            echo "### HML infrastructure opened"
+            echo "- Session: $SESSION_ID"
+            echo "- Scope: infrastructure-only"
+            echo "- Session start (UTC): $STARTED_AT"
+            echo "- Work deadline (UTC): $SESSION_END"
+            echo "- Pre-session gross cost and cap evidence is in the lifecycle cost artifact."
+          } >> "$GITHUB_STEP_SUMMARY"
