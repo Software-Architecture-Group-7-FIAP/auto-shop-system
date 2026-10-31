@@ -63,12 +63,16 @@ locals {
   }
 }
 
-resource "aws_iam_openid_connect_provider" "github" {
-  count = var.enable_github_oidc ? 1 : 0
+data "aws_iam_openid_connect_provider" "github" {
+  url = "https://token.actions.githubusercontent.com"
+}
 
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [var.github_oidc_thumbprint]
+removed {
+  from = aws_iam_openid_connect_provider.github
+
+  lifecycle {
+    destroy = false
+  }
 }
 
 data "aws_iam_policy_document" "github_deploy_assume" {
@@ -78,7 +82,7 @@ data "aws_iam_policy_document" "github_deploy_assume" {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github[0].arn]
+      identifiers = [data.aws_iam_openid_connect_provider.github.arn]
     }
     condition {
       test     = "StringEquals"
@@ -208,7 +212,7 @@ data "aws_iam_policy_document" "github_auth_preflight_assume" {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github[0].arn]
+      identifiers = [data.aws_iam_openid_connect_provider.github.arn]
     }
     condition {
       test     = "StringEquals"
