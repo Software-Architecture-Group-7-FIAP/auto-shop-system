@@ -58,10 +58,6 @@ locals {
     staging    = "hml"
     production = "prd"
   }
-  github_environment_branch = {
-    staging    = "refs/heads/develop"
-    production = "refs/heads/main"
-  }
   github_deploy_parameter_arns = {
     for environment, stage in local.github_environment_api_stage :
     environment => [
@@ -102,11 +98,6 @@ data "aws_iam_policy_document" "github_deploy_assume" {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
       values   = ["${local.github_oidc_subject_prefix}:environment:${local.github_environment_name[each.key]}"]
-    }
-    condition {
-      test     = "StringEquals"
-      variable = "token.actions.githubusercontent.com:ref"
-      values   = [local.github_environment_branch[each.key]]
     }
   }
 }
