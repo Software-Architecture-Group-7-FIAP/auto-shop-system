@@ -418,6 +418,82 @@ resource "aws_iam_role_policy" "github_lifecycle_alert_publish" {
   policy = data.aws_iam_policy_document.github_lifecycle_alert_publish[0].json
 }
 
+data "aws_iam_policy_document" "github_lifecycle_edge_assume" {
+  count = var.enable_github_oidc ? 1 : 0
+
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [data.aws_iam_openid_connect_provider.github.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["${local.github_oidc_subject_prefix}:environment:operations"]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "github_lifecycle_edge" {
+  count = var.enable_github_oidc ? 1 : 0
+
+  statement {
+    sid    = "ManagePublicEdgeResources"
+    effect = "Allow"
+    actions = [
+      "apigateway:*",
+      "cloudfront:*",
+      "acm:*",
+      "wafv2:*",
+      "route53:*",
+      "cloudwatch:*",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "ManageSecretsForEdge"
+    effect = "Allow"
+    actions = [
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:DescribeSecret",
+    ]
+    resources = [
+      "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:*edge*",
+      "arn:aws:secretsmanager:us-east-1:${data.aws_caller_identity.current.account_id}:secret:*edge*",
+    ]
+  }
+}
+
+resource "aws_iam_role" "github_lifecycle_edge" {
+  count = var.enable_github_oidc ? 1 : 0
+
+  name                 = "${local.name_prefix}-github-lifecycle-edge"
+  path                 = "/auto-shop/"
+  description          = "Lifecycle role for public edge (API Gateway, CloudFront, WAF, ACM) reconciliation during HML/PRD sessions."
+  max_session_duration = 3600
+  assume_role_policy   = data.aws_iam_policy_document.github_lifecycle_edge_assume[0].json
+  permissions_boundary = local.github_deploy_permissions_boundary_arn
+  tags                 = local.common_tags
+}
+
+resource "aws_iam_role_policy" "github_lifecycle_edge" {
+  count = var.enable_github_oidc ? 1 : 0
+
+  name   = "lifecycle-edge"
+  role   = aws_iam_role.github_lifecycle_edge[0].id
+  policy = data.aws_iam_policy_document.github_lifecycle_edge[0].json
+}
+
 output "github_lifecycle_cost_reader_role_arn" {
   description = "Cost Explorer read-only role for guarded HML lifecycle preflight."
   value       = var.enable_github_oidc ? aws_iam_role.github_lifecycle_cost_reader[0].arn : null
@@ -431,4 +507,9 @@ output "github_lifecycle_alert_publish_role_arn" {
 output "lifecycle_alert_topic_arn" {
   description = "Encrypted SNS topic for lifecycle teardown alerts; no subscription is created here."
   value       = var.enable_github_oidc ? aws_sns_topic.lifecycle_alerts[0].arn : null
+}
+
+output "github_lifecycle_edge_role_arn" {
+  description = "Role for guarded HML lifecycle public edge (API Gateway, CloudFront, WAF, ACM) reconciliation."
+  value       = var.enable_github_oidc ? aws_iam_role.github_lifecycle_edge[0].arn : null
 }
