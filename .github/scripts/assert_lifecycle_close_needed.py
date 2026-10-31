@@ -20,8 +20,17 @@ BRT = ZoneInfo("America/Sao_Paulo")
 SESSION_PATTERN = re.compile(r"^(?:hml|prd)-(\d{4}-\d{2}-\d{2})$")
 ACTIVE_STATUSES = {"queued", "requested", "waiting", "in_progress", "pending", "canceling"}
 FIRST_MUTATION_MARKER = "Apply the exact K8s foundation opening plan"
+CLOSE_MUTATION_MARKERS = (
+    "Cancel and wait for this session's app deployment",
+    "Reconcile the public edge into maintenance while preserving its URL",
+    "Destroy the ephemeral database after edge maintenance",
+    "Apply the exact NAT shutdown plan",
+    "Apply the reviewed platform destroy plan",
+    "Apply the reviewed compute-only foundation destroy plan",
+)
 RUN_TITLE_SUFFIX = re.compile(r"(?::[0-9a-f]{32}|:\d+)$")
 HML_LAST_DAY = date(2026, 10, 31)
+FAILED_CONCLUSIONS = {"failure", "cancelled", "timed_out", "startup_failure"}
 
 
 def _matches_opening_title(title: str, base_title: str) -> bool:
@@ -56,19 +65,30 @@ def _runs(repository: str, workflow: str, local_day: date, token: str) -> list[d
         if not isinstance(payload, dict) or not isinstance(payload.get("workflow_runs"), list):
             raise ValueError("GitHub returned an invalid workflow run listing")
         count = payload.get("total_count")
-        if not isinstance(count, int):
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
             raise ValueError("GitHub returned an invalid workflow run count")
         if total_count is None:
             total_count = count
             if total_count > 1000:
                 raise ValueError(f"More than 1000 {workflow} runs prevent a safe idempotency check")
+        elif count != total_count:
+            raise ValueError(f"GitHub changed the {workflow} run count during pagination")
         page_runs = payload["workflow_runs"]
         if not all(isinstance(run, dict) for run in page_runs):
             raise ValueError("GitHub returned malformed workflow run entries")
         runs.extend(page_runs)
-        if len(runs) >= total_count or not page_runs:
+        if len(runs) >= total_count:
             break
+        if not page_runs:
+            raise ValueError(f"GitHub returned an incomplete {workflow} run listing")
         page += 1
+    if total_count is None or len(runs) != total_count:
+        raise ValueError(f"GitHub returned an incomplete {workflow} run listing")
+    run_ids = [run.get("id") for run in runs]
+    if any(isinstance(run_id, bool) or not isinstance(run_id, int) or run_id < 1 for run_id in run_ids):
+        raise ValueError(f"GitHub returned invalid {workflow} run IDs")
+    if len(set(run_ids)) != len(run_ids):
+        raise ValueError(f"GitHub returned duplicate {workflow} run IDs")
     return runs
 
 
@@ -104,6 +124,53 @@ def has_started_mutating_job(jobs: list[dict[str, object]]) -> bool:
     return False
 
 
+def close_run_proves_no_mutation(jobs: list[dict[str, object]]) -> bool:
+    """Return true only when GitHub's job record proves a failed close stopped before every mutation phase."""
+    close_jobs = [job for job in jobs if job.get("name") == "close"]
+    if len(close_jobs) != 1:
+        return False
+    close_job = close_jobs[0]
+    if close_job.get("status") == "completed" and close_job.get("conclusion") == "skipped":
+        return True
+    if close_job.get("status") != "completed" or close_job.get("conclusion") not in FAILED_CONCLUSIONS:
+        return False
+
+    steps = close_job.get("steps")
+    if not isinstance(steps, list) or not all(isinstance(step, dict) for step in steps):
+        return False
+    for marker in CLOSE_MUTATION_MARKERS:
+        matches = [step for step in steps if step.get("name") == marker]
+        if len(matches) != 1 or "started_at" not in matches[0] or matches[0]["started_at"] is not None:
+            return False
+    return True
+
+
+def close_run_is_safe_to_retry(repository: str, run: dict[str, object], token: str) -> bool:
+    run_id = run.get("id")
+    if not isinstance(run_id, int) or run_id < 1:
+        raise ValueError("A failed close run has no valid ID for phase review")
+    request = Request(
+        f"{API_ROOT}/repos/{repository}/actions/runs/{run_id}/jobs?filter=all&per_page=100",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "auto-shop-lifecycle-coordinator",
+        },
+    )
+    with urlopen(request, timeout=30) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list):
+        raise ValueError("GitHub returned invalid close phase evidence")
+    total_count = payload.get("total_count")
+    if not isinstance(total_count, int) or total_count > 100:
+        raise ValueError("GitHub returned ambiguous close phase evidence")
+    jobs = payload["jobs"]
+    if len(jobs) != total_count or not all(isinstance(job, dict) for job in jobs):
+        raise ValueError("GitHub returned incomplete close phase evidence")
+    return close_run_proves_no_mutation(jobs)
+
+
 def _opening_mutation_started(repository: str, run_id: object, token: str) -> bool:
     request = Request(
         f"{API_ROOT}/repos/{repository}/actions/runs/{run_id}/jobs?filter=all&per_page=100",
@@ -123,7 +190,9 @@ def _opening_mutation_started(repository: str, run_id: object, token: str) -> bo
         raise ValueError("GitHub returned an invalid job count")
     if total_count > 100:
         raise ValueError("Too many jobs prevent a safe opening-mutation check")
-    jobs = [job for job in payload["jobs"] if isinstance(job, dict)]
+    jobs = payload["jobs"]
+    if len(jobs) != total_count or not all(isinstance(job, dict) for job in jobs):
+        raise ValueError("GitHub returned incomplete opening job evidence")
     return has_started_mutating_job(jobs)
 
 
@@ -235,14 +304,26 @@ def main() -> int:
                 if str(run.get("id")) != current_run_id
                 and str(run.get("display_title", "")).startswith(close_prefix)
             ]
-            if any(str(run.get("conclusion", "")) == "success" for run in prior_closes):
+            if any(
+                run.get("status") == "completed" and run.get("conclusion") == "success"
+                for run in prior_closes
+            ):
                 close_needed = False
                 reason = "A successful close already exists for this session; no duplicate teardown was started."
             elif any(str(run.get("status", "")) in ACTIVE_STATUSES for run in prior_closes):
                 raise ValueError("Another close run is still active; refusing a concurrent teardown")
+            elif any(
+                run.get("status") != "completed" or run.get("conclusion") not in FAILED_CONCLUSIONS
+                for run in prior_closes
+            ):
+                raise ValueError("A prior close run has an unknown state; refusing to repeat teardown")
+            elif any(not close_run_is_safe_to_retry(repository, run, token) for run in prior_closes):
+                raise ValueError(
+                    "A prior close may have entered teardown; operator phase review is required before retry"
+                )
             else:
                 close_needed = True
-                reason = "A matching opening exists and no successful close has completed."
+                reason = "A matching opening exists and every failed prior close is proven to have stopped before mutation."
     except (HTTPError, URLError, OSError, json.JSONDecodeError, ValueError) as error:
         print(f"::error::Close idempotency check failed closed: {error}", file=sys.stderr)
         return 1

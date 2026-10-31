@@ -108,12 +108,17 @@ jobs:
           CLOSE_REQUEST_ID: ${{ inputs.close_request_id }}
           EMERGENCY_CLEANUP: ${{ inputs.emergency_cleanup }}
           REQUESTED_EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_REF: ${{ github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ "$EMERGENCY_CLEANUP" == "true" ]]; then
             [[ "$REQUESTED_EVENT_NAME" == "workflow_dispatch" && "$ENVIRONMENT_STAGE" == "hml" ]] || {
               echo "::error::Emergency cleanup must be a coordinated HML workflow dispatch."
+              exit 1
+            }
+            [[ "$REQUESTED_REF" == "develop" ]] || {
+              echo "::error::Emergency HML cleanup must use the protected develop ref."
               exit 1
             }
             [[ "$LIFECYCLE_DISPATCH_ID" =~ ^[0-9a-f]{32}$ ]] || {

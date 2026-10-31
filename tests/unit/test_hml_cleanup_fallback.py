@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 import sys
@@ -28,6 +29,7 @@ RESOLVER = _load_script("resolve_lifecycle_session")
 WINDOW = _load_script("validate_environment_window")
 CLOSE_GUARD = _load_script("assert_lifecycle_close_needed")
 AUTH = _load_script("lifecycle_session_auth")
+OPERATOR_AUTH = _load_script("authorize_hml_cleanup")
 
 
 def _opening(
@@ -52,8 +54,20 @@ def _close(
     *,
     status: str = "completed",
     conclusion: str = "success",
+    retry_safe: bool | None = None,
 ) -> dict[str, object]:
-    return {"display_title": title, "status": status, "conclusion": conclusion}
+    value: dict[str, object] = {"display_title": title, "status": status, "conclusion": conclusion}
+    if retry_safe is not None:
+        value["retry_safe"] = retry_safe
+    return value
+
+
+def _safe_close_jobs(*, mutation_started: bool = False) -> list[dict[str, object]]:
+    markers = [
+        {"name": name, "started_at": "2026-10-30T20:10:00Z" if mutation_started and index == 0 else None}
+        for index, name in enumerate(CLOSE_GUARD.CLOSE_MUTATION_MARKERS)
+    ]
+    return [{"name": "close", "status": "completed", "conclusion": "failure", "steps": markers}]
 
 
 def test_default_hml_opening_resolves_to_the_default_brt_start() -> None:
@@ -110,16 +124,52 @@ def test_opening_created_after_its_authorized_window_fails_closed() -> None:
         )
 
 
-def test_resolver_selects_one_mutating_hml_session_without_a_successful_or_active_close() -> None:
+def test_resolver_only_retries_a_failed_close_when_job_evidence_proves_no_mutation_started() -> None:
     session = CLEANUP.find_cleanup_candidate(
         [_opening("lifecycle:hml:open:default-17-BRT:101")],
-        [_close("lifecycle:hml:close:hml-2026-10-30:auto-99:dispatch", conclusion="failure")],
+        [_close(
+            "lifecycle:hml:close:hml-2026-10-30:auto-99:dispatch",
+            conclusion="failure",
+            retry_safe=True,
+        )],
         default_branch="main",
         now=datetime(2026, 10, 31, 2, 0, tzinfo=timezone.utc),
-        mutation_started=lambda _run_id: True,
+        mutation_accepted=lambda _session, _opening: True,
+        close_retry_safe=lambda run: run.get("retry_safe") is True,
     )
 
     assert session.session_id == "hml-2026-10-30"
+
+
+def test_resolver_fails_closed_for_failed_close_without_retry_evidence() -> None:
+    with pytest.raises(ValueError, match="operator phase review is required"):
+        CLEANUP.find_cleanup_candidate(
+            [_opening("lifecycle:hml:open:default-17-BRT:101")],
+            [_close("lifecycle:hml:close:hml-2026-10-30:auto-99:dispatch", conclusion="failure")],
+            default_branch="main",
+            now=datetime(2026, 10, 31, 2, 0, tzinfo=timezone.utc),
+            mutation_accepted=lambda _session, _opening: True,
+            close_retry_safe=lambda run: run.get("retry_safe") is True,
+        )
+
+
+def test_resolver_does_not_retry_after_any_close_mutation_phase_started() -> None:
+    assert CLOSE_GUARD.close_run_proves_no_mutation(_safe_close_jobs()) is True
+    assert CLOSE_GUARD.close_run_proves_no_mutation(_safe_close_jobs(mutation_started=True)) is False
+
+    with pytest.raises(ValueError, match="operator phase review is required"):
+        CLEANUP.find_cleanup_candidate(
+            [_opening("lifecycle:hml:open:default-17-BRT:101")],
+            [_close(
+                "lifecycle:hml:close:hml-2026-10-30:auto-99:dispatch",
+                conclusion="failure",
+                retry_safe=False,
+            )],
+            default_branch="main",
+            now=datetime(2026, 10, 31, 2, 0, tzinfo=timezone.utc),
+            mutation_accepted=lambda _session, _opening: True,
+            close_retry_safe=lambda run: run.get("retry_safe") is True,
+        )
 
 
 @pytest.mark.parametrize(
@@ -139,15 +189,298 @@ def test_resolver_selects_one_mutating_hml_session_without_a_successful_or_activ
     ],
 )
 def test_successful_or_active_close_is_not_dispatched_again(close_run: dict[str, object]) -> None:
-    session = CLEANUP.find_cleanup_candidate(
-        [_opening("lifecycle:hml:open:default-17-BRT:101")],
-        [close_run],
-        default_branch="main",
-        now=datetime(2026, 10, 31, 2, 0, tzinfo=timezone.utc),
-        mutation_started=lambda _run_id: True,
-    )
+    if close_run.get("status") in CLEANUP.ACTIVE_STATUSES:
+        with pytest.raises(ValueError, match="still active"):
+            CLEANUP.find_cleanup_candidate(
+                [_opening("lifecycle:hml:open:default-17-BRT:101")],
+                [close_run],
+                default_branch="main",
+                now=datetime(2026, 10, 31, 2, 0, tzinfo=timezone.utc),
+                mutation_accepted=lambda _session, _opening: True,
+                close_retry_safe=lambda run: run.get("retry_safe") is True,
+            )
+    else:
+        session = CLEANUP.find_cleanup_candidate(
+            [_opening("lifecycle:hml:open:default-17-BRT:101")],
+            [close_run],
+            default_branch="main",
+            now=datetime(2026, 10, 31, 2, 0, tzinfo=timezone.utc),
+            mutation_accepted=lambda _session, _opening: True,
+            close_retry_safe=lambda run: run.get("retry_safe") is True,
+        )
+        assert session is None
 
-    assert session is None
+
+def test_upstream_foundation_apply_acceptance_requires_exact_correlated_run() -> None:
+    started_after = datetime(2026, 10, 30, 20, 0, tzinfo=timezone.utc)
+    title = "hml-2026-10-30-foundation-open-apply:" + "a" * 32
+    accepted_run = {
+        "id": 501,
+        "display_title": title,
+        "event": "workflow_dispatch",
+        "head_branch": "main",
+        "status": "completed",
+        "conclusion": "failure",
+        "created_at": "2026-10-30T20:01:00Z",
+    }
+    started_jobs = [{
+        "name": "apply reviewed saved plan",
+        "status": "completed",
+        "conclusion": "failure",
+        "steps": [{
+            "name": "Verify and apply the exact saved plan",
+            "started_at": "2026-10-30T20:02:00Z",
+            "conclusion": "failure",
+        }],
+    }]
+
+    assert CLEANUP.has_accepted_opening_apply_run(
+        [accepted_run],
+        session_id="hml-2026-10-30",
+        ref="main",
+        started_after=started_after,
+        jobs_for_run=lambda _run_id: started_jobs,
+    ) is True
+    assert CLEANUP.has_accepted_opening_apply_run(
+        [{**accepted_run, "display_title": "unrelated:" + "a" * 32}],
+        session_id="hml-2026-10-30",
+        ref="main",
+        started_after=started_after,
+        jobs_for_run=lambda _run_id: started_jobs,
+    ) is False
+    assert CLEANUP.has_accepted_opening_apply_run(
+        [{**accepted_run, "head_branch": "develop"}],
+        session_id="hml-2026-10-30",
+        ref="main",
+        started_after=started_after,
+        jobs_for_run=lambda _run_id: started_jobs,
+    ) is False
+    assert CLEANUP.has_accepted_opening_apply_run(
+        [{**accepted_run, "created_at": "2026-10-30T19:59:00Z"}],
+        session_id="hml-2026-10-30",
+        ref="main",
+        started_after=started_after,
+        jobs_for_run=lambda _run_id: started_jobs,
+    ) is False
+
+
+def test_upstream_apply_run_without_a_started_scoped_step_is_not_accepted() -> None:
+    run = {
+        "id": 502,
+        "display_title": "hml-2026-10-30-foundation-open-apply:" + "b" * 32,
+        "event": "workflow_dispatch",
+        "head_branch": "main",
+        "status": "completed",
+        "conclusion": "skipped",
+        "created_at": "2026-10-30T20:01:00Z",
+    }
+    skipped_job = [{
+        "name": "apply reviewed saved plan",
+        "status": "completed",
+        "conclusion": "skipped",
+        "steps": [],
+    }]
+
+    assert CLEANUP.has_accepted_opening_apply_run(
+        [run],
+        session_id="hml-2026-10-30",
+        ref="main",
+        started_after=datetime(2026, 10, 30, 20, 0, tzinfo=timezone.utc),
+        jobs_for_run=lambda _run_id: skipped_job,
+    ) is False
+
+
+def test_upstream_apply_fails_closed_when_the_scoped_step_evidence_is_missing() -> None:
+    run = {
+        "id": 503,
+        "display_title": "hml-2026-10-30-foundation-open-apply:" + "c" * 32,
+        "event": "workflow_dispatch",
+        "head_branch": "main",
+        "status": "completed",
+        "conclusion": "failure",
+        "created_at": "2026-10-30T20:01:00Z",
+    }
+
+    with pytest.raises(ValueError, match="expected opening apply job"):
+        CLEANUP.has_accepted_opening_apply_run(
+            [run],
+            session_id="hml-2026-10-30",
+            ref="main",
+            started_after=datetime(2026, 10, 30, 20, 0, tzinfo=timezone.utc),
+            jobs_for_run=lambda _run_id: [{"name": "unexpected"}],
+        )
+    with pytest.raises(ValueError, match="step evidence is missing or ambiguous"):
+        CLEANUP.has_accepted_opening_apply_run(
+            [run],
+            session_id="hml-2026-10-30",
+            ref="main",
+            started_after=datetime(2026, 10, 30, 20, 0, tzinfo=timezone.utc),
+            jobs_for_run=lambda _run_id: [{
+                "name": "apply reviewed saved plan",
+                "status": "completed",
+                "conclusion": "failure",
+                "steps": [],
+            }],
+        )
+
+
+def test_workflow_run_pagination_fails_closed_on_incomplete_pages(monkeypatch) -> None:
+    responses = iter([
+        {"total_count": 2, "workflow_runs": [{"id": 1}]},
+        {"total_count": 2, "workflow_runs": []},
+    ])
+    monkeypatch.setattr(CLEANUP, "_api_request", lambda *_args: next(responses))
+
+    with pytest.raises(ValueError, match="incomplete apply.yml run listing"):
+        CLEANUP._workflow_runs("owner/infra", "apply.yml", "token")
+
+
+def test_workflow_run_pagination_rejects_duplicate_ids(monkeypatch) -> None:
+    responses = iter([
+        {"total_count": 2, "workflow_runs": [{"id": 1}]},
+        {"total_count": 2, "workflow_runs": [{"id": 1}]},
+    ])
+    monkeypatch.setattr(CLEANUP, "_api_request", lambda *_args: next(responses))
+
+    with pytest.raises(ValueError, match="duplicate apply.yml run IDs"):
+        CLEANUP._workflow_runs("owner/infra", "apply.yml", "token")
+
+
+def test_workflow_job_lookup_includes_all_rerun_attempts_and_requires_complete_pagination(monkeypatch) -> None:
+    responses = iter([
+        {"total_count": 2, "jobs": [{"id": 11}]},
+        {"total_count": 2, "jobs": [{"id": 12}]},
+    ])
+    paths: list[str] = []
+
+    def respond(_token: str, path: str):
+        paths.append(path)
+        return next(responses)
+
+    monkeypatch.setattr(CLEANUP, "_api_request", respond)
+
+    jobs = CLEANUP._workflow_jobs("owner/infra", 501, "token")
+
+    assert jobs == [{"id": 11}, {"id": 12}]
+    assert len(paths) == 2
+    assert all("filter=all" in path for path in paths)
+
+
+def test_workflow_job_pagination_rejects_duplicate_job_ids(monkeypatch) -> None:
+    responses = iter([
+        {"total_count": 2, "jobs": [{"id": 11}]},
+        {"total_count": 2, "jobs": [{"id": 11}]},
+    ])
+    monkeypatch.setattr(CLEANUP, "_api_request", lambda *_args: next(responses))
+
+    with pytest.raises(ValueError, match="duplicate upstream apply job IDs"):
+        CLEANUP._workflow_jobs("owner/infra", 501, "token")
+
+
+def test_close_guard_run_pagination_fails_closed_on_incomplete_pages(monkeypatch) -> None:
+    responses = iter([
+        {"total_count": 2, "workflow_runs": [{"id": 1}]},
+        {"total_count": 2, "workflow_runs": []},
+    ])
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps(next(responses)).encode("utf-8")
+
+    monkeypatch.setattr(CLOSE_GUARD, "urlopen", lambda *_args, **_kwargs: Response())
+
+    with pytest.raises(ValueError, match="incomplete environment-stop.yml run listing"):
+        CLOSE_GUARD._runs("owner/app", "environment-stop.yml", date(2026, 10, 30), "token")
+
+
+def test_close_guard_run_pagination_rejects_duplicate_ids(monkeypatch) -> None:
+    responses = iter([
+        {"total_count": 2, "workflow_runs": [{"id": 1}]},
+        {"total_count": 2, "workflow_runs": [{"id": 1}]},
+    ])
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps(next(responses)).encode("utf-8")
+
+    monkeypatch.setattr(CLOSE_GUARD, "urlopen", lambda *_args, **_kwargs: Response())
+
+    with pytest.raises(ValueError, match="duplicate environment-stop.yml run IDs"):
+        CLOSE_GUARD._runs("owner/app", "environment-stop.yml", date(2026, 10, 30), "token")
+
+
+def test_active_upstream_apply_blocks_emergency_cleanup() -> None:
+    with pytest.raises(ValueError, match="upstream opening apply is still active"):
+        CLEANUP.has_accepted_opening_apply_run(
+            [{
+                "display_title": "hml-2026-10-30-foundation-open-apply:" + "b" * 32,
+                "event": "workflow_dispatch",
+                "head_branch": "main",
+                "status": "in_progress",
+                "created_at": "2026-10-30T20:01:00Z",
+            }],
+            session_id="hml-2026-10-30",
+            ref="main",
+            started_after=datetime(2026, 10, 30, 20, 0, tzinfo=timezone.utc),
+            jobs_for_run=lambda _run_id: [],
+        )
+
+
+def test_fallback_requires_local_apply_dispatch_marker_and_accepted_upstream_run(monkeypatch) -> None:
+    opening = _opening("lifecycle:hml:open:default-17-BRT:101")
+    session = CLEANUP.parse_hml_opening_run(opening, default_branch="main")
+    assert session is not None
+    monkeypatch.setattr(CLEANUP, "_opening_mutation_started", lambda *_args: True)
+    monkeypatch.setattr(CLEANUP, "_workflow_runs", lambda *_args, **_kwargs: [])
+
+    assert CLEANUP._opening_apply_was_accepted(
+        session,
+        opening,
+        coordinator_repository="owner/app",
+        infrastructure_repository="owner/infra",
+        ref="main",
+        token="test-token",
+    ) is False
+
+    accepted_run = {
+        "id": 501,
+        "display_title": "hml-2026-10-30-foundation-open-apply:" + "c" * 32,
+        "event": "workflow_dispatch",
+        "head_branch": "main",
+        "status": "completed",
+        "conclusion": "failure",
+        "created_at": "2026-10-30T20:01:00Z",
+    }
+    monkeypatch.setattr(CLEANUP, "_workflow_runs", lambda *_args, **_kwargs: [accepted_run])
+    monkeypatch.setattr(CLEANUP, "_workflow_jobs", lambda *_args, **_kwargs: [{
+        "name": "apply reviewed saved plan",
+        "status": "completed",
+        "conclusion": "failure",
+        "steps": [{
+            "name": "Verify and apply the exact saved plan",
+            "started_at": "2026-10-30T20:02:00Z",
+        }],
+    }])
+    assert CLEANUP._opening_apply_was_accepted(
+        session,
+        opening,
+        coordinator_repository="owner/app",
+        infrastructure_repository="owner/infra",
+        ref="main",
+        token="test-token",
+    ) is True
 
 
 def test_session_that_never_started_mutating_infrastructure_is_skipped() -> None:
@@ -156,7 +489,8 @@ def test_session_that_never_started_mutating_infrastructure_is_skipped() -> None
         [],
         default_branch="main",
         now=datetime(2026, 10, 31, 2, 0, tzinfo=timezone.utc),
-        mutation_started=lambda _run_id: False,
+        mutation_accepted=lambda _session, _opening: False,
+        close_retry_safe=lambda run: run.get("retry_safe") is True,
     )
 
     assert session is None
@@ -196,7 +530,8 @@ def test_multiple_unclosed_mutating_sessions_fail_closed() -> None:
             [],
             default_branch="main",
             now=datetime(2026, 10, 31, 2, 0, tzinfo=timezone.utc),
-            mutation_started=lambda _run_id: True,
+            mutation_accepted=lambda _session, _opening: True,
+            close_retry_safe=lambda run: run.get("retry_safe") is True,
         )
 
 
@@ -284,6 +619,12 @@ def test_fallback_workflow_is_hml_only_and_dispatches_the_existing_close_flow_to
     assert "--emergency-hml-cleanup" in workflow
     assert "CLOSE_REQUEST_ID: emergency-${{ github.run_id }}" in workflow
     assert "id-token: write" not in workflow
+    assert "authorize_hml_cleanup.py" in workflow
+    assert "HML_CLEANUP_TRUSTED_OPERATORS" in workflow
+    assert "REQUESTED_ACTOR: ${{ github.triggering_actor }}" in workflow
+    assert "K8S_INFRA_REPOSITORY" in workflow
+    assert workflow.index("authorize_hml_cleanup.py") < workflow.index("resolve_hml_cleanup_session.py")
+    assert "environment: operations" in workflow
 
 
 def test_stop_workflow_requires_a_signed_hml_capability_for_emergency_cleanup() -> None:
@@ -295,3 +636,66 @@ def test_stop_workflow_requires_a_signed_hml_capability_for_emergency_cleanup() 
     assert "--emergency-hml-teardown" in workflow
     assert '"$EMERGENCY_CLEANUP" == "true"' in workflow
     assert "CLOSE_REQUEST_ID: ${{ inputs.close_request_id }}" in workflow
+    assert 'REQUESTED_REF" == "develop"' in workflow
+    assert "environment: operations" in workflow
+
+
+def test_failed_close_retry_contract_tracks_every_potential_mutation_step() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "environment-stop.yml").read_text(
+        encoding="utf-8"
+    )
+
+    positions = [workflow.index(marker) for marker in CLOSE_GUARD.CLOSE_MUTATION_MARKERS]
+    assert positions == sorted(positions)
+    assert CLOSE_GUARD.close_run_proves_no_mutation(_safe_close_jobs()) is True
+    assert CLOSE_GUARD.close_run_proves_no_mutation(_safe_close_jobs(mutation_started=True)) is False
+    assert CLOSE_GUARD.close_run_proves_no_mutation([]) is False
+
+
+def test_emergency_dispatch_authorization_requires_explicit_operator_allowlist() -> None:
+    assert OPERATOR_AUTH.authorize_cleanup(
+        event_name="schedule", actor="github-actions[bot]", trusted_operators=""
+    ) is True
+    assert OPERATOR_AUTH.authorize_cleanup(
+        event_name="workflow_dispatch", actor="alice", trusted_operators="alice,bob"
+    ) is True
+    with pytest.raises(OPERATOR_AUTH.CleanupAuthorizationError, match="not in the trusted operator list"):
+        OPERATOR_AUTH.authorize_cleanup(
+            event_name="workflow_dispatch", actor="mallory", trusted_operators="alice,bob"
+        )
+    with pytest.raises(OPERATOR_AUTH.CleanupAuthorizationError, match="must be configured"):
+        OPERATOR_AUTH.authorize_cleanup(
+            event_name="workflow_dispatch", actor="alice", trusted_operators=""
+        )
+    with pytest.raises(OPERATOR_AUTH.CleanupAuthorizationError, match="invalid GitHub login"):
+        OPERATOR_AUTH.authorize_cleanup(
+            event_name="workflow_dispatch", actor="alice", trusted_operators="alice,invalid/name"
+        )
+
+
+def test_manual_cleanup_authorization_uses_the_rerunning_operator() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "environment-hml-cleanup.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "REQUESTED_ACTOR: ${{ github.triggering_actor }}" in workflow
+    assert OPERATOR_AUTH.authorize_cleanup(
+        event_name="workflow_dispatch",
+        actor="trusted-rerunner",
+        trusted_operators="trusted-rerunner",
+    ) is True
+    with pytest.raises(OPERATOR_AUTH.CleanupAuthorizationError):
+        OPERATOR_AUTH.authorize_cleanup(
+            event_name="workflow_dispatch",
+            actor="original-actor",
+            trusted_operators="trusted-rerunner",
+        )
+
+
+def test_cleanup_workflow_documents_default_branch_promotion_and_operations_environment_refs() -> None:
+    deployment = (ROOT / "docs" / "deployment.md").read_text(encoding="utf-8")
+
+    assert "HML_CLEANUP_TRUSTED_OPERATORS" in deployment
+    assert "branch padrão" in deployment
+    assert "`develop`" in deployment
+    assert "operations" in deployment

@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from urllib.error import HTTPError, URLError
@@ -15,14 +16,32 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
-from assert_lifecycle_close_needed import _opening_mutation_started
+from assert_lifecycle_close_needed import (
+    FAILED_CONCLUSIONS,
+    _opening_mutation_started,
+    close_run_is_safe_to_retry,
+)
 
 
 API_ROOT = "https://api.github.com"
+REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 BRT = ZoneInfo("America/Sao_Paulo")
 HML_LAST_DAY = date(2026, 10, 31)
 MAX_RUNS = 1000
 ACTIVE_STATUSES = {"queued", "requested", "waiting", "in_progress", "pending", "canceling"}
+OPENING_APPLY_JOB_NAME = "apply reviewed saved plan"
+OPENING_APPLY_STEP_NAME = "Verify and apply the exact saved plan"
+COMPLETED_CONCLUSIONS = {
+    "success",
+    "failure",
+    "cancelled",
+    "timed_out",
+    "startup_failure",
+    "action_required",
+    "neutral",
+    "skipped",
+    "stale",
+}
 OPENING_TITLE = re.compile(
     r"^lifecycle:hml:open:(default-17-BRT|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)(?::(?:[0-9a-f]{32}|\d+))?$"
 )
@@ -116,7 +135,8 @@ def find_cleanup_candidate(
     *,
     default_branch: str,
     now: datetime,
-    mutation_started,
+    mutation_accepted,
+    close_retry_safe,
 ) -> HmlSession | None:
     if now.tzinfo is None or now.utcoffset() != timedelta(0):
         raise ValueError("HML cleanup time must be UTC-aware")
@@ -148,15 +168,19 @@ def find_cleanup_candidate(
         ):
             continue
         if any(str(run.get("status", "")) in ACTIVE_STATUSES for run in prior_closes):
-            continue
-        unexpected = [
+            raise ValueError(f"an HML close run for {session_id} is still active; refusing cleanup")
+        failed_closes = [
             run for run in prior_closes
-            if run.get("status") != "completed"
-            or run.get("conclusion") not in {"failure", "cancelled", "timed_out", "startup_failure"}
+            if run.get("status") == "completed" and run.get("conclusion") in FAILED_CONCLUSIONS
         ]
+        unexpected = [run for run in prior_closes if run not in failed_closes]
         if unexpected:
             raise ValueError(f"an HML close run for {session_id} has an unknown state")
-        if mutation_started(session.run_id):
+        if any(not close_retry_safe(run) for run in failed_closes):
+            raise ValueError(
+                f"an HML close run for {session_id} may have entered teardown; operator phase review is required"
+            )
+        if mutation_accepted(session, opening_run):
             candidates.append(session)
 
     if len(candidates) > 1:
@@ -179,7 +203,12 @@ def _api_request(token: str, path: str) -> object:
 
 
 def _workflow_runs(
-    repository: str, workflow: str, token: str, *, branch: str = ""
+    repository: str,
+    workflow: str,
+    token: str,
+    *,
+    branch: str = "",
+    created_after: datetime | None = None,
 ) -> list[dict[str, object]]:
     result: list[dict[str, object]] = []
     page = 1
@@ -188,6 +217,8 @@ def _workflow_runs(
         query_values = {"event": "workflow_dispatch", "per_page": "100", "page": str(page)}
         if branch:
             query_values["branch"] = branch
+        if created_after is not None:
+            query_values["created"] = ">=" + created_after.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         payload = _api_request(
             token,
             f"/repos/{repository}/actions/workflows/{workflow}/runs?{urlencode(query_values)}",
@@ -195,20 +226,169 @@ def _workflow_runs(
         if not isinstance(payload, dict) or not isinstance(payload.get("workflow_runs"), list):
             raise ValueError(f"GitHub returned an invalid {workflow} run listing")
         count = payload.get("total_count")
-        if not isinstance(count, int):
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
             raise ValueError(f"GitHub returned an invalid {workflow} run count")
         if total_count is None:
             total_count = count
             if total_count > MAX_RUNS:
                 raise ValueError(f"More than {MAX_RUNS} {workflow} runs prevent a safe cleanup decision")
+        elif count != total_count:
+            raise ValueError(f"GitHub changed the {workflow} run count during pagination")
         entries = payload["workflow_runs"]
         if not all(isinstance(run, dict) for run in entries):
             raise ValueError(f"GitHub returned malformed {workflow} run entries")
         result.extend(entries)
-        if len(result) >= total_count or not entries:
+        if len(result) >= total_count:
             break
+        if not entries:
+            raise ValueError(f"GitHub returned an incomplete {workflow} run listing")
         page += 1
+    if total_count is None or len(result) != total_count:
+        raise ValueError(f"GitHub returned an incomplete {workflow} run listing")
+    run_ids = [run.get("id") for run in result]
+    if any(isinstance(run_id, bool) or not isinstance(run_id, int) or run_id < 1 for run_id in run_ids):
+        raise ValueError(f"GitHub returned invalid {workflow} run IDs")
+    if len(set(run_ids)) != len(run_ids):
+        raise ValueError(f"GitHub returned duplicate {workflow} run IDs")
     return result
+
+
+def _workflow_jobs(repository: str, run_id: int, token: str) -> list[dict[str, object]]:
+    if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id < 1:
+        raise ValueError("The correlated upstream apply has no valid numeric run ID")
+    result: list[dict[str, object]] = []
+    page = 1
+    total_count: int | None = None
+    while True:
+        query_values = {"filter": "all", "per_page": "100", "page": str(page)}
+        payload = _api_request(
+            token,
+            f"/repos/{repository}/actions/runs/{run_id}/jobs?{urlencode(query_values)}",
+        )
+        if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list):
+            raise ValueError("GitHub returned an invalid upstream apply job listing")
+        count = payload.get("total_count")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise ValueError("GitHub returned an invalid upstream apply job count")
+        if total_count is None:
+            total_count = count
+            if total_count > MAX_RUNS:
+                raise ValueError("Too many upstream apply attempts prevent a safe cleanup decision")
+        elif count != total_count:
+            raise ValueError("GitHub changed the upstream apply job count during pagination")
+        entries = payload["jobs"]
+        if not all(isinstance(job, dict) for job in entries):
+            raise ValueError("GitHub returned malformed upstream apply job entries")
+        result.extend(entries)
+        if len(result) >= total_count:
+            break
+        if not entries:
+            raise ValueError("GitHub returned an incomplete upstream apply job listing")
+        page += 1
+    if total_count is None or len(result) != total_count:
+        raise ValueError("GitHub returned an incomplete upstream apply job listing")
+    job_ids = [job.get("id") for job in result]
+    if any(isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1 for job_id in job_ids):
+        raise ValueError("GitHub returned invalid upstream apply job IDs")
+    if len(set(job_ids)) != len(job_ids):
+        raise ValueError("GitHub returned duplicate upstream apply job IDs")
+    return result
+
+
+def _opening_apply_step_started(jobs: list[dict[str, object]]) -> bool:
+    matching_jobs = [job for job in jobs if job.get("name") == OPENING_APPLY_JOB_NAME]
+    if not matching_jobs:
+        raise ValueError("The expected opening apply job is missing from upstream run evidence")
+
+    for job in matching_jobs:
+        if job.get("status") in ACTIVE_STATUSES:
+            raise ValueError("The correlated upstream opening apply job is still active")
+        if job.get("status") == "completed" and job.get("conclusion") == "skipped":
+            continue
+        steps = job.get("steps")
+        if not isinstance(steps, list) or not all(isinstance(step, dict) for step in steps):
+            raise ValueError("The upstream opening apply step evidence is missing or ambiguous")
+        apply_steps = [step for step in steps if step.get("name") == OPENING_APPLY_STEP_NAME]
+        if len(apply_steps) != 1 or "started_at" not in apply_steps[0]:
+            raise ValueError("The upstream opening apply step evidence is missing or ambiguous")
+        started_at = apply_steps[0]["started_at"]
+        if started_at is not None and not isinstance(started_at, str):
+            raise ValueError("The upstream opening apply step evidence is invalid")
+        if started_at:
+            return True
+    return False
+
+
+def has_accepted_opening_apply_run(
+    runs: list[dict[str, object]],
+    *,
+    session_id: str,
+    ref: str,
+    started_after: datetime,
+    jobs_for_run: Callable[[int], list[dict[str, object]]],
+) -> bool:
+    """Require the exact correlated upstream run and its scoped apply step to have started."""
+    if started_after.tzinfo is None or started_after.utcoffset() != timedelta(0):
+        raise ValueError("Opening creation time must be UTC-aware")
+    expected_title = re.compile(rf"^{re.escape(session_id)}-foundation-open-apply:[0-9a-f]{{32}}$")
+    matches = []
+    for run in runs:
+        if run.get("event") != "workflow_dispatch" or run.get("head_branch") != ref:
+            continue
+        if not expected_title.fullmatch(str(run.get("display_title", ""))):
+            continue
+        created_at = _utc(run.get("created_at", ""), "upstream opening apply creation time")
+        if created_at >= started_after.astimezone(timezone.utc):
+            matches.append(run)
+
+    if any(str(run.get("status", "")) in ACTIVE_STATUSES for run in matches):
+        raise ValueError("The correlated upstream opening apply is still active; refusing emergency cleanup")
+    if len(matches) > 1:
+        raise ValueError("Multiple correlated upstream opening applies are ambiguous; refusing emergency cleanup")
+    for run in matches:
+        if (
+            run.get("status") != "completed"
+            or run.get("conclusion") not in COMPLETED_CONCLUSIONS
+        ):
+            raise ValueError("The correlated upstream opening apply has an unknown state")
+        run_id = run.get("id")
+        if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id < 1:
+            raise ValueError("The correlated upstream opening apply has no valid numeric run ID")
+        jobs = jobs_for_run(run_id)
+        if not isinstance(jobs, list) or not all(isinstance(job, dict) for job in jobs):
+            raise ValueError("GitHub returned malformed upstream opening apply job evidence")
+        if _opening_apply_step_started(jobs):
+            return True
+    return False
+
+
+def _opening_apply_was_accepted(
+    session: HmlSession,
+    opening_run: dict[str, object],
+    *,
+    coordinator_repository: str,
+    infrastructure_repository: str,
+    ref: str,
+    token: str,
+) -> bool:
+    run_id = session.run_id
+    if not _opening_mutation_started(coordinator_repository, run_id, token):
+        return False
+    opened_at = _utc(opening_run.get("created_at", ""), "HML opening creation time")
+    upstream_runs = _workflow_runs(
+        infrastructure_repository,
+        "apply.yml",
+        token,
+        branch=ref,
+        created_after=opened_at,
+    )
+    return has_accepted_opening_apply_run(
+        upstream_runs,
+        session_id=session.session_id,
+        ref=ref,
+        started_after=opened_at,
+        jobs_for_run=lambda run_id: _workflow_jobs(infrastructure_repository, run_id, token),
+    )
 
 
 def _write_output(path: str, name: str, value: str) -> None:
@@ -227,8 +407,13 @@ def main() -> int:
     ref_name = os.environ.get("GITHUB_REF_NAME", "").strip()
     event_name = os.environ.get("GITHUB_EVENT_NAME", "").strip()
     token = os.environ.get("LIFECYCLE_CROSS_REPO_TOKEN", "").strip()
+    infrastructure_repository = os.environ.get("K8S_INFRA_REPOSITORY", "").strip()
+    infrastructure_ref = os.environ.get("K8S_INFRA_REF", "").strip()
     if not repository or not token or event_name not in {"schedule", "workflow_dispatch"}:
         print("::error::HML cleanup requires a supported event, repository, and explicit lifecycle token.", file=sys.stderr)
+        return 1
+    if not REPOSITORY_PATTERN.fullmatch(infrastructure_repository) or infrastructure_ref != "main":
+        print("::error::HML cleanup requires the configured K8S infrastructure repository and main ref.", file=sys.stderr)
         return 1
 
     try:
@@ -248,7 +433,15 @@ def main() -> int:
             close_runs,
             default_branch=default_branch,
             now=datetime.now(timezone.utc),
-            mutation_started=lambda run_id: _opening_mutation_started(repository, run_id, token),
+            mutation_accepted=lambda session, opening_run: _opening_apply_was_accepted(
+                session,
+                opening_run,
+                coordinator_repository=repository,
+                infrastructure_repository=infrastructure_repository,
+                ref=infrastructure_ref,
+                token=token,
+            ),
+            close_retry_safe=lambda run: close_run_is_safe_to_retry(repository, run, token),
         )
         if candidate is None:
             reason = "No expired HML session with an unclosed infrastructure mutation was found."

@@ -24,10 +24,19 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Authorize the scheduled trigger or trusted manual operator
+        env:
+          REQUESTED_EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_ACTOR: ${{ github.triggering_actor }}
+          HML_CLEANUP_TRUSTED_OPERATORS: ${{ vars.HML_CLEANUP_TRUSTED_OPERATORS }}
+        run: python3 .github/scripts/authorize_hml_cleanup.py
+
       - name: Find one expired HML session that still needs cleanup
         id: candidate
         env:
           LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+          K8S_INFRA_REPOSITORY: ${{ vars.K8S_INFRA_REPOSITORY }}
+          K8S_INFRA_REF: ${{ vars.K8S_INFRA_REF }}
         run: python3 .github/scripts/resolve_hml_cleanup_session.py --github-output "$GITHUB_OUTPUT"
 
       - name: Record that no emergency cleanup is needed
