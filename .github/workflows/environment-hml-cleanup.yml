@@ -1,0 +1,76 @@
+name: HML emergency cleanup fallback
+run-name: lifecycle:hml:emergency-cleanup:${{ github.run_id }}
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    environment: operations
+    outputs:
+      close_needed: ${{ steps.candidate.outputs.close_needed }}
+      session_id: ${{ steps.candidate.outputs.session_id }}
+      started_at: ${{ steps.candidate.outputs.started_at }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Authorize the scheduled trigger or trusted manual operator
+        env:
+          REQUESTED_EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_ACTOR: ${{ github.triggering_actor }}
+          HML_CLEANUP_TRUSTED_OPERATORS: ${{ vars.HML_CLEANUP_TRUSTED_OPERATORS }}
+        run: python3 .github/scripts/authorize_hml_cleanup.py
+
+      - name: Find one expired HML session that still needs cleanup
+        id: candidate
+        env:
+          LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+          K8S_INFRA_REPOSITORY: ${{ vars.K8S_INFRA_REPOSITORY }}
+          K8S_INFRA_REF: ${{ vars.K8S_INFRA_REF }}
+        run: python3 .github/scripts/resolve_hml_cleanup_session.py --github-output "$GITHUB_OUTPUT"
+
+      - name: Record that no emergency cleanup is needed
+        if: steps.candidate.outputs.close_needed == 'false'
+        env:
+          DECISION: ${{ steps.candidate.outputs.decision }}
+        run: echo "$DECISION" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Sign the exact HML session capability
+        if: steps.candidate.outputs.close_needed == 'true'
+        env:
+          SESSION_ID: ${{ steps.candidate.outputs.session_id }}
+          STARTED_AT: ${{ steps.candidate.outputs.started_at }}
+          CLOSE_REQUEST_ID: emergency-${{ github.run_id }}
+          SESSION_MODE: hml
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+        run: python3 .github/scripts/sign_lifecycle_session.py --emergency-hml-cleanup
+
+      - name: Dispatch and wait for the existing HML close lifecycle on develop
+        if: steps.candidate.outputs.close_needed == 'true'
+        env:
+          LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+          SESSION_ID: ${{ steps.candidate.outputs.session_id }}
+          STARTED_AT: ${{ steps.candidate.outputs.started_at }}
+          CLOSE_REQUEST_ID: emergency-${{ github.run_id }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$GITHUB_REPOSITORY" --workflow environment-stop.yml --ref develop
+          --expected-title "lifecycle:hml:close:$SESSION_ID:$CLOSE_REQUEST_ID"
+          --inputs "{\"stage\":\"hml\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"close_request_id\":\"$CLOSE_REQUEST_ID\",\"emergency_cleanup\":\"true\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name emergency_close --timeout-seconds 3600
+
+      - name: Record completed fallback cleanup
+        if: steps.candidate.outputs.close_needed == 'true'
+        env:
+          SESSION_ID: ${{ steps.candidate.outputs.session_id }}
+        run: echo "Emergency HML cleanup completed for $SESSION_ID through the coordinated stop workflow on develop." >> "$GITHUB_STEP_SUMMARY"

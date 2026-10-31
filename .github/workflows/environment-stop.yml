@@ -30,6 +30,11 @@ on:
         description: Optional correlation ID for an orchestrated close.
         required: false
         type: string
+      emergency_cleanup:
+        description: HML-only fallback cleanup after the normal session cleanup window expired.
+        required: false
+        default: false
+        type: boolean
   schedule:
     - cron: "0 1 2-6 11 *" # PRD close at 22:00 BRT, 1-5 November.
 
@@ -71,16 +76,24 @@ jobs:
           REQUESTED_STAGE: ${{ inputs.stage || 'prd' }}
           REQUESTED_SESSION_ID: ${{ inputs.session_id }}
           REQUESTED_STARTED_AT: ${{ inputs.started_at }}
+          EMERGENCY_CLEANUP: ${{ inputs.emergency_cleanup }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         shell: bash
         run: |
           set -euo pipefail
-          python3 .github/scripts/resolve_lifecycle_session.py \
-            --action teardown \
-            --stage "$REQUESTED_STAGE" \
-            --session-id "$REQUESTED_SESSION_ID" \
-            --started-at "$REQUESTED_STARTED_AT" \
+          resolver_args=(
+            --action teardown
+            --stage "$REQUESTED_STAGE"
+            --session-id "$REQUESTED_SESSION_ID"
+            --started-at "$REQUESTED_STARTED_AT"
             --github-output "$GITHUB_OUTPUT"
+          )
+          if [[ "$EMERGENCY_CLEANUP" == "true" ]]; then
+            [[ "$REQUESTED_STAGE" == "hml" ]] || { echo "::error::Emergency cleanup is HML-only."; exit 1; }
+            resolver_args+=(--emergency-hml-teardown)
+          fi
+          python3 .github/scripts/resolve_lifecycle_session.py \
+            "${resolver_args[@]}"
 
       - name: Authorize the manual session or verify its coordinator capability
         id: authorize
@@ -92,11 +105,28 @@ jobs:
           LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
           LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
           LIFECYCLE_DISPATCH_ID: ${{ inputs.lifecycle_dispatch_id }}
+          CLOSE_REQUEST_ID: ${{ inputs.close_request_id }}
+          EMERGENCY_CLEANUP: ${{ inputs.emergency_cleanup }}
           REQUESTED_EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_REF: ${{ github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -n "$LIFECYCLE_DISPATCH_ID" ]]; then
+          if [[ "$EMERGENCY_CLEANUP" == "true" ]]; then
+            [[ "$REQUESTED_EVENT_NAME" == "workflow_dispatch" && "$ENVIRONMENT_STAGE" == "hml" ]] || {
+              echo "::error::Emergency cleanup must be a coordinated HML workflow dispatch."
+              exit 1
+            }
+            [[ "$REQUESTED_REF" == "develop" ]] || {
+              echo "::error::Emergency HML cleanup must use the protected develop ref."
+              exit 1
+            }
+            [[ "$LIFECYCLE_DISPATCH_ID" =~ ^[0-9a-f]{32}$ ]] || {
+              echo "::error::Emergency cleanup requires a correlated signed capability."
+              exit 1
+            }
+            python3 .github/scripts/validate_environment_window.py --action teardown --emergency-hml-teardown
+          elif [[ -n "$LIFECYCLE_DISPATCH_ID" ]]; then
             [[ "$LIFECYCLE_DISPATCH_ID" =~ ^[0-9a-f]{32}$ ]] || {
               echo "::error::The lifecycle dispatch ID must be 32 lowercase hexadecimal characters."
               exit 1
@@ -123,6 +153,7 @@ jobs:
       DATABASE_INFRA_REPOSITORY: ${{ vars.DATABASE_INFRA_REPOSITORY }}
       DATABASE_INFRA_REF: ${{ vars.DATABASE_INFRA_REF }}
       ALERT_TOPIC_ARN: ${{ vars.LIFECYCLE_ALERT_TOPIC_ARN }}
+      EMERGENCY_CLEANUP: ${{ inputs.emergency_cleanup }}
       EDGE_JWT_SECRET_ARN: ${{ vars.EDGE_JWT_SECRET_ARN }}
       EDGE_ENABLE_CUSTOM_DOMAINS: ${{ vars.EDGE_ENABLE_CUSTOM_DOMAINS }}
       EDGE_DISABLE_EXECUTE_API_ENDPOINT: ${{ vars.EDGE_DISABLE_EXECUTE_API_ENDPOINT }}
@@ -150,13 +181,21 @@ jobs:
           SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
           STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
           CLOSE_REQUEST_ID: ${{ inputs.close_request_id }}
-        run: >-
-          python3 .github/scripts/assert_lifecycle_close_needed.py
-          --stage "$STAGE"
-          --session-id "$SESSION_ID"
-          --started-at "$STARTED_AT"
-          --close-request-id "$CLOSE_REQUEST_ID"
-          --github-output "$GITHUB_OUTPUT"
+          EMERGENCY_CLEANUP: ${{ inputs.emergency_cleanup }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          close_guard_args=(
+            --stage "$STAGE"
+            --session-id "$SESSION_ID"
+            --started-at "$STARTED_AT"
+            --close-request-id "$CLOSE_REQUEST_ID"
+            --github-output "$GITHUB_OUTPUT"
+          )
+          if [[ "$EMERGENCY_CLEANUP" == "true" ]]; then
+            close_guard_args+=(--emergency-cleanup)
+          fi
+          python3 .github/scripts/assert_lifecycle_close_needed.py "${close_guard_args[@]}"
 
       - name: Sign the resolved lifecycle session capability
         if: steps.close_decision.outputs.close_needed == 'true'
