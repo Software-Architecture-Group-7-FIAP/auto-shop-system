@@ -42,6 +42,11 @@ ownership.
 3. Crie `auto-shop-secrets` por um mecanismo externo e seguro. Nunca coloque
    credenciais no arquivo `.tfvars` versionado.
 
+Para `staging` e `production`, também forneça `service_order_publisher_role_arn`
+com o ARN da role IRSA do stage. A ServiceAccount `auto-shop-backend` recebe essa
+annotation; em `local`, deixe o valor vazio. O Terraform deste diretório não lê
+o parâmetro SSM automaticamente.
+
 O provider usa `kubeconfig_path` e `kube_context` quando informados; quando
 omitidos, usa a configuração padrão do Kubernetes. O arquivo de state local,
 planfiles e tfvars reais são ignorados pelo Git.

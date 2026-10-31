@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auto-shop-redis
+  namespace: auto-shop
+  labels:
+    app: auto-shop-redis
+    app.kubernetes.io/name: auto-shop-system
+    app.kubernetes.io/component: cache
+    app.kubernetes.io/part-of: auto-shop-platform
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: auto-shop-redis
+  template:
+    metadata:
+      labels:
+        app: auto-shop-redis
+        app.kubernetes.io/name: auto-shop-system
+        app.kubernetes.io/component: cache
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c"]
+          args:
+            - |
+              umask 077
+              printf 'requirepass %s\n' "$REDIS_PASSWORD" > /tmp/redis.conf
+              exec redis-server /tmp/redis.conf --bind 0.0.0.0 --save "" --appendonly no --dir /tmp --maxmemory 64mb --maxmemory-policy noeviction
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: auto-shop-redis-credentials
+                  key: REDIS_PASSWORD
+            - name: REDISCLI_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: auto-shop-redis-credentials
+                  key: REDIS_PASSWORD
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            periodSeconds: 15
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Mi

@@ -27,6 +27,7 @@ admin_router = APIRouter(prefix="/admin", tags=["Auth"])
 def gateway_login(
     data: LoginRequest,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db),
 ):
     throttle_keys = login_throttle_keys(request, data.username)
@@ -47,6 +48,7 @@ def gateway_login(
         audience=JWT_AUD_GATEWAY,
     )
     db.commit()
+    response.headers["Cache-Control"] = "no-store"
     return GatewayTokenResponse(
         access_token=access_token,
         expires_in=settings.access_token_expire_minutes * 60,

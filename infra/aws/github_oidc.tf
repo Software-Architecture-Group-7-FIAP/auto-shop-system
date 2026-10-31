@@ -1,4 +1,4 @@
-# GitHub Actions OIDC roles for frontend deploy and lifecycle preflight (issue #90).
+# GitHub Actions OIDC roles for backend, frontend, and lifecycle auth preflight (issue #90).
 # Apply once per AWS account; map role ARNs to the documented GitHub Environment secrets.
 
 variable "enable_github_oidc" {
@@ -31,9 +31,9 @@ variable "github_repository_id" {
 }
 
 variable "auth_lambda_function_name" {
-  description = "Base function name published by lambda-auth; environment suffixes homolog and prod are appended."
+  description = "Base function name published by lambda-auth; environment suffixes hml and prd are appended."
   type        = string
-  default     = "customer-cpf-auth"
+  default     = "lambda-auth"
 
   validation {
     condition     = can(regex("^[A-Za-z0-9_-]{1,46}$", var.auth_lambda_function_name))
@@ -52,6 +52,10 @@ locals {
   github_environment_api_stage = {
     staging    = "hml"
     production = "prd"
+  }
+  github_environment_branch = {
+    staging    = "refs/heads/develop"
+    production = "refs/heads/main"
   }
 }
 
@@ -82,6 +86,11 @@ data "aws_iam_policy_document" "github_deploy_assume" {
       variable = "token.actions.githubusercontent.com:sub"
       values   = ["${local.github_oidc_subject_prefix}:environment:${each.key}"]
     }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:ref"
+      values   = [local.github_environment_branch[each.key]]
+    }
   }
 }
 
@@ -89,6 +98,13 @@ resource "aws_iam_role" "github_deploy" {
   for_each = var.enable_github_oidc ? toset(["staging", "production"]) : toset([])
 
   name               = "${local.name_prefix}-github-${each.key}"
+  assume_role_policy = data.aws_iam_policy_document.github_deploy_assume[each.key].json
+}
+
+resource "aws_iam_role" "github_frontend_deploy" {
+  for_each = var.enable_github_oidc ? toset(["staging", "production"]) : toset([])
+
+  name               = "${local.name_prefix}-github-${each.key}-frontend"
   assume_role_policy = data.aws_iam_policy_document.github_deploy_assume[each.key].json
 }
 
@@ -108,6 +124,24 @@ data "aws_iam_policy_document" "github_deploy_eks" {
       ),
     ]
   }
+
+  statement {
+    sid    = "ReadStageDeployParameters"
+    effect = "Allow"
+    actions = [
+      "ssm:GetParameter",
+    ]
+    resources = [
+      data.aws_ssm_parameter.upstream["eks_cluster_name"].arn,
+      data.aws_ssm_parameter.migration_secret_arn[local.github_environment_api_stage[each.key]].arn,
+      aws_ssm_parameter.service_order_bus_name[local.github_environment_api_stage[each.key]].arn,
+      aws_ssm_parameter.service_order_publisher_role_arn[local.github_environment_api_stage[each.key]].arn,
+    ]
+  }
+}
+
+data "aws_iam_policy_document" "github_frontend_deploy" {
+  for_each = var.enable_github_oidc ? toset(["staging", "production"]) : toset([])
 
   statement {
     sid       = "ListStageFrontendBucket"
@@ -136,14 +170,11 @@ data "aws_iam_policy_document" "github_deploy_eks" {
   }
 
   statement {
-    sid    = "ReadStageDeployParameters"
-    effect = "Allow"
-    actions = [
-      "ssm:GetParameter",
-    ]
+    sid     = "ReadStageFrontendParameters"
+    effect  = "Allow"
+    actions = ["ssm:GetParameter"]
     resources = [
-      data.aws_ssm_parameter.upstream["eks_cluster_name"].arn,
-      data.aws_ssm_parameter.migration_secret_arn[local.github_environment_api_stage[each.key]].arn,
+
       aws_ssm_parameter.frontend_bucket_name[local.github_environment_api_stage[each.key]].arn,
       aws_ssm_parameter.frontend_distribution_id[local.github_environment_api_stage[each.key]].arn,
     ]
@@ -156,6 +187,14 @@ resource "aws_iam_role_policy" "github_deploy_eks" {
   name   = "${each.key}-deploy"
   role   = aws_iam_role.github_deploy[each.key].id
   policy = data.aws_iam_policy_document.github_deploy_eks[each.key].json
+}
+
+resource "aws_iam_role_policy" "github_frontend_deploy" {
+  for_each = var.enable_github_oidc ? toset(["staging", "production"]) : toset([])
+
+  name   = "${each.key}-frontend-deploy"
+  role   = aws_iam_role.github_frontend_deploy[each.key].id
+  policy = data.aws_iam_policy_document.github_frontend_deploy[each.key].json
 }
 
 data "aws_iam_policy_document" "github_auth_preflight_assume" {
@@ -201,8 +240,8 @@ data "aws_iam_policy_document" "github_auth_preflight" {
     effect  = "Allow"
     actions = ["lambda:GetFunctionConfiguration"]
     resources = [
-      "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${var.auth_lambda_function_name}-homolog",
-      "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${var.auth_lambda_function_name}-prod",
+      "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${var.auth_lambda_function_name}-hml",
+      "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${var.auth_lambda_function_name}-prd",
     ]
   }
 }
@@ -233,6 +272,16 @@ output "github_deploy_role_arn_staging" {
 output "github_deploy_role_arn_production" {
   description = "IAM role ARN for GitHub Environment production."
   value       = var.enable_github_oidc ? aws_iam_role.github_deploy["production"].arn : null
+}
+
+output "github_frontend_deploy_role_arn_staging" {
+  description = "IAM role ARN for GitHub Environment staging frontend publication."
+  value       = var.enable_github_oidc ? aws_iam_role.github_frontend_deploy["staging"].arn : null
+}
+
+output "github_frontend_deploy_role_arn_production" {
+  description = "IAM role ARN for GitHub Environment production frontend publication."
+  value       = var.enable_github_oidc ? aws_iam_role.github_frontend_deploy["production"].arn : null
 }
 
 output "github_auth_preflight_role_arn" {

@@ -13,13 +13,8 @@ output "api_gateway_stage_arn" {
   value       = { for stage, api_stage in aws_api_gateway_stage.main : stage => api_stage.arn }
 }
 
-output "auth_login_lambda_arn" {
-  description = "Lambda ARN for public authentication."
-  value       = aws_lambda_function.auth_login.arn
-}
-
 output "jwt_authorizer_lambda_arn" {
-  description = "Lambda ARN for JWT TOKEN authorizer."
+  description = "Lambda ARN for JWT REQUEST authorizer."
   value       = aws_lambda_function.jwt_authorizer.arn
 }
 

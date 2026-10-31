@@ -10,10 +10,12 @@ Este repositório contém a definição da infraestrutura. Isso não significa q
 - VPC Link V2 do API Gateway para o ALB interno, com regras de security group limitadas às portas dos listeners.
 - CORS preflight for web-session and administrative routes is handled by FastAPI; the customer-token OPTIONS route reaches the stage-specific Lambda.
 - The customer-token and JWKS endpoints invoke the Lambda ARN for their own stage, read from SSM.
-- Regional WAF with Common Rule Set and a 100-per-5-minute rate rule scoped to POST customer-token requests; CloudFront has a separate global WAF.
+- Regional WAF with Common Rule Set and one aggregate cap of 20,000 requests per five minutes per source IP; CloudFront WAF applies viewer-IP limits of 100 for customer-token requests, 300 for login, and 1,000 for public/customer APIs.
 - Dois buckets S3 privados e distribuições CloudFront para o Angular, com OAC.
 - Certificado ACM para `api.oficina-workshop.com.br`, `app-hml.oficina-workshop.com.br` e `app.oficina-workshop.com.br`.
 - Logs de acesso da API e logs do WAF no CloudWatch.
+- Roles opcionais de GitHub OIDC separadas para deploy do backend e publicação do frontend.
+- EventBridge por stage, SNS para alertas por e-mail, DLQs SQS e roles IRSA para o publisher de falhas de OS (#117).
 - Roles opcionais de GitHub OIDC para deploy no Kubernetes, publicação do frontend e preflight read-only do ciclo de vida.
 
 ## Mapeamento dos ambientes
@@ -29,6 +31,7 @@ A stack upstream precisa exportar os parâmetros abaixo sob o prefixo fixo `/aut
 - `network/workload-private-subnet-ids`
 - `network/lambda-security-group-id`
 - `eks/cluster-name`
+- `eks/oidc-provider-arn`
 - `gateway/internal-alb-arn`
 - `gateway/listener-arn/hml` and `gateway/listener-arn/prd`
 - `auth/customer-token/function-arn/hml` and `auth/customer-token/function-arn/prd`
@@ -39,11 +42,11 @@ A stack upstream precisa exportar os parâmetros abaixo sob o prefixo fixo `/aut
 
 As roles de migration e as associacoes Pod Identity por ambiente pertencem a este repositorio. Elas leem somente os ARNs `migrations-hml` ou `migrations-prd` e a policy correspondente publicados por `database-infra`. A identidade `owner` fica exclusiva do Job de bootstrap, cuja role e ServiceAccount sao mantidas por `database-infra` em `auto-shop-ops`; `k8s-infra` fornece o cluster, o namespace e as politicas de rede. Os fluxos de sessao do EKS e do banco sao pre-requisitos separados para a issue #87 e precisam ser coordenados com os repositorios responsaveis.
 
-Quando `enable_github_oidc = true`, esta stack também cria a role estável `auto-shop-staging-github-auth-preflight` e publica seu ARN no output `github_auth_preflight_role_arn`. O workflow de abertura constrói o ARN a partir da variável `AWS_ACCOUNT_ID`; não é necessário copiar um ARN para um secret. A trust policy exige o OIDC audience `sts.amazonaws.com` e o subject imutável deste repositório (`org ID 279547328` e `repository ID 1221936756`) no environment `operations`. As roles de deploy confiam somente nos environments `staging` e `production` usados pelos workflows. A policy read-only permite somente `ssm:GetParameters` nos cinco contratos SSM de auth/rede usados pelo preflight e `lambda:GetFunctionConfiguration` nas funções `customer-cpf-auth-homolog` e `customer-cpf-auth-prod` (ajuste `auth_lambda_function_name` se o nome-base aprovado mudar). A role não lê Secrets Manager, não altera recursos e não autoriza deploy.
+Quando `enable_github_oidc = true`, esta stack também cria a role estável `auto-shop-staging-github-auth-preflight` e publica seu ARN no output `github_auth_preflight_role_arn`. O workflow de abertura constrói o ARN a partir da variável `AWS_ACCOUNT_ID`; não é necessário copiar um ARN para um secret. A trust policy exige o OIDC audience `sts.amazonaws.com` e o subject imutável deste repositório (`org ID 279547328` e `repository ID 1221936756`) no environment `operations`. As roles de deploy confiam somente nos environments `staging` e `production` usados pelos workflows. A policy read-only permite somente `ssm:GetParameters` nos cinco contratos SSM de auth/rede usados pelo preflight e `lambda:GetFunctionConfiguration` nas funções `lambda-auth-hml` e `lambda-auth-prd` (sufixos do nome-base configurável `auth_lambda_function_name`). A role não lê Secrets Manager, não altera recursos e não autoriza deploy.
 
-O contrato upstream publica um ARN de Lambda por stage: `/auth/customer-token/function-arn/hml` e `/auth/customer-token/function-arn/prd`. A API Gateway usa o ARN correspondente a `hml` ou `prd`; o plan depende que os dois parametros existam. A Lambda e publicada pelo repositorio `lambda-auth` e sua alteracao correspondente ainda precisa passar pelo PR upstream.
+O Terraform do repositório `lambda-auth` pode publicar um ARN por stage em `/auth/customer-token/function-arn/hml` e `/auth/customer-token/function-arn/prd`, usando `function_arn_ssm_parameter_name`. A publicação fica desativada por padrão; configure o caminho correspondente ao stage e use state separado para cada função. O API Gateway invoca a Lambda correspondente ao stage; o valor do ARN não é segredo.
 
-Há outra diferença de contrato a resolver antes de declarar a integração de JWT concluída: a ADR define o issuer na raiz do domínio da API, enquanto o JWKS é publicado sob os base paths `/hml` e `/prd`. Confirme que o Lambda emite esse issuer e que os dois documentos JWKS correspondem às chaves usadas nos tokens.
+O contrato de cliente usa `iss=https://api.oficina-workshop.com.br` e `aud=auto-shop-api` nos dois stages. O issuer permanece na raiz da API; HML usa `https://api.oficina-workshop.com.br/hml/.well-known/jwks.json` e PRD usa `https://api.oficina-workshop.com.br/prd/.well-known/jwks.json`. Os overlays Kubernetes já declaram esses valores. Configure `jwt_issuer` e `jwt_audience` do Terraform `lambda-auth` com os mesmos valores; o módulo publica somente o ARN da função no SSM. Antes de habilitar deploy, o smoke da sessão deve confirmar que cada JWKS contém o `kid` ativo do token daquele stage.
 
 ## Entradas e revisão Terraform
 
@@ -78,8 +81,26 @@ O bundle Angular é igual nos dois stages e chama a API por caminhos relativos `
 
 O workflow reutilizável compila `frontend/` com Node 18, lê do SSM o bucket e o ID da distribuição do stage, sincroniza o bundle de produção no S3 e invalida o cache do CloudFront. O `index.html` recebe headers `no-cache`; os assets com hash recebem cache de longa duração. O workflow de CI executa separadamente lint, checagem de tipos, build e testes do frontend.
 
-Os gates de deploy dos GitHub Environments devem permanecer desligados até a infraestrutura e os smoke checks necessários estarem prontos. Os buckets S3 mantêm `force_destroy = false`; esvazie os dois buckets antes de `terraform destroy` para que a remoção não apague objetos sem uma ação explícita.
+Os gates de deploy do backend (`DEPLOY_STAGING_ENABLED` e `DEPLOY_PRODUCTION_ENABLED`) devem permanecer desligados até a infraestrutura e os smoke checks necessários estarem prontos. A publicação do frontend usa os gates separados `DEPLOY_STAGING_FRONTEND_ENABLED` e `DEPLOY_PRODUCTION_FRONTEND_ENABLED`, ambos ausentes ou `false` enquanto a publicação não estiver autorizada. As roles OIDC também são separadas: a role de backend não pode gravar no S3 nem invalidar CloudFront. Os buckets S3 mantêm `force_destroy = false`; esvazie os dois buckets antes de `terraform destroy` para que a remoção não apague objetos sem uma ação explícita.
+
+## Eventos de falha de OS (#117)
+
+Esta stack cria um bus EventBridge isolado para cada stage. O contrato do SSM é:
+
+- HML: `${upstream_ssm_prefix}/events/service-order-bus-name`.
+- PRD: `${upstream_ssm_prefix}/events/service-order-bus-name/prd`.
+- Role IRSA: `${upstream_ssm_prefix}/events/service-order-publisher-role-arn/{hml|prd}`.
+
+As regras aceitam somente `source=auto-shop.service-orders`, `detail-type=ServiceOrderProcessingFailed` e `detail.event_version=1`. O EventBridge entrega ao tópico SNS; falhas na entrega são tentadas novamente por até 24 horas e podem seguir para a DLQ SQS standard do stage. A política da fila permite `sqs:SendMessage` somente ao EventBridge, para a regra correspondente e na conta atual. A política do tópico limita `sns:Publish` às duas regras do projeto e aos alarmes de DLQ. O tópico usa uma chave KMS gerenciada pelo projeto, com rotação e janela de exclusão de sete dias; a política limita o uso ao contexto da topic. As filas usam SSE gerenciada pelo SQS.
+
+Um alarme CloudWatch por stage publica no mesmo tópico SNS quando a respectiva DLQ contém uma mensagem visível. O ServiceAccount `auto-shop-backend` em cada namespace recebe a role de publicação por IRSA. A trust policy valida o audience `sts.amazonaws.com` e o subject exato do namespace e ServiceAccount. O provedor OIDC do cluster precisa existir e ser publicado por `k8s-infra` em `eks/oidc-provider-arn`. A rede privada dos pods também precisa ter saída ao endpoint EventBridge, por NAT ou endpoint de VPC gerenciado pela stack de rede.
+
+A chave KMS própria gera custo recorrente enquanto existir; o destroy agenda a exclusão após sete dias. A DLQ não tem consumidor de replay automático: a mensagem dispara o alarme e deve ser inspecionada antes de qualquer reenvio.
+
+Para habilitar e-mail, forneça `service_order_alert_email` em um arquivo local não versionado ou via `TF_VAR_service_order_alert_email`. O Terraform não grava o endereço no repositório. Se o valor estiver vazio, os recursos EventBridge/SNS/DLQ continuam disponíveis, mas nenhuma inscrição de e-mail é criada. O destinatário recebe uma mensagem de confirmação da AWS e precisa aceitá-la antes dos testes de recebimento.
+
+Os deploys HML/PRD leem do SSM somente os nomes/ARNs exatos do bus e da role IRSA e injetam esses valores nos manifests, sem conceder `ssm:GetParameter` ao backend. O payload do e-mail contém apenas stage, IDs técnicos e timestamp; falhas no próprio `PutEvents` continuam sendo best-effort na aplicação e não são cobertas pela DLQ do target.
 
 ## Evidências de staging pendentes para #87
 
-O mapeamento de namespaces e stages está representado neste repositório, mas a issue #87 só estará concluída após demonstrar uma sessão completa de staging. Ainda faltam a orquestração e o teardown upstream da sessão, a identidade de owner do banco exigida pela ADR, smoke checks do fluxo de negócio, evidência de HPA na AWS e um teardown sem recursos órfãos. O smoke local com Kind não comprova staging na AWS.
+O mapeamento de namespaces e stages está representado neste repositório, mas a issue #87 só estará concluída após demonstrar uma sessão completa de staging. O repositório `database-infra` ainda precisa publicar credenciais e políticas de leitura distintas para migrations em HML e PRD; não use o master `owner` para executar migrations. Também faltam a orquestração e o teardown upstream da sessão, smoke checks do fluxo de negócio, evidência de HPA na AWS e um teardown sem recursos órfãos. O smoke local com Kind não comprova staging na AWS.

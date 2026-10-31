@@ -17,8 +17,8 @@ SPEC.loader.exec_module(PREFLIGHT)
 
 
 ACCOUNT_ID = "123456789012"
-HML_ARN = f"arn:aws:lambda:us-east-1:{ACCOUNT_ID}:function:customer-cpf-auth-homolog"
-PRD_ARN = f"arn:aws:lambda:us-east-1:{ACCOUNT_ID}:function:customer-cpf-auth-prod"
+HML_ARN = f"arn:aws:lambda:us-east-1:{ACCOUNT_ID}:function:lambda-auth-hml"
+PRD_ARN = f"arn:aws:lambda:us-east-1:{ACCOUNT_ID}:function:lambda-auth-prd"
 VPC_ID = "vpc-0123456789abcdef0"
 SUBNET_IDS = {"subnet-0123456789abcdef0", "subnet-1123456789abcdef0"}
 SECURITY_GROUP_ID = "sg-0123456789abcdef0"

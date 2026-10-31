@@ -5,6 +5,7 @@ resources:
   - ../../../base/foundation
 patches:
   - path: configmap-patch.yaml
+  - path: backend-service-account-patch.yaml
   - target:
       version: v1
       kind: Namespace

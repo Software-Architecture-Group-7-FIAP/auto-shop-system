@@ -67,7 +67,7 @@ def _load_migration_database_url() -> str:
         raise RuntimeError("Migration database credentials are invalid")
 
     return URL.create(
-        "postgresql+psycopg2",
+        "postgresql",
         username=username,
         password=password,
         host=host,

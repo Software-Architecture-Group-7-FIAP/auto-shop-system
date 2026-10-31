@@ -341,6 +341,9 @@ terraform -chdir=infra apply -var-file=terraform.tfvars.example \
 O Secret `auto-shop-secrets` deve ser criado por mecanismo externo e seguro;
 use [`k8s/examples/secret.example.yaml`](k8s/examples/secret.example.yaml)
 somente como referência. Não aplique o exemplo sem substituir os placeholders.
+O deploy de staging/produção cria automaticamente `auto-shop-redis-credentials`
+por namespace se ainda não existir. A senha aleatória fica no Secret Kubernetes;
+o Redis usa memória efêmera e desaparece junto com o namespace da sessão.
 
 Vídeo da entrega: **inserir o link fornecido pelo participante responsável antes do envio**.
 
