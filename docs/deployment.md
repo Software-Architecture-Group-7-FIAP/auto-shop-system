@@ -39,18 +39,18 @@ Quando `hml` estiver implantado e os dominios estiverem ativos, valide manualmen
 
 Repita os passos em `https://app.oficina-workshop.com.br` apos ativar `prd`. O bundle e o mesmo nos dois ambientes; o dominio CloudFront seleciona a origem `/hml` ou `/prd`.
 
-Existe uma única infraestrutura AWS efêmera `staging`; dentro dela, `hml` e `prd` usam os namespaces `auto-shop-hml` e `auto-shop-prd`, bancos lógicos e stages API Gateway separados. `production` é o GitHub Environment do deploy lógico `prd`, não uma segunda conta, cluster ou RDS. Consulte a [ADR-0071](architecture/decisions/ADR-0071-infraestrutura-cloud-fase-3.md) para o contrato vigente.
+Existe uma única infraestrutura AWS efêmera `staging`; dentro dela, `hml` e `prd` usam os namespaces `auto-shop-hml` e `auto-shop-prd`, bancos lógicos e stages API Gateway separados. `prd` é o GitHub Environment do deploy lógico `prd`, não uma segunda conta, cluster ou RDS. Consulte a [ADR-0071](architecture/decisions/ADR-0071-infraestrutura-cloud-fase-3.md) para o contrato vigente.
 
 O pipeline atual funciona assim:
 
 | Origem | GitHub Environment | Namespace | Stage API | Frontend |
 |---|---|---|---|---|
-| Push em `develop` | `staging` | `auto-shop-hml` | `hml` | `app-hml.oficina-workshop.com.br` |
-| Push em `main` | `production` | `auto-shop-prd` | `prd` | `app.oficina-workshop.com.br` |
+| `workflow_dispatch` em `develop` | `hml` | `auto-shop-hml` | `hml` | `app-hml.oficina-workshop.com.br` |
+| `workflow_dispatch` em `main` | `prd` | `auto-shop-prd` | `prd` | `app.oficina-workshop.com.br` |
 
 As mudanças de produto entram por pull requests de branches de trabalho para `develop`. A passagem para `main` é feita por um único pull request de release com `develop` como origem; não abra pull requests de feature diretamente para `main`.
 
-Os workflows publicam a imagem do backend no GHCR. O deploy do backend só roda por `workflow_dispatch` com sessão validada e quando `DEPLOY_STAGING_ENABLED` ou `DEPLOY_PRODUCTION_ENABLED` está ligado no repositório. O deploy do frontend exige também o gate separado `DEPLOY_STAGING_FRONTEND_ENABLED` ou `DEPLOY_PRODUCTION_FRONTEND_ENABLED`; mantenha esses gates ausentes ou `false` até a publicação do frontend ser autorizada. Habilitar o deploy do backend não publica o frontend. Mantenha os gates do backend desligados até a infraestrutura, os GitHub Environments e os smoke checks necessários estarem prontos. Os workflows coordenados de abertura, health check, fechamento e contingência de HML estão implementados.
+Os pushes publicam a imagem do backend no GHCR, sem alterar ambientes. O deploy do backend só roda por `workflow_dispatch` com sessão validada e quando `DEPLOY_STAGING_ENABLED` ou `DEPLOY_PRODUCTION_ENABLED` está ligado no repositório. O deploy do frontend exige também o gate separado `DEPLOY_STAGING_FRONTEND_ENABLED` ou `DEPLOY_PRODUCTION_FRONTEND_ENABLED`; mantenha esses gates ausentes ou `false` até a publicação do frontend ser autorizada. Habilitar o deploy do backend não publica o frontend. Mantenha os gates do backend desligados até a infraestrutura, os GitHub Environments e os smoke checks necessários estarem prontos. Os workflows coordenados de abertura, health check, fechamento e contingência de HML estão implementados.
 
 Depois que a mudança for promovida à branch padrão (atualmente `main`) pelo PR de release, `environment-hml-cleanup.yml` poderá rodar diariamente às 02:00 UTC como contingência para sessões HML expiradas. O GitHub só executa gatilhos `schedule` e `workflow_dispatch` quando o arquivo do workflow existe na branch padrão. O workflow de contingência despacha `environment-stop.yml` em `develop`; esse arquivo também precisa existir na branch padrão para que o dispatch funcione, e a versão executada será a da ref `develop`. A regra externa do GitHub Environment `operations` deve permitir a branch padrão para a contingência e `develop` para os jobs de parada.
 
