@@ -249,6 +249,99 @@ def _run_identity() -> tuple[str, int]:
     return run_id, int(raw_attempt)
 
 
+def _require_safe_retry_context(
+    *,
+    stage: str,
+    session_mode: str,
+    session_scope: str,
+    run_id: str,
+    source_run_id: str,
+) -> None:
+    if (
+        stage != "hml"
+        or session_mode != "hml"
+        or session_scope != "infrastructure-only"
+        or os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
+        or os.environ.get("GITHUB_WORKFLOW") != "HML infrastructure-only start"
+    ):
+        raise LedgerError("Safe retry ownership handoff is limited to the guarded HML infrastructure-only start.")
+    if not RUN_ID_PATTERN.fullmatch(source_run_id) or source_run_id == run_id:
+        raise LedgerError("The verified prior opening run ID is invalid for ownership handoff.")
+
+
+def _handoff_failed_opening(
+    *,
+    session_id: str,
+    stage: str,
+    started_at: str,
+    session_mode: str,
+    session_scope: str,
+    actor: str,
+    run_id: str,
+    run_attempt: int,
+    source_run_id: str,
+    expires_at: int,
+    now: int,
+) -> None:
+    existing = _get_item(session_id, "STATE", consistent=True)
+    try:
+        previous_attempt = int(existing.get("start_run_attempt", 0))
+        existing_expires_at = int(existing.get("expires_at", 0))
+    except (TypeError, ValueError) as error:
+        raise LedgerError("The existing lifecycle owner record is malformed; handoff fails closed.") from error
+    if (
+        existing.get("status") != "active"
+        or existing.get("operator") != actor
+        or existing.get("start_run_id") != source_run_id
+        or previous_attempt < 1
+        or existing.get("started_at") != started_at
+        or existing.get("stage") != stage
+        or existing.get("session_mode") != session_mode
+        or _session_scope(existing) != session_scope
+        or existing_expires_at != expires_at
+        or existing_expires_at <= now
+    ):
+        raise LedgerError("The existing active session does not match the verified failed opening run.")
+
+    _ddb(
+        "update-item",
+        {
+            "Key": _key(session_id, "STATE"),
+            "UpdateExpression": (
+                "SET start_run_id = :new_run, start_run_attempt = :attempt, "
+                "retry_handoff_from_run_id = :source_run, retry_handoff_at = :now"
+            ),
+            "ConditionExpression": (
+                "#status = :active AND #operator = :actor AND #stage = :stage AND "
+                "#mode = :mode AND #scope = :scope AND start_run_id = :source_run AND "
+                "start_run_attempt = :source_attempt AND started_at = :started AND "
+                "expires_at = :expires AND expires_at > :now"
+            ),
+            "ExpressionAttributeNames": {
+                "#status": "status",
+                "#operator": "operator",
+                "#stage": "stage",
+                "#mode": "session_mode",
+                "#scope": "session_scope",
+            },
+            "ExpressionAttributeValues": {
+                ":new_run": _s(run_id),
+                ":attempt": _n(run_attempt),
+                ":source_run": _s(source_run_id),
+                ":source_attempt": _n(previous_attempt),
+                ":active": _s("active"),
+                ":actor": _s(actor),
+                ":stage": _s(stage),
+                ":mode": _s(session_mode),
+                ":scope": _s(session_scope),
+                ":started": _s(started_at),
+                ":expires": _n(expires_at),
+                ":now": _n(now),
+            },
+        },
+    )
+
+
 def authorize_open(
     session_id: str,
     stage: str,
@@ -256,6 +349,7 @@ def authorize_open(
     session_mode: str,
     *,
     session_scope: str = "integrated",
+    safe_retry_source_run_id: str = "",
 ) -> None:
     _require_main_branch()
     actor = _operator()
@@ -271,6 +365,50 @@ def authorize_open(
         raise LedgerError("The requested session scope is invalid.")
     if stage != "hml" and session_scope != "integrated":
         raise LedgerError("The limited session scopes are HML-only.")
+    if safe_retry_source_run_id:
+        _require_safe_retry_context(
+            stage=stage,
+            session_mode=session_mode,
+            session_scope=session_scope,
+            run_id=run_id,
+            source_run_id=safe_retry_source_run_id,
+        )
+        current_owner = _get_item(session_id, "STATE", consistent=True)
+        if current_owner.get("start_run_id") == run_id:
+            try:
+                current_owner_expires_at = int(current_owner.get("expires_at", 0))
+            except (TypeError, ValueError) as error:
+                raise LedgerError("The current lifecycle owner record is malformed; retry fails closed.") from error
+            if (
+                current_owner.get("status") != "active"
+                or current_owner.get("operator") != actor
+                or current_owner.get("started_at") != started_at
+                or current_owner.get("stage") != stage
+                or current_owner.get("session_mode") != session_mode
+                or _session_scope(current_owner) != session_scope
+                or current_owner_expires_at != expires_at
+                or current_owner_expires_at <= now
+            ):
+                raise LedgerError("The active session owned by this run does not match the verified retry.")
+        else:
+            _handoff_failed_opening(
+                session_id=session_id,
+                stage=stage,
+                started_at=started_at,
+                session_mode=session_mode,
+                session_scope=session_scope,
+                actor=actor,
+                run_id=run_id,
+                run_attempt=run_attempt,
+                source_run_id=safe_retry_source_run_id,
+                expires_at=expires_at,
+                now=now,
+            )
+            print(
+                f"Transferred lifecycle session {session_id} from verified failed run "
+                f"{safe_retry_source_run_id} to trusted run {run_id}."
+            )
+            return
     try:
         _ddb(
             "put-item",
@@ -313,8 +451,11 @@ def authorize_open(
                 {
                     "Key": _key(session_id, "STATE"),
                     "UpdateExpression": "SET start_run_attempt = :attempt",
-                    "ConditionExpression": "#status = :active AND start_run_id = :run AND operator = :actor AND started_at = :started AND expires_at > :now",
-                    "ExpressionAttributeNames": {"#status": "status"},
+                    "ConditionExpression": (
+                        "#status = :active AND start_run_id = :run AND "
+                        "#operator = :actor AND started_at = :started AND expires_at > :now"
+                    ),
+                    "ExpressionAttributeNames": {"#status": "status", "#operator": "operator"},
                     "ExpressionAttributeValues": {
                         ":attempt": _n(run_attempt),
                         ":active": _s("active"),
@@ -874,6 +1015,7 @@ def main() -> int:
     open_parser.add_argument("--started-at", required=True)
     open_parser.add_argument("--session-mode", required=True)
     open_parser.add_argument("--session-scope", choices=tuple(sorted(SESSION_SCOPES)), default="integrated")
+    open_parser.add_argument("--safe-retry-source-run-id", default="")
 
     dispatch_parser = subparsers.add_parser("consume-dispatch")
     dispatch_parser.add_argument("--session-id", required=True)
@@ -923,6 +1065,7 @@ def main() -> int:
                 arguments.started_at,
                 arguments.session_mode,
                 session_scope=arguments.session_scope,
+                safe_retry_source_run_id=arguments.safe_retry_source_run_id,
             )
         elif arguments.command == "consume-dispatch":
             session_scope = consume_dispatch_authorization(

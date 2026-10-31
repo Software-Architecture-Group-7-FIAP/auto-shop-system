@@ -1,6 +1,7 @@
 import importlib.util
 import io
 import json
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import URLError
@@ -20,9 +21,23 @@ CURRENT_RUN_ID = "999"
 PRIOR_RUN_ID = 123
 GUARD_STEP_NAME = "Reject a second opening run for the same HML date"
 FIRST_MUTATION_STEP_NAME = "Configure the narrow lifecycle start role"
+SESSION_RECORD_STEP_NAME = "Record the trusted operator and authorize an infrastructure-only session"
+FOUNDATION_PLAN_STEP_NAME = "Plan the K8s foundation opening"
+INFRASTRUCTURE_APPLY_STEP_NAMES = (
+    "Apply the exact K8s foundation opening plan",
+    "Apply the exact K8s platform opening plan",
+    "Apply the exact HML namespace opening plan",
+    "Bootstrap the HML lifecycle database",
+)
 
 
-def _run(run_id: int, *, status: str = "completed", conclusion: str = "failure") -> dict[str, object]:
+def _run(
+    run_id: int,
+    *,
+    status: str = "completed",
+    conclusion: str = "failure",
+    run_attempt: int = 1,
+) -> dict[str, object]:
     created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     return {
         "id": run_id,
@@ -30,6 +45,7 @@ def _run(run_id: int, *, status: str = "completed", conclusion: str = "failure")
         "created_at": created_at,
         "status": status,
         "conclusion": conclusion,
+        "run_attempt": run_attempt,
     }
 
 
@@ -50,6 +66,17 @@ def _jobs_payload(
             }
         )
     return {"total_count": len(jobs), "jobs": jobs}
+
+
+def _recovery_steps(*, record_conclusion: str, plan_conclusion: str) -> list[dict[str, str]]:
+    return [
+        {"name": SESSION_RECORD_STEP_NAME, "status": "completed", "conclusion": record_conclusion},
+        {"name": FOUNDATION_PLAN_STEP_NAME, "status": "completed", "conclusion": plan_conclusion},
+        *[
+            {"name": name, "status": "completed", "conclusion": "skipped"}
+            for name in INFRASTRUCTURE_APPLY_STEP_NAMES
+        ],
+    ]
 
 
 def _set_github_context(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -98,7 +125,7 @@ def test_preflight_failure_is_retryable_when_open_job_was_skipped(monkeypatch: p
     )
 
     assert GUARD.main() == 0
-    assert requested_urls[1].endswith(f"/actions/runs/{PRIOR_RUN_ID}/jobs?per_page=100")
+    assert requested_urls[1].endswith(f"/actions/runs/{PRIOR_RUN_ID}/attempts/1/jobs?per_page=100")
 
 
 def test_duplicate_guard_failure_is_retryable_before_first_mutation(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -187,9 +214,94 @@ def test_incomplete_github_jobs_listing_blocks_retry(monkeypatch: pytest.MonkeyP
     assert GUARD.main() == 1
 
 
+def test_failed_authorization_attempts_allow_only_verified_ledger_handoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_github_context(monkeypatch)
+    with tempfile.TemporaryDirectory(prefix="lifecycle-guard-test-") as temporary_directory:
+        output_path = Path(temporary_directory) / "github-output.txt"
+        monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+        current_run = _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")
+        requested_urls = _stub_api(
+            monkeypatch,
+            [
+                _listing(_run(PRIOR_RUN_ID, run_attempt=2), current_run),
+                _jobs_payload(
+                    open_conclusion="failure",
+                    steps=_recovery_steps(record_conclusion="success", plan_conclusion="failure"),
+                ),
+                _jobs_payload(
+                    open_conclusion="failure",
+                    steps=_recovery_steps(record_conclusion="failure", plan_conclusion="skipped"),
+                ),
+            ],
+        )
+
+        assert GUARD.main() == 0
+        assert requested_urls[1].endswith(f"/actions/runs/{PRIOR_RUN_ID}/attempts/1/jobs?per_page=100")
+        assert requested_urls[2].endswith(f"/actions/runs/{PRIOR_RUN_ID}/attempts/2/jobs?per_page=100")
+        assert output_path.read_text(encoding="utf-8") == f"recovery_source_run_id={PRIOR_RUN_ID}\n"
+
+
+def test_any_infrastructure_apply_in_any_attempt_blocks_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    attempt_one_steps = _recovery_steps(record_conclusion="success", plan_conclusion="failure")
+    attempt_one_steps[-1] = {
+        "name": INFRASTRUCTURE_APPLY_STEP_NAMES[-1],
+        "status": "completed",
+        "conclusion": "success",
+    }
+    _stub_api(
+        monkeypatch,
+        [
+            _listing(_run(PRIOR_RUN_ID, run_attempt=2)),
+            _jobs_payload(
+                open_conclusion="failure",
+                steps=_recovery_steps(record_conclusion="success", plan_conclusion="failure"),
+            ),
+            _jobs_payload(open_conclusion="failure", steps=attempt_one_steps),
+        ],
+    )
+
+    assert GUARD.main() == 1
+
+
+def test_recovery_chain_uses_the_most_recent_verified_owner_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_github_context(monkeypatch)
+    older_run = _run(PRIOR_RUN_ID)
+    older_run["created_at"] = "2026-10-31T12:00:00Z"
+    newer_run = _run(PRIOR_RUN_ID + 1)
+    newer_run["created_at"] = "2026-10-31T12:01:00Z"
+    with tempfile.TemporaryDirectory(prefix="lifecycle-guard-chain-test-") as temporary_directory:
+        output_path = Path(temporary_directory) / "github-output.txt"
+        monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+        _stub_api(
+            monkeypatch,
+            [
+                _listing(older_run, newer_run),
+                _jobs_payload(
+                    open_conclusion="failure",
+                    steps=_recovery_steps(record_conclusion="success", plan_conclusion="failure"),
+                ),
+                _jobs_payload(
+                    open_conclusion="failure",
+                    steps=_recovery_steps(record_conclusion="success", plan_conclusion="failure"),
+                ),
+            ],
+        )
+
+        assert GUARD.main() == 0
+        assert output_path.read_text(encoding="utf-8") == f"recovery_source_run_id={PRIOR_RUN_ID + 1}\n"
+
+
 def test_retry_contract_step_names_match_the_workflow() -> None:
     workflow = (ROOT / ".github" / "workflows" / "environment-start.yml").read_text(encoding="utf-8")
 
     guard_index = workflow.index(f"- name: {GUARD_STEP_NAME}")
     mutation_index = workflow.index(f"- name: {FIRST_MUTATION_STEP_NAME}")
     assert guard_index < mutation_index
+    assert "id: daily_unique" in workflow
+    assert "--safe-retry-source-run-id \"$SAFE_RETRY_SOURCE_RUN_ID\"" in workflow
+    assert SESSION_RECORD_STEP_NAME in workflow
+    assert FOUNDATION_PLAN_STEP_NAME in workflow
+    assert all(name in workflow for name in INFRASTRUCTURE_APPLY_STEP_NAMES)
