@@ -91,6 +91,8 @@ def test_start_child_dispatches_match_declared_workflow_input_contracts() -> Non
 
 def test_stop_is_limited_to_infrastructure_only_hml_and_verifies_teardown() -> None:
     workflow = (WORKFLOWS / "environment-stop.yml").read_text(encoding="utf-8")
+    close_job = workflow.split("  close:\n", 1)[1].split("  audit:\n", 1)[0]
+    audit_job = workflow.split("  audit:\n", 1)[1].split("  post-cost-capture:\n", 1)[0]
 
     assert "--stage hml" in workflow
     assert "REQUESTED_SESSION_SCOPE" in workflow and "infrastructure-only" in workflow
@@ -103,6 +105,25 @@ def test_stop_is_limited_to_infrastructure_only_hml_and_verifies_teardown() -> N
     assert workflow.index("Destroy the ephemeral HML database") < workflow.index(
         "Plan the full K8s platform teardown"
     )
+    assert "teardown_needed: ${{ steps.close_decision.outputs.teardown_needed }}" in close_job
+    assert "Record when no teardown is needed" in close_job
+    for step_name in (
+        "Validate the HML cross-repository teardown configuration",
+        "Plan the isolated HML namespace teardown",
+        "Apply the reviewed HML namespace teardown plan",
+        "Destroy the ephemeral HML database",
+        "Plan the full K8s platform teardown",
+        "Apply the reviewed K8s platform teardown plan",
+        "Plan compute-only foundation teardown",
+        "Apply the reviewed compute-only foundation teardown plan",
+        "Plan NAT shutdown",
+        "Apply the reviewed NAT shutdown plan",
+    ):
+        step = close_job.split(f"      - name: {step_name}", 1)[1].split("      - name:", 1)[0]
+        assert "steps.close_decision.outputs.teardown_needed == 'true'" in step
+    assert "needs.close.outputs.close_needed == 'true'" in audit_job
+    assert "Finalize the ledger only after teardown and orphan audit succeed" in audit_job
+    assert "steps.orphan_audit.outcome == 'success'" in audit_job
     dispatch_lines = [line for line in workflow.splitlines() if "--inputs " in line]
     assert dispatch_lines
     assert all("session_scope" not in line for line in dispatch_lines)

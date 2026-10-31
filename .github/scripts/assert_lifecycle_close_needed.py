@@ -104,6 +104,33 @@ def _opening_mutation_started(repository: str, run_id: object, token: str) -> bo
     return bool(markers[0].get("started_at"))
 
 
+def _opening_close_decision(
+    matching_openings: list[dict[str, object]], repository: str, token: str
+) -> tuple[bool, bool, str]:
+    if not matching_openings:
+        return False, False, "No matching opening run exists for this session; no infrastructure was changed."
+
+    mutating_openings: list[dict[str, object]] = []
+    for opening in matching_openings:
+        if str(opening.get("status", "")) in ACTIVE_STATUSES:
+            raise ValueError("A matching opening run is still active; refusing teardown")
+        run_id = opening.get("id")
+        if not isinstance(run_id, int):
+            raise ValueError("A matching opening run has no valid numeric ID")
+        if _opening_mutation_started(repository, run_id, token):
+            mutating_openings.append(opening)
+
+    if len(mutating_openings) > 1:
+        raise ValueError("Multiple mutating opening runs were found; refusing teardown")
+    if not mutating_openings:
+        reason = (
+            "Matching opening runs completed without starting a mutating lifecycle step; "
+            "close the ledger after the read-only audit without teardown."
+        )
+        return True, False, reason
+    return True, True, "A matching opening run started a mutating lifecycle step; guarded teardown is required."
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stage", choices=("hml", "prd"), required=True)
@@ -162,25 +189,10 @@ def main() -> int:
                     and _matches_opening_title(str(run.get("display_title", "")), default_opening_title)
                 )
             ]
-        if len(matching_openings) > 1:
-            raise ValueError("Multiple matching opening runs were found; refusing teardown")
-        if not matching_openings:
-            close_needed = False
-            reason = "No matching opening run exists for this session; no infrastructure was changed."
-        else:
-            opening = matching_openings[0]
-            if arguments.stage == "prd" and str(opening.get("status", "")) in ACTIVE_STATUSES:
-                raise ValueError("The PRD opening run is still active; refusing teardown before it finishes")
-            if not isinstance(opening.get("id"), int):
-                raise ValueError("The matching opening run has no valid numeric ID")
-            if not _opening_mutation_started(repository, opening.get("id"), token):
-                close_needed = False
-                reason = "The matching opening run never started a mutating lifecycle step; no teardown was run."
-                with open(arguments.github_output, "a", encoding="utf-8") as output_file:
-                    output_file.write("close_needed=false\n")
-                    output_file.write(f"decision={reason}\n")
-                print(reason)
-                return 0
+        close_needed, teardown_needed, reason = _opening_close_decision(
+            matching_openings, repository, token
+        )
+        if close_needed:
             close_runs = _runs_for_brt_day(
                 _runs(repository, "environment-stop.yml", session_day, token), session_day
             )
@@ -194,18 +206,17 @@ def main() -> int:
             ]
             if any(str(run.get("conclusion", "")) == "success" for run in prior_closes):
                 close_needed = False
+                teardown_needed = False
                 reason = "A successful close already exists for this session; no duplicate teardown was started."
             elif any(str(run.get("status", "")) in ACTIVE_STATUSES for run in prior_closes):
                 raise ValueError("Another close run is still active; refusing a concurrent teardown")
-            else:
-                close_needed = True
-                reason = "A matching opening exists and no successful close has completed."
     except (HTTPError, URLError, OSError, json.JSONDecodeError, ValueError) as error:
         print(f"::error::Close idempotency check failed closed: {error}", file=sys.stderr)
         return 1
 
     with open(arguments.github_output, "a", encoding="utf-8") as output_file:
         output_file.write(f"close_needed={str(close_needed).lower()}\n")
+        output_file.write(f"teardown_needed={str(teardown_needed).lower()}\n")
         output_file.write(f"decision={reason}\n")
     print(reason)
     return 0
