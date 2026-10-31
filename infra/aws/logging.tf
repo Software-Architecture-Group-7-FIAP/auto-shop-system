@@ -28,16 +28,27 @@ resource "aws_iam_role_policy" "api_gateway_cloudwatch" {
     Version = "2012-10-17"
     Statement = [
       {
+        Sid    = "CreateAccessLogGroup"
         Effect = "Allow"
         Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:DescribeLogGroups",
-          "logs:DescribeLogStreams",
-          "logs:PutLogEvents",
-          "logs:GetLogEvents",
-          "logs:FilterLogEvents"
+          "logs:CreateLogGroup"
         ]
+        Resource = aws_cloudwatch_log_group.api_gateway_access.arn
+      },
+      {
+        Sid    = "WriteAccessLogStreams"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:DescribeLogStreams",
+          "logs:PutLogEvents"
+        ]
+        Resource = "${aws_cloudwatch_log_group.api_gateway_access.arn}:*"
+      },
+      {
+        Sid      = "DescribeLogGroups"
+        Effect   = "Allow"
+        Action   = ["logs:DescribeLogGroups"]
         Resource = "*"
       }
     ]

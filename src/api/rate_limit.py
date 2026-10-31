@@ -83,6 +83,9 @@ class InMemoryRateLimitBackend:
         with self._lock:
             self._requests.clear()
 
+    def is_available(self) -> bool:
+        return True
+
 
 class RedisRateLimitBackend:
     """Shared fixed-window limiter backed by Redis/ElastiCache."""
@@ -100,9 +103,17 @@ class RedisRateLimitBackend:
             import redis
         except ImportError as exc:
             raise RuntimeError("Redis rate limiting requires the redis package") from exc
-        self._client = redis.Redis.from_url(url, decode_responses=True)
+        self._client = redis.Redis.from_url(
+            url,
+            decode_responses=True,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+        )
         self._script = self._client.register_script(self._CONSUME_SCRIPT)
         self._prefix = "oficina:rate-limit:"
+
+    def is_available(self) -> bool:
+        return bool(self._client.ping())
 
     def enforce(self, keys: list[str], policy: RateLimitPolicy) -> int:
         retry_after = 0
@@ -169,8 +180,8 @@ class LoginRateLimiter:
                     oldest_key, _ = min(candidates, key=lambda item: item[1].last_seen)
                     self._buckets.pop(oldest_key, None)
             if len(self._buckets) >= self.max_buckets:
-                # The IP bucket is still bounded and remains effective. Do not
-                # allocate an unbounded fallback for this key.
+                # Do not allocate an unbounded fallback for attacker-controlled
+                # identities when the bounded local store is full.
                 return None
             bucket = _Bucket(last_seen=now)
             self._buckets[key] = bucket
@@ -212,12 +223,112 @@ class LoginRateLimiter:
         with self._lock:
             self._buckets.clear()
 
-login_rate_limiter = LoginRateLimiter(
-    max_attempts=settings.login_max_attempts,
-    window_seconds=settings.login_attempt_window_seconds,
-    lockout_seconds=settings.login_lockout_seconds,
-    max_buckets=settings.login_rate_limit_max_buckets,
-)
+    def is_available(self) -> bool:
+        return True
+
+
+class RedisLoginRateLimiter:
+    """Atomic login lockout shared across application replicas through Redis."""
+
+    _RETRY_AFTER_SCRIPT = """
+    local ttl_ms = redis.call('PTTL', KEYS[1])
+    if ttl_ms > 0 then
+      return math.floor((ttl_ms + 999) / 1000)
+    end
+    return 0
+    """
+    _REGISTER_FAILURE_SCRIPT = """
+    local locked_ttl_ms = redis.call('PTTL', KEYS[2])
+    if locked_ttl_ms > 0 then
+      return math.floor((locked_ttl_ms + 999) / 1000)
+    end
+    local attempts = redis.call('INCR', KEYS[1])
+    if attempts == 1 then
+      redis.call('EXPIRE', KEYS[1], ARGV[2])
+    end
+    if attempts >= tonumber(ARGV[1]) then
+      redis.call('SET', KEYS[2], '1', 'EX', ARGV[3])
+      redis.call('DEL', KEYS[1])
+      return tonumber(ARGV[3])
+    end
+    return 0
+    """
+
+    def __init__(
+        self,
+        url: str,
+        max_attempts: int,
+        window_seconds: int,
+        lockout_seconds: int,
+    ):
+        try:
+            import redis
+        except ImportError as exc:
+            raise RuntimeError("Redis login limiting requires the redis package") from exc
+        self.max_attempts = max_attempts
+        self.window_seconds = window_seconds
+        self.lockout_seconds = lockout_seconds
+        self._client = redis.Redis.from_url(
+            url,
+            decode_responses=True,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+        )
+        self._prefix = "oficina:login-rate-limit:"
+        self._retry_script = self._client.register_script(self._RETRY_AFTER_SCRIPT)
+        self._failure_script = self._client.register_script(self._REGISTER_FAILURE_SCRIPT)
+
+    def _failure_key(self, key: str) -> str:
+        return f"{self._prefix}{key}:failures"
+
+    def _lock_key(self, key: str) -> str:
+        return f"{self._prefix}{key}:lock"
+
+    def is_available(self) -> bool:
+        return bool(self._client.ping())
+
+    def retry_after(self, keys: list[str]) -> int:
+        wait = 0
+        for key in keys:
+            ttl = self._retry_script(keys=[self._lock_key(key)])
+            wait = max(wait, int(ttl or 0))
+        return wait
+
+    def register_failure(self, keys: list[str]) -> None:
+        for key in keys:
+            self._failure_script(
+                keys=[self._failure_key(key), self._lock_key(key)],
+                args=[self.max_attempts, self.window_seconds, self.lockout_seconds],
+            )
+
+    def register_success(self, keys: list[str]) -> None:
+        for key in keys:
+            self._client.delete(self._failure_key(key), self._lock_key(key))
+
+    def reset(self) -> None:
+        for key in self._client.scan_iter(match=f"{self._prefix}*"):
+            self._client.delete(key)
+
+
+def _login_rate_limit_backend() -> LoginRateLimiter | RedisLoginRateLimiter:
+    if settings.redis_url:
+        return RedisLoginRateLimiter(
+            settings.redis_url,
+            max_attempts=settings.login_max_attempts,
+            window_seconds=settings.login_attempt_window_seconds,
+            lockout_seconds=settings.login_lockout_seconds,
+        )
+    if settings.is_production_like():
+        raise RuntimeError("REDIS_URL is required in production-like environments")
+    return LoginRateLimiter(
+        max_attempts=settings.login_max_attempts,
+        window_seconds=settings.login_attempt_window_seconds,
+        lockout_seconds=settings.login_lockout_seconds,
+        max_buckets=settings.login_rate_limit_max_buckets,
+    )
+
+
+login_rate_limiter = _login_rate_limit_backend()
 
 
 def _public_rate_limit_backend() -> PublicRateLimitBackend:
@@ -240,9 +351,29 @@ PUBLIC_RATE_LIMIT_POLICIES = {
 }
 
 
-def login_throttle_keys(request: Request, username: str) -> list[str]:
-    client_ip = request.client.host if request.client else "unknown"
-    return [f"ip:{client_ip}", f"user:{username.strip().lower()}"]
+def rate_limit_storage_available() -> bool:
+    """Report whether all configured rate-limit stores are reachable."""
+    for limiter in (login_rate_limiter, public_rate_limiter):
+        is_available = getattr(limiter, "is_available", None)
+        if is_available is None:
+            continue
+        try:
+            if not is_available():
+                return False
+        except Exception:
+            return False
+    return True
+
+
+def login_throttle_keys(_request: Request, username: str) -> list[str]:
+    # The app is behind API Gateway, a VPC link, and an ALB. Its socket peer is
+    # the ALB, not the end user. WAF applies the per-client-IP limit at the edge.
+    username_digest = hmac.new(
+        settings.jwt_secret().encode(),
+        username.strip().lower().encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return [f"user:{username_digest}"]
 
 
 def enforce_login_rate_limit(keys: list[str]) -> None:
@@ -255,17 +386,15 @@ def enforce_login_rate_limit(keys: list[str]) -> None:
         )
 
 
-def public_throttle_keys(request: Request, fingerprint: str, route: str) -> list[str]:
-    client_ip = request.client.host if request.client else "unknown"
+def public_throttle_keys(_request: Request, fingerprint: str, route: str) -> list[str]:
     key_fingerprint = hmac.new(
         settings.jwt_secret().encode(),
         fingerprint.encode(),
         hashlib.sha256,
     ).hexdigest()
-    return [
-        f"route:{route}:ip:{client_ip}",
-        f"route:{route}:fingerprint:{key_fingerprint}",
-    ]
+    # Keep per-identity application limits; WAF owns limits based on the real
+    # client IP because the app's socket peer is the internal load balancer.
+    return [f"route:{route}:fingerprint:{key_fingerprint}"]
 
 
 def enforce_public_rate_limit(request: Request, fingerprint: str, route: str) -> None:

@@ -98,7 +98,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_FRONTEND_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Resolve stage deployment targets
@@ -121,8 +121,12 @@ jobs:
           distribution_id="$(aws ssm get-parameter \
             --name "${prefix}/frontend/${API_STAGE}/distribution-id" \
             --query 'Parameter.Value' --output text)"
-          if [[ -z "${bucket}" || -z "${distribution_id}" ]]; then
-            echo "The frontend deployment targets are missing from SSM." >&2
+          if [[ ! "${bucket}" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]]; then
+            echo "The frontend bucket name in SSM is invalid." >&2
+            exit 1
+          fi
+          if [[ ! "${distribution_id}" =~ ^E[A-Z0-9]{13}$ ]]; then
+            echo "The CloudFront distribution ID in SSM is invalid." >&2
             exit 1
           fi
           echo "bucket=${bucket}" >> "${GITHUB_OUTPUT}"

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.exceptions import RequestValidationError
 
+from src.api.rate_limit import rate_limit_storage_available
 from src.api.routers import (
     auth,
     budgets,
@@ -209,7 +210,7 @@ def liveness_check():
 
 @app.get("/health/ready", tags=["Health"])
 def readiness_check():
-    if not database.check_database_connection():
+    if not database.check_database_connection() or not rate_limit_storage_available():
         return JSONResponse(status_code=503, content={"status": "unavailable"})
     return {"status": "ok"}
 

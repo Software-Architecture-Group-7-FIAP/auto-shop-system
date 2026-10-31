@@ -104,7 +104,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      packages: read
     env:
       IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
       ALLOW_SYNTHETIC_SEED_IN_PRD: ${{ vars.ALLOW_SYNTHETIC_SEED_IN_PRD || 'false' }}
@@ -136,25 +135,18 @@ jobs:
           fi
           python3 .github/scripts/validate_environment_window.py --action "${action}"
 
+      - name: Verify image is pullable without credentials
+        run: docker pull "${IMAGE_REFERENCE}"
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Mirror the private release image to ECR
-        id: ecr_image
-        env:
-          AWS_REGION: ${{ vars.AWS_REGION }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          image_reference="$(python3 scripts/mirror_ghcr_image_to_ecr.py "$IMAGE_REFERENCE")"
-          echo "image_reference=$image_reference" >> "$GITHUB_OUTPUT"
-
       - uses: azure/setup-kubectl@v4
         with:
-          version: v1.34.1
+          version: v1.37.1
 
       - name: Resolve EKS cluster name from SSM
         id: eks
@@ -171,14 +163,36 @@ jobs:
             --name "${SSM_PARAMETER_PREFIX}/eks/cluster-name" \
             --query 'Parameter.Value' --output text)"
           migration_secret_arn="$(aws ssm get-parameter \
-            --name "${SSM_PARAMETER_PREFIX}/database/secrets/owner-arn" \
+            --name "${SSM_PARAMETER_PREFIX}/database/secrets/migrations-prd-arn" \
             --query 'Parameter.Value' --output text)"
-          if [[ -z "${cluster_name}" || ! "${migration_secret_arn}" =~ ^arn:aws:secretsmanager: ]]; then
-            echo "The EKS cluster or migration secret ARN is missing from SSM." >&2
+          service_order_event_bus_name="$(aws ssm get-parameter \
+            --name "${SSM_PARAMETER_PREFIX}/events/service-order-bus-name/prd" \
+            --query 'Parameter.Value' --output text)"
+          service_order_publisher_role_arn="$(aws ssm get-parameter \
+            --name "${SSM_PARAMETER_PREFIX}/events/service-order-publisher-role-arn/prd" \
+            --query 'Parameter.Value' --output text)"
+          if [[ ! "${cluster_name}" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$ ]]; then
+            echo "The EKS cluster name in SSM is invalid." >&2
             exit 1
           fi
-          echo "cluster_name=${cluster_name}" >> "${GITHUB_OUTPUT}"
-          echo "migration_secret_arn=${migration_secret_arn}" >> "${GITHUB_OUTPUT}"
+          if [[ ! "${migration_secret_arn}" =~ ^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$ ]]; then
+            echo "The migration secret ARN in SSM is invalid." >&2
+            exit 1
+          fi
+          if [[ ! "${service_order_event_bus_name}" =~ ^[A-Za-z0-9._-]{1,256}$ ]]; then
+            echo "The service-order event bus name in SSM is invalid." >&2
+            exit 1
+          fi
+          if [[ ! "${service_order_publisher_role_arn}" =~ ^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$ ]]; then
+            echo "The service-order publisher role ARN in SSM is invalid." >&2
+            exit 1
+          fi
+          {
+            echo "cluster_name=${cluster_name}"
+            echo "migration_secret_arn=${migration_secret_arn}"
+            echo "service_order_event_bus_name=${service_order_event_bus_name}"
+            echo "service_order_publisher_role_arn=${service_order_publisher_role_arn}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Connect to EKS
         env:
@@ -188,15 +202,17 @@ jobs:
 
       - name: Deploy to production (rolling via Deployment rollout)
         env:
-          IMAGE_REFERENCE: ${{ steps.ecr_image.outputs.image_reference }}
+          IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
           MIGRATION_DATABASE_SECRET_ARN: ${{ steps.eks.outputs.migration_secret_arn }}
+          SERVICE_ORDER_EVENT_BUS_NAME: ${{ steps.eks.outputs.service_order_event_bus_name }}
+          SERVICE_ORDER_PUBLISHER_ROLE_ARN: ${{ steps.eks.outputs.service_order_publisher_role_arn }}
           ALLOW_SYNTHETIC_SEED_IN_PRD: ${{ env.ALLOW_SYNTHETIC_SEED_IN_PRD }}
           LIFECYCLE_SESSION_ID: ${{ env.LIFECYCLE_SESSION_ID }}
         run: ./k8s/scripts/deploy.sh production "${IMAGE_REFERENCE}" yes
 
   deploy-production-frontend:
     needs: deploy-production
-    if: github.event_name == 'workflow_dispatch' && vars.DEPLOY_PRODUCTION_ENABLED == 'true'
+    if: github.event_name == 'workflow_dispatch' && vars.DEPLOY_PRODUCTION_ENABLED == 'true' && vars.DEPLOY_PRODUCTION_FRONTEND_ENABLED == 'true'
     permissions:
       contents: read
       id-token: write

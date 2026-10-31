@@ -39,6 +39,17 @@ resource "kubernetes_config_map_v1" "app" {
   }
 }
 
+resource "kubernetes_service_account_v1" "backend" {
+  metadata {
+    name      = "auto-shop-backend"
+    namespace = kubernetes_namespace_v1.auto_shop.metadata[0].name
+    labels    = local.backend_labels
+    annotations = trimspace(var.service_order_publisher_role_arn) == "" ? {} : {
+      "eks.amazonaws.com/role-arn" = trimspace(var.service_order_publisher_role_arn)
+    }
+  }
+}
+
 resource "kubernetes_job_v1" "migration" {
   metadata {
     name      = local.migration_job_name
@@ -163,6 +174,7 @@ resource "kubernetes_deployment_v1" "backend" {
 
       spec {
         restart_policy                   = "Always"
+        service_account_name             = kubernetes_service_account_v1.backend.metadata[0].name
         termination_grace_period_seconds = 30
 
         security_context {
