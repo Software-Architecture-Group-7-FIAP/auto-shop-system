@@ -20,6 +20,14 @@ OPENING_JOB_NAME = "open"
 RETRYABLE_RUN_CONCLUSIONS = {"failure", "cancelled", "timed_out"}
 UNIQUE_GUARD_STEP_NAME = "Reject a second opening run for the same HML date"
 FIRST_MUTATION_STEP_NAME = "Configure the narrow lifecycle start role"
+SESSION_RECORD_STEP_NAME = "Record the trusted operator and authorize an infrastructure-only session"
+FOUNDATION_PLAN_STEP_NAME = "Plan the K8s foundation opening"
+INFRASTRUCTURE_APPLY_STEP_NAMES = (
+    "Apply the exact K8s foundation opening plan",
+    "Apply the exact K8s platform opening plan",
+    "Apply the exact HML namespace opening plan",
+    "Bootstrap the HML lifecycle database",
+)
 
 
 def _github_get_json(url: str, token: str) -> object:
@@ -36,22 +44,8 @@ def _github_get_json(url: str, token: str) -> object:
         return json.loads(response.read().decode("utf-8"))
 
 
-def _is_safe_retryable_attempt(run: dict[str, object], repository: str, token: str) -> bool:
-    conclusion = run.get("conclusion")
-    if (
-        run.get("status") != "completed"
-        or not isinstance(conclusion, str)
-        or conclusion not in RETRYABLE_RUN_CONCLUSIONS
-    ):
-        return False
-    try:
-        run_id = int(run.get("id", 0))
-    except (TypeError, ValueError):
-        return False
-    if run_id <= 0:
-        return False
-
-    jobs_url = f"{API_ROOT}/repos/{repository}/actions/runs/{run_id}/jobs?per_page=100"
+def _attempt_jobs(run_id: int, attempt: int, repository: str, token: str) -> list[dict[str, object]]:
+    jobs_url = f"{API_ROOT}/repos/{repository}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100"
     jobs_result = _github_get_json(jobs_url, token)
     if not isinstance(jobs_result, dict) or not isinstance(jobs_result.get("jobs"), list):
         raise ValueError("GitHub returned an invalid workflow-job listing.")
@@ -63,14 +57,13 @@ def _is_safe_retryable_attempt(run: dict[str, object], repository: str, token: s
         or total_jobs != len(jobs_result["jobs"])
     ):
         raise ValueError("GitHub returned an incomplete workflow-job listing.")
-
     jobs = jobs_result["jobs"]
     if any(not isinstance(job, dict) for job in jobs):
         raise ValueError("GitHub returned an invalid workflow job.")
-    opening_jobs = [job for job in jobs if job.get("name") == OPENING_JOB_NAME]
-    if len(opening_jobs) != 1:
-        return False
-    opening_job = opening_jobs[0]
+    return jobs
+
+
+def _is_safe_before_session(opening_job: dict[str, object]) -> bool:
     if opening_job.get("status") != "completed":
         return False
     if opening_job.get("conclusion") == "skipped":
@@ -94,6 +87,101 @@ def _is_safe_retryable_attempt(run: dict[str, object], repository: str, token: s
         and mutation_step.get("status") == "completed"
         and mutation_step.get("conclusion") == "skipped"
     )
+
+
+def _safe_session_recovery_attempt(opening_job: dict[str, object]) -> tuple[bool, bool]:
+    """Return whether a failed attempt is safe for handoff and whether it recorded state."""
+    if opening_job.get("status") != "completed" or opening_job.get("conclusion") != "failure":
+        return False, False
+    steps = opening_job.get("steps")
+    if not isinstance(steps, list) or any(not isinstance(step, dict) for step in steps):
+        return False, False
+
+    record_steps = [step for step in steps if step.get("name") == SESSION_RECORD_STEP_NAME]
+    plan_steps = [step for step in steps if step.get("name") == FOUNDATION_PLAN_STEP_NAME]
+    if len(record_steps) != 1 or len(plan_steps) != 1:
+        return False, False
+    apply_steps: list[dict[str, object]] = []
+    for name in INFRASTRUCTURE_APPLY_STEP_NAMES:
+        matches = [step for step in steps if step.get("name") == name]
+        if len(matches) != 1:
+            return False, False
+        apply_steps.append(matches[0])
+
+    record_step = record_steps[0]
+    plan_step = plan_steps[0]
+    record_conclusion = record_step.get("conclusion")
+    plan_conclusion = plan_step.get("conclusion")
+    recorded = record_step.get("status") == "completed" and record_conclusion == "success"
+    record_failed = record_step.get("status") == "completed" and record_conclusion == "failure"
+    plan_failed = plan_step.get("status") == "completed" and plan_conclusion == "failure"
+    plan_skipped = plan_step.get("status") == "completed" and plan_conclusion == "skipped"
+    all_applies_skipped = all(
+        step.get("status") == "completed" and step.get("conclusion") == "skipped"
+        for step in apply_steps
+    )
+
+    failed_at_record_then_plan_skipped = record_failed and plan_skipped
+    failed_at_plan_after_record = recorded and plan_failed
+    return (all_applies_skipped and (failed_at_record_then_plan_skipped or failed_at_plan_after_record), recorded)
+
+
+def _inspect_retryable_run(run: dict[str, object], repository: str, token: str) -> tuple[bool, str | None]:
+    conclusion = run.get("conclusion")
+    if (
+        run.get("status") != "completed"
+        or not isinstance(conclusion, str)
+        or conclusion not in RETRYABLE_RUN_CONCLUSIONS
+    ):
+        return False, None
+    try:
+        run_id = int(run.get("id", 0))
+        attempt_count = run.get("run_attempt")
+    except (TypeError, ValueError):
+        return False, None
+    if (
+        run_id <= 0
+        or not isinstance(attempt_count, int)
+        or isinstance(attempt_count, bool)
+        or attempt_count < 1
+        or attempt_count > 100
+    ):
+        return False, None
+
+    saw_recovery_attempt = False
+    saw_successful_session_record = False
+    for attempt in range(1, attempt_count + 1):
+        jobs = _attempt_jobs(run_id, attempt, repository, token)
+        opening_jobs = [job for job in jobs if job.get("name") == OPENING_JOB_NAME]
+        if len(opening_jobs) != 1:
+            return False, None
+        opening_job = opening_jobs[0]
+        if _is_safe_before_session(opening_job):
+            continue
+
+        recovery_safe, recorded = _safe_session_recovery_attempt(opening_job)
+        if not recovery_safe:
+            return False, None
+        saw_recovery_attempt = True
+        saw_successful_session_record = saw_successful_session_record or recorded
+
+    if saw_recovery_attempt:
+        if conclusion != "failure" or not saw_successful_session_record:
+            return False, None
+        return True, str(run_id)
+    return True, None
+
+
+def _write_recovery_output(source_run_id: str) -> None:
+    output_path = os.environ.get("GITHUB_OUTPUT", "").strip()
+    if not output_path:
+        if source_run_id:
+            raise ValueError("GitHub Actions output is required to publish the verified recovery source.")
+        return
+    if "\n" in source_run_id or "\r" in source_run_id:
+        raise ValueError("The recovery source run ID is malformed.")
+    with open(output_path, "a", encoding="utf-8") as output_file:
+        output_file.write(f"recovery_source_run_id={source_run_id}\n")
 
 
 def main() -> int:
@@ -129,11 +217,19 @@ def main() -> int:
     if not isinstance(result, dict) or not isinstance(result.get("workflow_runs"), list):
         print("::error::GitHub returned an invalid workflow-run listing.", file=sys.stderr)
         return 1
-    if int(result.get("total_count", 0)) > 100:
+    total_runs = result.get("total_count")
+    if not isinstance(total_runs, int) or isinstance(total_runs, bool):
+        print("::error::GitHub returned an invalid workflow-run count.", file=sys.stderr)
+        return 1
+    if total_runs > 100:
         print("::error::Too many workflow runs to verify today's HML session safely.", file=sys.stderr)
+        return 1
+    if any(not isinstance(run, dict) for run in result["workflow_runs"]):
+        print("::error::GitHub returned an invalid workflow run.", file=sys.stderr)
         return 1
 
     matching_runs = []
+    matching_run_created_at: dict[str, datetime] = {}
     for run in result["workflow_runs"]:
         title = str(run.get("display_title", ""))
         if not title.startswith(f"lifecycle:{arguments.stage}:open:"):
@@ -145,16 +241,22 @@ def main() -> int:
             return 1
         if created_at.astimezone(BRT).date() == local_day:
             matching_runs.append(run)
+            matching_run_created_at[str(run.get("id"))] = created_at
 
     prior_runs = [run for run in matching_runs if str(run.get("id")) != current_run_id]
+    recovery_source_run_ids: list[str] = []
     try:
-        if any(not _is_safe_retryable_attempt(run, repository, token) for run in prior_runs):
-            print(
-                f"::error::An earlier {arguments.stage.upper()} opening is active or may have started "
-                "AWS changes; refusing to retry.",
-                file=sys.stderr,
-            )
-            return 1
+        for run in prior_runs:
+            safe, recovery_source_run_id = _inspect_retryable_run(run, repository, token)
+            if not safe:
+                print(
+                    f"::error::An earlier {arguments.stage.upper()} opening is active or may have started "
+                    "AWS changes; refusing to retry.",
+                    file=sys.stderr,
+                )
+                return 1
+            if recovery_source_run_id:
+                recovery_source_run_ids.append(recovery_source_run_id)
     except (HTTPError, URLError, OSError, json.JSONDecodeError, ValueError):
         print(
             "::error::Could not verify whether a previous opening started AWS changes; refusing to continue.",
@@ -162,11 +264,26 @@ def main() -> int:
         )
         return 1
 
+    recovery_source_run_id = ""
+    if recovery_source_run_ids:
+        recovery_source_run_id = max(
+            recovery_source_run_ids,
+            key=lambda source_id: (matching_run_created_at[source_id], int(source_id)),
+        )
+
+    try:
+        _write_recovery_output(recovery_source_run_id)
+    except (OSError, ValueError):
+        print("::error::Could not publish the verified lifecycle recovery source.", file=sys.stderr)
+        return 1
+
     if prior_runs:
         print(
             f"Found {len(prior_runs)} completed {arguments.stage.upper()} attempt(s) that stopped before "
-            "AWS mutations; allowing this guarded retry."
+            "AWS infrastructure applies; allowing this guarded retry."
         )
+        if recovery_source_run_id:
+            print(f"Verified safe ledger ownership recovery from most recent failed run {recovery_source_run_id}.")
     else:
         print(f"No earlier {arguments.stage.upper()} lifecycle opening was found for {local_day.isoformat()} BRT.")
 

@@ -226,6 +226,7 @@ jobs:
           --window-end-inclusive 2026-11-05
 
       - name: Reject a second opening run for the same HML date
+        id: daily_unique
         env:
           GH_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
           LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
@@ -255,6 +256,7 @@ jobs:
           SESSION_ID: ${{ needs.cost-preflight.outputs.session_id }}
           STARTED_AT: ${{ needs.cost-preflight.outputs.started_at }}
           SESSION_MODE: ${{ needs.cost-preflight.outputs.session_mode }}
+          SAFE_RETRY_SOURCE_RUN_ID: ${{ steps.daily_unique.outputs.recovery_source_run_id }}
         shell: bash
         run: |
           set -euo pipefail
@@ -263,7 +265,8 @@ jobs:
             --stage hml \
             --started-at "$STARTED_AT" \
             --session-mode "$SESSION_MODE" \
-            --session-scope infrastructure-only
+            --session-scope infrastructure-only \
+            --safe-retry-source-run-id "$SAFE_RETRY_SOURCE_RUN_ID"
 
       - name: Plan the K8s foundation opening
         id: k8s_foundation

@@ -159,6 +159,258 @@ def test_open_retry_aliases_reserved_operator_attribute_in_update_condition(
     assert "#operator = :actor" in str(updates[0]["ConditionExpression"])
 
 
+def test_safe_retry_handoff_transfers_only_the_matching_active_hml_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started_at = "2026-10-30T12:00:00Z"
+    now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
+    stored = {
+        "status": "active",
+        "operator": "trusted-operator",
+        "start_run_id": "123",
+        "start_run_attempt": 2,
+        "started_at": started_at,
+        "stage": "hml",
+        "session_mode": "hml",
+        "session_scope": "infrastructure-only",
+        "expires_at": now + 60,
+    }
+    updates: list[dict[str, object]] = []
+    monkeypatch.setattr(LEDGER, "_require_main_branch", lambda: None)
+    monkeypatch.setattr(LEDGER, "_operator", lambda **_kwargs: "trusted-operator")
+    monkeypatch.setattr(LEDGER, "_run_identity", lambda: ("456", 1))
+    monkeypatch.setattr(
+        LEDGER,
+        "_session_values",
+        lambda *_args: (
+            datetime(2026, 10, 30, 12, 0, tzinfo=timezone.utc),
+            datetime(2026, 10, 30, 14, 0, tzinfo=LEDGER.BRT),
+            now + 60,
+            now + 86400,
+        ),
+    )
+    monkeypatch.setattr(LEDGER.time, "time", lambda: now)
+    monkeypatch.setattr(LEDGER, "_get_item", lambda *_args, **_kwargs: stored)
+    monkeypatch.setattr(LEDGER, "_ddb", lambda _operation, request: updates.append(request) or {})
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_WORKFLOW", "HML infrastructure-only start")
+
+    LEDGER.authorize_open(
+        "hml-2026-10-30",
+        "hml",
+        started_at,
+        "hml",
+        session_scope="infrastructure-only",
+        safe_retry_source_run_id="123",
+    )
+
+    assert len(updates) == 1
+    assert updates[0]["ExpressionAttributeNames"]["#operator"] == "operator"
+    assert "start_run_id = :source_run" in str(updates[0]["ConditionExpression"])
+    assert updates[0]["ExpressionAttributeValues"][":new_run"] == {"S": "456"}
+    assert updates[0]["ExpressionAttributeValues"][":source_run"] == {"S": "123"}
+    assert updates[0]["ExpressionAttributeValues"][":source_attempt"] == {"N": "2"}
+
+
+def test_safe_retry_handoff_is_restricted_to_the_exact_start_workflow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
+    monkeypatch.setattr(LEDGER, "_require_main_branch", lambda: None)
+    monkeypatch.setattr(LEDGER, "_operator", lambda **_kwargs: "trusted-operator")
+    monkeypatch.setattr(LEDGER, "_run_identity", lambda: ("456", 1))
+    monkeypatch.setattr(
+        LEDGER,
+        "_session_values",
+        lambda *_args: (
+            datetime(2026, 10, 30, 12, 0, tzinfo=timezone.utc),
+            datetime(2026, 10, 30, 14, 0, tzinfo=LEDGER.BRT),
+            now + 60,
+            now + 86400,
+        ),
+    )
+    monkeypatch.setattr(LEDGER.time, "time", lambda: now)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_WORKFLOW", "Coordinated environment start")
+
+    with pytest.raises(LEDGER.LedgerError, match="limited to the guarded HML infrastructure-only start"):
+        LEDGER.authorize_open(
+            "hml-2026-10-30",
+            "hml",
+            "2026-10-30T12:00:00Z",
+            "hml",
+            session_scope="infrastructure-only",
+            safe_retry_source_run_id="123",
+        )
+
+
+def test_safe_retry_handoff_rejects_a_ledger_owned_by_a_different_failed_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
+    stored = {
+        "status": "active",
+        "operator": "trusted-operator",
+        "start_run_id": "999",
+        "start_run_attempt": 1,
+        "started_at": "2026-10-30T12:00:00Z",
+        "stage": "hml",
+        "session_mode": "hml",
+        "session_scope": "infrastructure-only",
+        "expires_at": now + 60,
+    }
+    writes: list[dict[str, object]] = []
+    monkeypatch.setattr(LEDGER, "_require_main_branch", lambda: None)
+    monkeypatch.setattr(LEDGER, "_operator", lambda **_kwargs: "trusted-operator")
+    monkeypatch.setattr(LEDGER, "_run_identity", lambda: ("456", 1))
+    monkeypatch.setattr(
+        LEDGER,
+        "_session_values",
+        lambda *_args: (
+            datetime(2026, 10, 30, 12, 0, tzinfo=timezone.utc),
+            datetime(2026, 10, 30, 14, 0, tzinfo=LEDGER.BRT),
+            now + 60,
+            now + 86400,
+        ),
+    )
+    monkeypatch.setattr(LEDGER.time, "time", lambda: now)
+    monkeypatch.setattr(LEDGER, "_get_item", lambda *_args, **_kwargs: stored)
+    monkeypatch.setattr(LEDGER, "_ddb", lambda _operation, request: writes.append(request) or {})
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_WORKFLOW", "HML infrastructure-only start")
+
+    with pytest.raises(LEDGER.LedgerError, match="does not match the verified failed opening run"):
+        LEDGER.authorize_open(
+            "hml-2026-10-30",
+            "hml",
+            "2026-10-30T12:00:00Z",
+            "hml",
+            session_scope="infrastructure-only",
+            safe_retry_source_run_id="123",
+        )
+
+    assert writes == []
+
+
+def test_safe_retry_rerun_keeps_the_current_run_as_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started_at = "2026-10-30T12:00:00Z"
+    now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
+    stored = {
+        "status": "active",
+        "operator": "trusted-operator",
+        "start_run_id": "456",
+        "start_run_attempt": 1,
+        "started_at": started_at,
+        "stage": "hml",
+        "session_mode": "hml",
+        "session_scope": "infrastructure-only",
+        "expires_at": now + 60,
+    }
+    updates: list[dict[str, object]] = []
+    monkeypatch.setattr(LEDGER, "_require_main_branch", lambda: None)
+    monkeypatch.setattr(LEDGER, "_operator", lambda **_kwargs: "trusted-operator")
+    monkeypatch.setattr(LEDGER, "_run_identity", lambda: ("456", 2))
+    monkeypatch.setattr(
+        LEDGER,
+        "_session_values",
+        lambda *_args: (
+            datetime(2026, 10, 30, 12, 0, tzinfo=timezone.utc),
+            datetime(2026, 10, 30, 14, 0, tzinfo=LEDGER.BRT),
+            now + 60,
+            now + 86400,
+        ),
+    )
+    monkeypatch.setattr(LEDGER.time, "time", lambda: now)
+
+    def capture_update(operation: str, request: dict[str, object]) -> dict[str, object]:
+        if operation == "put-item":
+            raise LEDGER.LedgerConflict("The state already exists.")
+        updates.append(request)
+        return {}
+
+    monkeypatch.setattr(LEDGER, "_ddb", capture_update)
+    monkeypatch.setattr(LEDGER, "_get_item", lambda *_args, **_kwargs: stored)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_WORKFLOW", "HML infrastructure-only start")
+
+    LEDGER.authorize_open(
+        "hml-2026-10-30",
+        "hml",
+        started_at,
+        "hml",
+        session_scope="infrastructure-only",
+        safe_retry_source_run_id="123",
+    )
+
+    assert len(updates) == 1
+    assert updates[0]["UpdateExpression"] == "SET start_run_attempt = :attempt"
+    assert updates[0]["ExpressionAttributeValues"][":attempt"] == {"N": "2"}
+
+
+def test_old_child_authorization_cannot_be_used_after_safe_retry_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
+    state = {
+        "status": "active",
+        "stage": "hml",
+        "session_mode": "hml",
+        "session_scope": "infrastructure-only",
+        "started_at": "2026-10-30T12:00:00Z",
+        "operator": "trusted-operator",
+        "start_run_id": "456",
+        "start_run_attempt": 1,
+        "expires_at": now + 60,
+    }
+    authorization = {
+        "action": "open",
+        "record_type": "authorization",
+        "stage": "hml",
+        "source_actor": "trusted-operator",
+        "source_ref": "refs/heads/main",
+        "source_workflow": "Coordinated environment start",
+        "source_run_id": "123",
+        "source_run_attempt": 2,
+    }
+    writes: list[dict[str, object]] = []
+    monkeypatch.setattr(LEDGER, "_run_identity", lambda: ("789", 1))
+    monkeypatch.setattr(LEDGER.time, "time", lambda: now)
+    monkeypatch.setattr(
+        LEDGER,
+        "_get_item",
+        lambda _session_id, key, **_kwargs: authorization if key.startswith("AUTH#") else state,
+    )
+    monkeypatch.setattr(LEDGER, "_validate_dispatch_actor", lambda *_args: "dispatch-bot[bot]")
+    monkeypatch.setattr(LEDGER, "_ddb", lambda _operation, request: writes.append(request) or {})
+    for key, value in {
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "GITHUB_REPOSITORY": "owner/k8s-infra",
+        "GITHUB_WORKFLOW": "CI",
+        "GITHUB_REF": "refs/heads/main",
+    }.items():
+        monkeypatch.setenv(key, value)
+
+    with pytest.raises(LEDGER.LedgerError, match="not issued by the active session-opening run"):
+        LEDGER.consume_dispatch_authorization(
+            session_id="hml-2026-10-30",
+            dispatch_id="a" * 32,
+            repository="owner/k8s-infra",
+            workflow="CI",
+            ref="refs/heads/main",
+            inputs={
+                "session_id": "hml-2026-10-30",
+                "started_at": "2026-10-30T12:00:00Z",
+                "session_mode": "hml",
+                "lifecycle_dispatch_id": "a" * 32,
+            },
+            expected_action="open",
+        )
+
+    assert writes == []
+
+
 @pytest.mark.parametrize("scope", ["infrastructure-only", "release-validation"])
 def test_limited_session_scopes_are_rejected_for_prd(
     monkeypatch: pytest.MonkeyPatch, scope: str
