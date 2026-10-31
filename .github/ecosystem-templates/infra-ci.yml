@@ -1,0 +1,74 @@
+# Copiar para: .github/workflows/ci.yml (repositório infraestrutura / IaC)
+# pull_request: somente fmt e validate, sem credencial AWS.
+# push em main/develop: terraform plan via OIDC no environment aws-plan.
+# A role de curta duração fica na variável AWS_PLAN_ROLE_ARN.
+# Variáveis sem segredo podem ficar em terraform.tfvars.example.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform-validate:
+    runs-on: ubuntu-latest
+    env:
+      TF_IN_AUTOMATION: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.0"
+      - name: Format and validate
+        run: |
+          set -euo pipefail
+          terraform init -backend=false -input=false
+          terraform fmt -check -recursive
+          terraform validate
+
+  terraform-plan:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    runs-on: ubuntu-latest
+    environment: aws-plan
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_IN_AUTOMATION: "true"
+      AWS_PLAN_ROLE_ARN: ${{ vars.AWS_PLAN_ROLE_ARN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.0"
+      - name: Require plan role
+        run: |
+          set -euo pipefail
+          if [[ -z "${AWS_PLAN_ROLE_ARN}" ]]; then
+            echo "terraform plan requires repository variable AWS_PLAN_ROLE_ARN."
+            exit 1
+          fi
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_DEFAULT_REGION != '' && vars.AWS_DEFAULT_REGION || 'us-east-1' }}
+      - name: Format, validate, and plan
+        run: |
+          set -euo pipefail
+          terraform init -backend=false -input=false
+          terraform fmt -check -recursive
+          terraform validate
+          plan_args=(-input=false -lock=false)
+          if [[ -f terraform.tfvars.example ]]; then
+            plan_args+=(-var-file=terraform.tfvars.example)
+          fi
+          terraform plan "${plan_args[@]}"

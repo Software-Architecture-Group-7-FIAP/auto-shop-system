@@ -14,6 +14,7 @@ class SqlAlchemyCustomerRepository:
             email=customer.email,
             phone=customer.phone,
             address=customer.address,
+            status=customer.status,
         )
         for document in customer.documents:
             model.documents.append(CustomerDocumentModel(document=str(document)))
@@ -62,6 +63,7 @@ class SqlAlchemyCustomerRepository:
         model.email = customer.email
         model.phone = customer.phone
         model.address = customer.address
+        model.status = customer.status
 
         existing_documents = {doc_model.document for doc_model in model.documents}
         for document in customer.documents:
@@ -94,6 +96,7 @@ class SqlAlchemyCustomerRepository:
             address=model.address,
             phone=model.phone,
             created_at=model.created_at,
+            status=model.status,
             _documents=documents,
         )
 

@@ -25,6 +25,7 @@ OUTPUT_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 TITLE_PATTERN = re.compile(r"^[^\r\n\x00-\x1f]{1,240}$")
 ACTIVE_RUN_STATUSES = {"queued", "waiting", "in_progress", "requested", "pending", "canceling"}
 DISPATCH_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
+SESSION_TOKEN_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 MAX_CANCEL_WAIT_SECONDS = 30
 MAX_API_TIMEOUT_SECONDS = 30
 POST_DEADLINE_LOOKUP_SECONDS = 15
@@ -410,7 +411,7 @@ def _stable_dispatch_id(
         "workflow": arguments.workflow,
         "ref": arguments.ref,
         "expected_title": arguments.expected_title,
-        "inputs": inputs,
+        "inputs": {key: value for key, value in inputs.items() if key != "session_token"},
     }
     canonical_identity = json.dumps(identity, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical_identity.encode("utf-8")).hexdigest()[:32]
@@ -493,10 +494,16 @@ def dispatch_and_wait(arguments: argparse.Namespace) -> int:
         )
 
     repository, inputs = _validate_arguments(arguments)
+    session_token = os.environ.get("LIFECYCLE_SESSION_TOKEN", "").strip()
+    if not SESSION_TOKEN_PATTERN.fullmatch(session_token):
+        raise LifecycleDispatchError(
+            "LIFECYCLE_SESSION_TOKEN must be a valid coordinator-issued capability; no run was dispatched."
+        )
     if "session_token" in inputs or "lifecycle_dispatch_id" in inputs:
         raise LifecycleDispatchError(
-            "session_token is not accepted; lifecycle_dispatch_id is injected by the coordinator."
+            "session_token and lifecycle_dispatch_id are injected by the coordinator and must not be supplied directly."
         )
+    inputs["session_token"] = session_token
     raw_run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1").strip()
     if not re.fullmatch(r"[1-9][0-9]*", raw_run_attempt):
         raise LifecycleDispatchError("GITHUB_RUN_ATTEMPT must be a positive integer.")
@@ -571,26 +578,6 @@ def dispatch_and_wait(arguments: argparse.Namespace) -> int:
             )
         if datetime.now(timezone.utc) >= deadline:
             raise LifecycleDispatchError("The lifecycle phase deadline passed before dispatch could start.")
-        from lifecycle_session_ledger import issue_dispatch_authorization
-
-        workflow_info = _api_request(
-            token,
-            "GET",
-            f"/repos/{repository}/actions/workflows/{arguments.workflow}",
-            timeout_seconds=_deadline_request_timeout(deadline),
-        )
-        consumer_workflow = workflow_info.get("name") if isinstance(workflow_info, dict) else None
-        if not isinstance(consumer_workflow, str) or not consumer_workflow.strip():
-            raise LifecycleDispatchError("GitHub did not return the consumer workflow's exact display name.")
-        issue_dispatch_authorization(
-            session_id=inputs.get("session_id", ""),
-            dispatch_id=dispatch_id,
-            action=arguments.authorization_action,
-            repository=repository,
-            workflow=consumer_workflow,
-            ref=arguments.ref,
-            inputs=inputs,
-        )
         _api_request(
             token,
             "POST",
@@ -721,11 +708,6 @@ def main() -> int:
     parser.add_argument("--ref", required=True)
     parser.add_argument("--expected-title", required=True)
     parser.add_argument("--inputs", required=True)
-    parser.add_argument(
-        "--authorization-action",
-        choices=("open", "health", "close", "cleanup-close", "audit"),
-        required=True,
-    )
     parser.add_argument("--github-output", required=True)
     parser.add_argument("--output-name", required=True)
     parser.add_argument("--timeout-seconds", type=int, default=900)

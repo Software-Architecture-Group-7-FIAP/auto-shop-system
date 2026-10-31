@@ -2,16 +2,22 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from src.domain.enums import ServiceOrderStatus
+from src.domain.enums import Priority, ServiceOrderStatus
 from src.infrastructure.database import CustomerModel, ServiceOrderModel, VehicleModel
 
 BASE_CREATED_AT = datetime(2026, 7, 1, 10, 0, 0)
 LISTING_URL = "/api/v1/admin/service-orders"
 
 
-def seed_service_orders(db_session, statuses: list[ServiceOrderStatus]) -> list[dict[str, object]]:
+def seed_service_orders(
+    db_session,
+    statuses: list[ServiceOrderStatus],
+    priorities: list[Priority] | None = None,
+) -> list[dict[str, object]]:
+    priorities = priorities or [Priority.NORMAL] * len(statuses)
+    assert len(statuses) == len(priorities)
     seeded: list[dict[str, object]] = []
-    for offset, status in enumerate(statuses):
+    for offset, (status, priority) in enumerate(zip(statuses, priorities)):
         customer = CustomerModel(
             name=f"Cliente {offset}",
             email=f"cliente{offset}@test.local",
@@ -35,6 +41,7 @@ def seed_service_orders(db_session, statuses: list[ServiceOrderStatus]) -> list[
             customer_id=customer.id,
             vehicle_id=vehicle.id,
             status=status,
+            priority=priority,
             created_at=BASE_CREATED_AT + timedelta(hours=offset),
             updated_at=BASE_CREATED_AT + timedelta(days=1, hours=offset),
         )
@@ -103,7 +110,7 @@ def test_default_listing_excludes_closed_and_returns_joined_fields(
     assert body["total_pages"] == 1
 
 
-def test_default_ordering_uses_status_priority_and_creation_date_within_status(
+def test_default_ordering_uses_priority_then_creation_date(
     client,
     auth_headers,
     db_session,
@@ -117,16 +124,23 @@ def test_default_ordering_uses_status_priority_and_creation_date_within_status(
             ServiceOrderStatus.AGUARDANDO_INICIO,
             ServiceOrderStatus.AGUARDANDO_APROVACAO,
         ],
+        [
+            Priority.NORMAL,
+            Priority.URGENT,
+            Priority.HIGH,
+            Priority.URGENT,
+            Priority.NORMAL,
+        ],
     )
 
     body = client.get(LISTING_URL, headers=auth_headers).json()
 
     assert [item["id"] for item in body["items"]] == [
-        seeded[2]["id"],
-        seeded[4]["id"],
         seeded[1]["id"],
         seeded[3]["id"],
+        seeded[2]["id"],
         seeded[0]["id"],
+        seeded[4]["id"],
     ]
 
 
@@ -210,6 +224,27 @@ def test_explicit_closed_status_is_not_hidden_by_default(client, auth_headers, o
 
     assert [item["id"] for item in body["items"]] == [operational_and_closed_orders[6]["id"]]
     assert body["total"] == 1
+
+
+@pytest.mark.parametrize(
+    "status",
+    [ServiceOrderStatus.FINALIZADA, ServiceOrderStatus.ENTREGUE],
+)
+def test_closed_service_order_priority_cannot_be_changed(
+    client, auth_headers, db_session, status
+):
+    seeded = seed_service_orders(db_session, [status])
+
+    response = client.patch(
+        f"{LISTING_URL}/{seeded[0]['id']}/priority",
+        headers=auth_headers,
+        json={"priority": Priority.URGENT.value},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "validation_error"
+    saved = db_session.get(ServiceOrderModel, seeded[0]["id"])
+    assert saved.priority is Priority.NORMAL
 
 
 def test_pagination_returns_metadata_and_empty_out_of_range_page(client, auth_headers, db_session):

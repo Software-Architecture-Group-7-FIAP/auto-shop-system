@@ -9,7 +9,6 @@ metadata:
     app.kubernetes.io/component: backend
     app.kubernetes.io/part-of: auto-shop-platform
 spec:
-  replicas: 2
   revisionHistoryLimit: 5
   minReadySeconds: 5
   progressDeadlineSeconds: 600
@@ -28,6 +27,7 @@ spec:
         app.kubernetes.io/name: auto-shop-system
         app.kubernetes.io/component: backend
     spec:
+      serviceAccountName: auto-shop-backend
       restartPolicy: Always
       terminationGracePeriodSeconds: 30
       securityContext:
@@ -41,7 +41,7 @@ spec:
         - name: backend-api
           image: auto-shop-system:__IMAGE_TAG__
           imagePullPolicy: IfNotPresent
-          command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+          command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

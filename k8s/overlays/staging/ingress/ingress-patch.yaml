@@ -2,12 +2,12 @@
   path: /spec/tls/0
   value:
     hosts:
-      - staging-api.autoshop.com
+      - hml.api.internal
     secretName: staging-auto-shop-tls
 - op: replace
   path: /spec/rules
   value:
-    - host: staging-api.autoshop.com
+    - host: hml.api.internal
       http:
         paths:
           - path: /
@@ -17,3 +17,9 @@
                 name: auto-shop-backend-service
                 port:
                   number: 80
+- op: replace
+  path: /metadata/annotations/nginx.ingress.kubernetes.io~1ssl-redirect
+  value: "false"
+- op: replace
+  path: /metadata/annotations/nginx.ingress.kubernetes.io~1force-ssl-redirect
+  value: "false"

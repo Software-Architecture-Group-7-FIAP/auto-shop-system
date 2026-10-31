@@ -5,6 +5,7 @@ import jwt
 from jwt.exceptions import PyJWTError as JWTError
 
 from src.config import settings
+from src.domain.auth.jwt_audience import JWT_AUD_WEB
 from src.domain.exceptions import UnauthorizedError
 
 JWT_ALGORITHM = "HS256"
@@ -25,11 +26,17 @@ class JwtAccessTokenService:
             return access_secret()
         return settings.jwt_secret()
 
-    def create_access_token(self, subject: str, session_id: str | None = None) -> str:
+    def create_access_token(
+        self,
+        subject: str,
+        session_id: str | None = None,
+        *,
+        audience: str = JWT_AUD_WEB,
+    ) -> str:
         expire = datetime.now(timezone.utc) + timedelta(
             minutes=settings.access_token_expire_minutes
         )
-        payload = {"sub": subject, "exp": expire}
+        payload = {"sub": subject, "exp": expire, "aud": audience}
         if session_id:
             payload["sid"] = session_id
         return jwt.encode(payload, self._secret(), algorithm=JWT_ALGORITHM)
@@ -40,7 +47,7 @@ class JwtAccessTokenService:
                 token,
                 self._secret(),
                 algorithms=[JWT_ALGORITHM],
-                options={"require": ["exp"]},
+                options={"require": ["exp"], "verify_aud": False},
             )
             username: str | None = payload.get("sub")
             if username is None:
@@ -55,7 +62,7 @@ class JwtAccessTokenService:
                 token,
                 self._secret(),
                 algorithms=[JWT_ALGORITHM],
-                options={"require": ["exp"]},
+                options={"require": ["exp"], "verify_aud": False},
             )
         except JWTError as exc:
             raise UnauthorizedError("Token inválido") from exc

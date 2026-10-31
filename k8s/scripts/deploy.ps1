@@ -15,6 +15,7 @@ $tempFiles = [System.Collections.Generic.List[string]]::new()
 $mutex = $null
 $portForwardProcess = $null
 $migrationJobName = $null
+$seedJobName = $null
 
 function Invoke-RequiredCommand {
     param(
@@ -57,15 +58,21 @@ function Test-ReleaseImage {
     if ($Reference -match "@sha256:[0-9a-f]{64}$") {
         return $true
     }
+    if ($Reference -match ":sha-[0-9a-f]{7,40}$") {
+        return $true
+    }
     return $Reference -match ":[0-9a-f]{7,64}$"
 }
 
 function Get-ReleaseSuffix {
-    param([Parameter(Mandatory)][string]$Reference)
+    param(
+        [Parameter(Mandatory)][string]$Reference,
+        [Parameter(Mandatory)][string]$SessionId
+    )
 
     $sha256 = [System.Security.Cryptography.SHA256]::Create()
     try {
-        $bytes = [Text.Encoding]::UTF8.GetBytes($Reference)
+        $bytes = [Text.Encoding]::UTF8.GetBytes("$Reference`:$SessionId")
         $hash = $sha256.ComputeHash($bytes)
         return [BitConverter]::ToString($hash).Replace("-", "").ToLowerInvariant().Substring(0, 12)
     } finally {
@@ -95,6 +102,14 @@ function Get-RenderedPhase {
     }
     if ($Phase -eq "migration") {
         $rendered = $rendered.Replace("name: auto-shop-migrate", "name: $migrationJobName")
+    }
+    if ($Phase -eq "seed") {
+        $rendered = $rendered.Replace("name: auto-shop-seed", "name: $seedJobName")
+        $allowPrdSeed = if ($env:ALLOW_SYNTHETIC_SEED_IN_PRD -eq "true") { "true" } else { "false" }
+        $rendered = $rendered.Replace("__ALLOW_SYNTHETIC_SEED_IN_PRD__", $allowPrdSeed)
+        if ($rendered.Contains("__ALLOW_SYNTHETIC_SEED_IN_PRD__")) {
+            throw "Unresolved production synthetic seed authorization"
+        }
     }
     return $rendered
 }
@@ -167,12 +182,12 @@ function Ensure-Secret {
         $tempFiles.Add($tempFile)
         [System.IO.File]::WriteAllText($tempFile, $secretManifest)
         Invoke-RequiredCommand "kubectl" @("apply", "--filename", $tempFile)
-        Test-SecretKeys @("DATABASE_URL", "DB_NAME", "DB_USER", "DB_PASSWORD", "SECRET_KEY")
+        Test-SecretKeys @("DATABASE_URL", "DB_NAME", "DB_USER", "DB_PASSWORD", "SECRET_KEY", "DEMO_ADMIN_PASSWORD")
         return
     }
 
     Invoke-RequiredCommand "kubectl" @("get", "secret", "auto-shop-secrets", "--namespace", $namespace, "--output", "name")
-    Test-SecretKeys @("DATABASE_URL", "SECRET_KEY", "INVERTEXTO_API_TOKEN", "SMTP_USER", "SMTP_PASSWORD")
+    Test-SecretKeys @("DATABASE_URL", "SECRET_KEY", "INVERTEXTO_API_TOKEN", "SMTP_USER", "SMTP_PASSWORD", "DEMO_ADMIN_PASSWORD")
     $tlsSecret = if ($Environment -eq "staging") { "staging-auto-shop-tls" } else { "auto-shop-tls" }
     Invoke-RequiredCommand "kubectl" @("get", "secret", $tlsSecret, "--namespace", $namespace, "--output", "name")
 }
@@ -187,6 +202,20 @@ function Wait-ForMigration {
         $logs = & kubectl logs job/$migrationJobName --namespace $namespace --tail=100 2>&1
         $sanitized = ($logs -join [Environment]::NewLine) -replace '(?i)(postgres(?:ql)?://)[^\s''"]+', '$1[REDACTED]'
         Write-Error "Migration failed. Sanitized migration logs:`n$sanitized"
+        throw
+    }
+}
+
+function Wait-ForSeed {
+    try {
+        Invoke-RequiredCommand "kubectl" @(
+            "wait", "--for=condition=complete", "job/$seedJobName",
+            "--namespace", $namespace, "--timeout=300s"
+        )
+    } catch {
+        $logs = & kubectl logs job/$seedJobName --namespace $namespace --tail=100 2>&1
+        $sanitized = ($logs -join [Environment]::NewLine) -replace '(?i)(postgres(?:ql)?://)[^\s''"]+', '$1[REDACTED]'
+        Write-Error "Synthetic seed failed. Sanitized seed logs:`n$sanitized"
         throw
     }
 }
@@ -229,6 +258,9 @@ try {
     if ($Environment -eq "production" -and -not $ConfirmProduction) {
         throw "Production deploy requires -ConfirmProduction"
     }
+    if ($Environment -eq "production" -and $env:ALLOW_SYNTHETIC_SEED_IN_PRD -ne "true") {
+        throw "Production synthetic seed requires ALLOW_SYNTHETIC_SEED_IN_PRD=true for this deployment"
+    }
 
     if ($Environment -eq "local") {
         if ([string]::IsNullOrWhiteSpace($ImageReference)) {
@@ -256,7 +288,14 @@ try {
     if ([string]::IsNullOrWhiteSpace($context)) {
         throw "kubectl has no active context"
     }
-    $migrationJobName = "auto-shop-migrate-$(Get-ReleaseSuffix $ImageReference)"
+    $lifecycleSessionId = if ([string]::IsNullOrWhiteSpace($env:LIFECYCLE_SESSION_ID)) {
+        "local-$([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssZ'))"
+    } else {
+        $env:LIFECYCLE_SESSION_ID
+    }
+    $releaseSuffix = Get-ReleaseSuffix $ImageReference $lifecycleSessionId
+    $migrationJobName = "auto-shop-migrate-$releaseSuffix"
+    $seedJobName = "auto-shop-seed-$releaseSuffix"
 
     $namespaceManifest = Join-Path $repoRoot "k8s/base/foundation/namespace.yaml"
     Invoke-RequiredCommand "kubectl" @("apply", "--filename", $namespaceManifest)
@@ -269,6 +308,9 @@ try {
 
     Apply-RenderedPhase "migration"
     Wait-ForMigration
+
+    Apply-RenderedPhase "seed"
+    Wait-ForSeed
 
     Apply-RenderedPhase "app"
     Invoke-RequiredCommand "kubectl" @("rollout", "status", "deployment/auto-shop-backend", "--namespace", $namespace, "--timeout=300s")

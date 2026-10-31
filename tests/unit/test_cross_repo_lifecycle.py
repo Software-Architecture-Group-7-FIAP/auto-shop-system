@@ -29,7 +29,6 @@ def make_arguments(**overrides: object) -> argparse.Namespace:
         "inputs": '{"session_id":"hml-2026-10-29"}',
         "deadline_utc": "",
         "github_output": "",
-        "authorization_action": "open",
     }
     values.update(overrides)
     return argparse.Namespace(**values)
@@ -64,21 +63,20 @@ def test_api_request_applies_the_remaining_deadline_timeout():
     assert urlopen.call_args.kwargs["timeout"] == 2.5
 
 
-def test_dispatch_id_is_stable_for_the_same_attempt_and_inputs():
+def test_dispatch_id_is_stable_for_a_workflow_run_and_does_not_depend_on_the_session_token():
     arguments = make_arguments()
-    inputs = {"session_id": "hml-2026-10-29"}
+    inputs = {"session_id": "hml-2026-10-29", "session_token": "a" * 64}
 
-    with patch.dict("os.environ", {"GITHUB_RUN_ID": "123456", "GITHUB_RUN_ATTEMPT": "1"}):
+    with patch.dict("os.environ", {"GITHUB_RUN_ID": "123456"}):
         first = cross_repo_lifecycle._stable_dispatch_id(arguments, "example/infra", inputs)
         second = cross_repo_lifecycle._stable_dispatch_id(
-            arguments, "example/infra", inputs.copy()
+            arguments,
+            "example/infra",
+            {"session_id": "hml-2026-10-29", "session_token": "b" * 64},
         )
 
     assert first == second
     assert len(first) == 32
-    assert first != cross_repo_lifecycle._stable_dispatch_id(
-        arguments, "example/infra", {"session_id": "hml-2026-10-30"}, run_attempt=1
-    )
 
 
 def test_dispatch_id_changes_on_a_new_central_workflow_attempt():
@@ -170,11 +168,7 @@ def test_dispatch_rerun_resumes_prior_successful_attempt(tmp_path):
     ]
 
 
-def test_dispatch_rerun_retries_a_prior_terminal_failure(tmp_path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.syspath_prepend(str(SCRIPT_PATH.parent))
-    import lifecycle_session_ledger
-
-    monkeypatch.setattr(lifecycle_session_ledger, "issue_dispatch_authorization", lambda **_kwargs: None)
+def test_dispatch_rerun_retries_a_prior_terminal_failure(tmp_path):
     arguments = make_arguments(github_output=str(tmp_path / "github-output"))
     inputs = {"session_id": "hml-2026-10-29"}
     with patch.dict(
@@ -213,11 +207,7 @@ def test_dispatch_rerun_retries_a_prior_terminal_failure(tmp_path, monkeypatch: 
         }
         with (
             patch.object(cross_repo_lifecycle, "_list_runs", side_effect=[[failed_run], [retried_run]]),
-            patch.object(
-                cross_repo_lifecycle,
-                "_api_request",
-                side_effect=[{"name": "Apply infrastructure"}, {}],
-            ) as api_request,
+            patch.object(cross_repo_lifecycle, "_api_request") as api_request,
             patch.object(cross_repo_lifecycle.time, "sleep"),
         ):
             assert cross_repo_lifecycle.dispatch_and_wait(arguments) == 0

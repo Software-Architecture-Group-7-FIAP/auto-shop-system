@@ -29,6 +29,39 @@ O Terraform desta entrega gerencia os recursos da aplicação em um cluster
 Kubernetes local já existente (Kind ou Docker Desktop). O cluster deve ser
 iniciado previamente; o Terraform não cria Kind, EKS, VPC, IAM ou RDS.
 
+## Fase 3 — operacional (API Gateway, CI/CD, observabilidade)
+
+Documentação da trilha [#88–#95](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/95): diagrama ponta a ponta, ADRs e links para os outros repositórios do grupo.
+
+| Recurso | Caminho |
+| --- | --- |
+| Índice de arquitetura | [docs/architecture/README.md](docs/architecture/README.md) |
+| Diagrama operacional (Mermaid) | [docs/architecture/fase-operacional.mmd](docs/architecture/fase-operacional.mmd) |
+| CI no PR | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
+| CD / OIDC / deploy | [.github/CD.md](.github/CD.md) |
+| Proteção de branches | [.github/BRANCH_PROTECTION.md](.github/BRANCH_PROTECTION.md) |
+| Templates CI outros repos | [.github/ecosystem-templates/README.md](.github/ecosystem-templates/README.md) |
+| API Gateway (Terraform AWS) | [infra/aws/README.md](infra/aws/README.md) |
+| Deploy K8s | [k8s/scripts/deploy.sh](k8s/scripts/deploy.sh) |
+
+**Ecossistema (quatro repositórios):** este monorepo (`backend` + `frontend/`), [`lambda-auth`](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth), `database-infra` e `k8s-infra` — papéis descritos no [ADR-0071](docs/architecture/decisions/ADR-0071-infraestrutura-cloud-fase-3.md).
+
+**Pipeline (resumo):** abrir PR → `ci.yml` verde → merge em `develop` → build GHCR (`cd-staging.yml`, gate `DEPLOY_STAGING_ENABLED`) → deploy via script K8s. Produção: merge `develop` → `main` → `cd-prod.yml`. Deploy real aguarda staging ([#87](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/87)).
+
+**Secrets / environments:** segredos de app via Kubernetes Secret e variáveis de Environment GitHub (OIDC); não commitar `.env`. Lista operacional: [.github/CD.md](.github/CD.md).
+### Infraestrutura AWS em andamento
+
+O código de infraestrutura e os workflows desta fase não comprovam que os recursos foram implantados. A homologação (`hml`) e o stage lógico `prd` usam uma única infraestrutura AWS efêmera, com namespaces e bancos lógicos separados, conforme a [ADR-0071](docs/architecture/decisions/ADR-0071-infraestrutura-cloud-fase-3.md).
+
+| Repositório ou diretório | Responsabilidade |
+|---|---|
+| [`infra/aws/`](infra/aws/README.md) | API Gateway, VPC Link, WAF, ACM e frontend em CloudFront/S3 |
+| [`k8s-infra`](https://github.com/Software-Architecture-Group-7-FIAP/k8s-infra) | VPC, EKS e ALB interno |
+| [`database-infra`](https://github.com/Software-Architecture-Group-7-FIAP/database-infra) | RDS e credenciais do banco |
+| [`lambda-auth`](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth) | Emissão de JWT de cliente e JWKS |
+
+As issues [#87](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/87) e [#113](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/113) seguem abertas. A estimativa de custo e a autorização operacional devem ser revistas antes de qualquer sessão AWS; cada `terraform apply` e deploy dependem da validação prevista no [ADR-0064](docs/architecture/decisions/ADR-0064-autenticacao-cliente-cpf-jwt.md). Consulte também o [runbook de deploy](docs/deployment.md) e o [guia de CI/CD](.github/CD.md).
+
 ## Arquitetura
 
 Monolito em camadas:
@@ -40,6 +73,10 @@ src/
   infrastructure/ # banco, auth, email, PDF
   api/            # routers FastAPI e schemas
 ```
+
+### Documentação da Fase 3
+
+RFCs, ADRs, justificativa do banco e diagramas editáveis/exportados estão reunidos em [docs/architecture/diagramas-fase-3.md](docs/architecture/diagramas-fase-3.md). O documento descreve o desenho-alvo e separa decisões aceitas de validações ainda pendentes.
 
 ## Executar com Docker
 
@@ -55,9 +92,18 @@ docker compose up api
 
 - API (Docker): http://localhost:8000
 - API (local `poetry run uvicorn`): http://localhost:8000
-- Swagger: http://localhost:8000/docs
+- Swagger local: http://localhost:8000/docs
+- OpenAPI versionado: [docs/api/openapi.json](docs/api/openapi.json)
 - MailHog UI: http://localhost:8025
 - Coleção completa da API: [docs/api/auto-shop.postman_collection.json](docs/api/auto-shop.postman_collection.json)
+- Ambiente Postman HML: [docs/api/auto-shop-hml.postman_environment.json](docs/api/auto-shop-hml.postman_environment.json)
+- Ambiente Postman PRD: [docs/api/auto-shop-prd.postman_environment.json](docs/api/auto-shop-prd.postman_environment.json)
+
+O `baseUrl` da coleção Postman usa `localhost` por padrão. Para homologação ou
+produção, importe o ambiente correspondente e substitua o host de exemplo e os
+dados sintéticos localmente. A coleção inclui rotas do API Gateway e da Lambda
+de autenticação de clientes; essas rotas não fazem parte do OpenAPI gerado pela
+aplicação FastAPI. Não exporte ambientes preenchidos com CPF, senha ou token.
 
 O container `api` inicia apenas o Uvicorn; migrations são uma etapa explícita e única. Rode `docker compose run --rm api alembic upgrade head` **antes** do seed e da API.
 
@@ -295,6 +341,9 @@ terraform -chdir=infra apply -var-file=terraform.tfvars.example \
 O Secret `auto-shop-secrets` deve ser criado por mecanismo externo e seguro;
 use [`k8s/examples/secret.example.yaml`](k8s/examples/secret.example.yaml)
 somente como referência. Não aplique o exemplo sem substituir os placeholders.
+O deploy de staging/produção cria automaticamente `auto-shop-redis-credentials`
+por namespace se ainda não existir. A senha aleatória fica no Secret Kubernetes;
+o Redis usa memória efêmera e desaparece junto com o namespace da sessão.
 
 Vídeo da entrega: **inserir o link fornecido pelo participante responsável antes do envio**.
 

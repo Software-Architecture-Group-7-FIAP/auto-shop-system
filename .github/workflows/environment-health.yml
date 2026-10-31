@@ -1,0 +1,207 @@
+name: Environment public health
+run-name: lifecycle:${{ inputs.session_id }}:health:${{ inputs.stage }}:${{ inputs.lifecycle_dispatch_id || github.run_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        required: true
+        type: choice
+        options: [hml, prd]
+      session_id:
+        description: Coordinator-provided session identifier
+        required: true
+        type: string
+      started_at:
+        description: Coordinator-provided UTC session start, YYYY-MM-DDTHH:MM:SSZ
+        required: true
+        type: string
+      session_mode:
+        description: Coordinator-authorized session mode.
+        required: true
+        type: string
+      session_token:
+        description: Signed coordinator session capability; validation fails if missing.
+        required: false
+        type: string
+      lifecycle_dispatch_id:
+        description: Optional correlation ID for an orchestrated health check.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: environment-health-${{ inputs.session_id }}
+  cancel-in-progress: false
+
+jobs:
+  health:
+    if: >-
+      (inputs.stage == 'prd' && vars.ENVIRONMENT_SCHEDULE_ENABLED == 'true' &&
+      vars.PRD_LIFECYCLE_AUTOMATION_READY == 'true' && vars.PRD_COST_EXCEPTION_APPROVED == 'true' &&
+      vars.ENVIRONMENT_ACTIVE == 'true' && vars.ENVIRONMENT_WINDOW_AUTHORIZED == 'true') ||
+      (inputs.stage == 'hml' && vars.STAGING_ACTIVE == 'true' &&
+      vars.STAGING_SESSION_AUTHORIZED == 'true' && vars.STAGING_SESSION_MODE == 'hml')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: operations
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      ALERT_TOPIC_ARN: ${{ vars.LIFECYCLE_ALERT_TOPIC_ARN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate session, window, gates, and public URLs
+        id: window
+        env:
+          STAGE: ${{ inputs.stage }}
+          SESSION_ID: ${{ inputs.session_id }}
+          STARTED_AT: ${{ inputs.started_at }}
+          SESSION_MODE: ${{ inputs.session_mode }}
+          LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+          STAGING_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
+          HML_FRONTEND_URL: ${{ vars.HML_FRONTEND_URL }}
+          HML_API_URL: ${{ vars.HML_API_URL }}
+          PRD_FRONTEND_URL: ${{ vars.PRD_FRONTEND_URL }}
+          PRD_API_URL: ${{ vars.PRD_API_URL }}
+          ENVIRONMENT_ACTIVE: ${{ inputs.stage == 'prd' && vars.ENVIRONMENT_ACTIVE || vars.STAGING_ACTIVE }}
+          ENVIRONMENT_WINDOW_AUTHORIZED: ${{ inputs.stage == 'prd' && vars.ENVIRONMENT_WINDOW_AUTHORIZED || vars.STAGING_SESSION_AUTHORIZED }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          local_day="$(TZ=America/Sao_Paulo date +%F)"
+          [[ "$SESSION_ID" == "$STAGE-$local_day" ]] || { echo "::error::session_id must identify today's BRT session."; exit 1; }
+          if [[ "$STAGE" == "prd" ]]; then
+            [[ "$SESSION_MODE" == "prd-window" ]] || { echo "::error::session_mode must be prd-window."; exit 1; }
+          else
+            [[ "$SESSION_MODE" == "hml" ]] || { echo "::error::session_mode must be hml."; exit 1; }
+          fi
+          if [[ "$STAGE" == "prd" ]]; then
+            [[ "$STARTED_AT" == "${local_day}T09:00:00Z" ]] || { echo "::error::PRD started_at must be 06:00 BRT (09:00 UTC)."; exit 1; }
+            frontend_url="$PRD_FRONTEND_URL"
+            api_url="$PRD_API_URL"
+          else
+            [[ "$STAGING_SESSION_MODE" == "hml" ]] || { echo "::error::STAGING_SESSION_MODE must be hml."; exit 1; }
+            frontend_url="$HML_FRONTEND_URL"
+            api_url="$HML_API_URL"
+          fi
+          for url in "$frontend_url" "$api_url"; do
+            [[ "$url" =~ ^https://[^[:space:]]+$ ]] || { echo "::error::Health URLs must use HTTPS."; exit 1; }
+          done
+          ENVIRONMENT_STAGE="$STAGE" \
+            SESSION_MODE="$SESSION_MODE" \
+            ENVIRONMENT_SESSION_ID="$SESSION_ID" \
+            ENVIRONMENT_WINDOW_STARTED_AT="$STARTED_AT" \
+            python3 .github/scripts/validate_environment_window.py --action health
+          echo "frontend_url=${frontend_url%/}" >> "$GITHUB_OUTPUT"
+          echo "api_url=${api_url%/}" >> "$GITHUB_OUTPUT"
+
+      - name: Require the PRD alert destination before health probes
+        if: inputs.stage == 'prd'
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ALERT_TOPIC_ARN" =~ ^arn:aws:sns:us-east-1:${EXPECTED_AWS_ACCOUNT_ID}:[A-Za-z0-9_-]+$ ]] || {
+            echo "::error::LIFECYCLE_ALERT_TOPIC_ARN is required for PRD health checks."
+            exit 1
+          }
+
+      - name: Configure AWS identity for sanitized failure alerts
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.LIFECYCLE_ALERT_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify account and region
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$AWS_REGION" == "us-east-1" ]] || { echo "::error::Unexpected AWS region."; exit 1; }
+          [[ "$EXPECTED_AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || { echo "::error::Invalid expected AWS account ID."; exit 1; }
+          actual_account="$(aws sts get-caller-identity --query Account --output text)"
+          [[ "$actual_account" == "$EXPECTED_AWS_ACCOUNT_ID" ]] || { echo "::error::Unexpected AWS account."; exit 1; }
+
+      - name: Check public endpoints without capturing bodies
+        id: checks
+        env:
+          STAGE: ${{ inputs.stage }}
+          FRONTEND_URL: ${{ steps.window.outputs.frontend_url }}
+          API_URL: ${{ steps.window.outputs.api_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=unhealthy
+          attempts=0
+          local_deadline=0
+          if [[ "$STAGE" == "prd" ]]; then
+            local_day="$(TZ=America/Sao_Paulo date +%F)"
+            local_deadline="$(TZ=America/Sao_Paulo date -d "${local_day} 07:00:00" +%s)"
+          fi
+          while true; do
+            now="$(date +%s)"
+            if [[ "$STAGE" == "prd" ]] && (( now >= local_deadline )); then break; fi
+            if [[ "$STAGE" == "hml" ]] && (( attempts >= 15 )); then break; fi
+            attempts=$((attempts + 1))
+            healthy=true
+            for url in \
+              "$FRONTEND_URL/" \
+              "$API_URL/health/live" \
+              "$API_URL/health/ready" \
+              "$API_URL/.well-known/jwks.json"; do
+              if ! curl --fail --silent --show-error --location --max-time 5 --output /dev/null "$url"; then
+                healthy=false
+              fi
+            done
+            if [[ "$healthy" == "true" ]]; then
+              now="$(date +%s)"
+              if [[ "$STAGE" == "hml" ]] || (( now < local_deadline )); then
+                status=healthy
+                break
+              fi
+            fi
+            if [[ "$STAGE" == "hml" ]]; then
+              sleep 20
+            else
+              now="$(date +%s)"
+              remaining=$((local_deadline - now))
+              (( remaining > 0 )) || break
+              sleep "$((remaining < 20 ? remaining : 20))"
+            fi
+          done
+          printf '{"stage":"%s","session_id":"%s","status":"%s","checked_at":"%s"}\n' \
+            "$STAGE" "$SESSION_ID" "$status" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > health-summary.json
+          echo "Health attempts: $attempts" >> "$GITHUB_STEP_SUMMARY"
+          [[ "$status" == "healthy" ]]
+
+      - name: Publish sanitized failure alert
+        if: failure() && env.ALERT_TOPIC_ARN != ''
+        env:
+          STAGE: ${{ inputs.stage }}
+          SESSION_ID: ${{ inputs.session_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ALERT_TOPIC_ARN" =~ ^arn:aws:sns:us-east-1:[0-9]{12}:[A-Za-z0-9_-]+$ ]] || {
+            echo "::error::Invalid lifecycle alert topic ARN."
+            exit 1
+          }
+          aws sns publish \
+            --topic-arn "$ALERT_TOPIC_ARN" \
+            --subject "Auto Shop environment health failure" \
+            --message "Public health checks failed for ${STAGE} session ${SESSION_ID}. Review the GitHub Actions run; no health success is declared."
+
+      - name: Upload sanitized health evidence
+        if: always() && hashFiles('health-summary.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-health-${{ inputs.session_id }}-${{ github.run_id }}
+          path: health-summary.json
+          retention-days: 90
+          if-no-files-found: error

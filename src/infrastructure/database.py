@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -30,6 +31,7 @@ from src.domain.enums import (
     Priority,
     PurchaseRequestStatus,
     ReservationStatus,
+    CustomerStatus,
     ServiceOrderStatus,
     StockWithdrawalStatus,
 )
@@ -93,6 +95,12 @@ class CustomerModel(Base):
     email: Mapped[str] = mapped_column(String(255))
     phone: Mapped[str] = mapped_column(String(20), nullable=True)
     address: Mapped[str] = mapped_column(String(500))
+    status: Mapped[CustomerStatus] = mapped_column(
+        db_enum(CustomerStatus),
+        default=CustomerStatus.ACTIVE,
+        server_default=CustomerStatus.ACTIVE.value,
+        nullable=False,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -441,10 +449,25 @@ class PaymentModel(Base):
     invoice: Mapped["InvoiceModel"] = relationship(back_populates="payments")
 
 
-def _engine_connect_args() -> dict[str, int]:
-    if urlparse(settings.database_url).scheme.startswith("postgres"):
-        return {"connect_timeout": settings.database_health_check_timeout_seconds}
-    return {}
+def _engine_connect_args() -> dict[str, object]:
+    if not urlparse(settings.database_url).scheme.startswith("postgres"):
+        return {}
+
+    connect_args: dict[str, object] = {
+        "connect_timeout": settings.database_health_check_timeout_seconds,
+    }
+    if settings.is_production_like():
+        connect_args.update(
+            {
+                "sslmode": "verify-full",
+                "sslrootcert": str(
+                    Path(__file__).resolve().parent
+                    / "certs"
+                    / "rds-us-east-1-bundle.pem"
+                ),
+            }
+        )
+    return connect_args
 
 
 engine = create_engine(

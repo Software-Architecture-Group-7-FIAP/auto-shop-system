@@ -12,7 +12,7 @@
 | **Bandit** | SAST — padrões inseguros em Python |
 | **pip-audit** | CVEs em dependências |
 | **`scripts/check_unsafe_defaults.py`** | Bloqueia segredos/defaults inseguros versionados |
-| **CI** | `.github/workflows/security.yml` (pytest + bandit + pip-audit + unsafe defaults) |
+| **CI** | `.github/workflows/ci.yml` (pytest + bandit + pip-audit + unsafe defaults) |
 
 ---
 
@@ -42,7 +42,7 @@ poetry run pytest
 | Rastreio de OS | ✅ Corrigido | `POST /public/service-orders/track`, fingerprint HMAC, revogação no reenvio e expiração desde a emissão |
 | SMTP | ✅ Corrigido | TLS configurável; obrigatório em `production`/`staging` |
 | CORS / headers | ✅ Corrigido | Origens via env; middleware de security headers |
-| Rate limiting | ✅ Corrigido | Throttle por IP e por usuário em `POST /auth/login` (`src/api/rate_limit.py`) |
+| Rate limiting | Corrigido | WAF do CloudFront limita pelo IP do visitante; WAF Regional mantém um teto agregado por IP de origem; login e rotas públicas usam contadores Redis compartilhados |
 | Content-Security-Policy | ✅ Corrigido | Enviado pelo middleware de security headers; `/docs` e `/redoc` isentos (assets em CDN) |
 | CSRF | ✅ Corrigido | Double-submit + checagem de `Origin` em toda requisição que altera estado |
 
@@ -50,10 +50,13 @@ poetry run pytest
 
 O painel Angular deixou de usar `alert()` global: erros agora vão para um stack de notificações in-app (`NotificationService` + `app-notifications`), com `role="alert"`, dispensa manual, expiração automática e deduplicação — item 10 do hardening review encerrado.
 
-O rate limiting é **por processo** e mantém um limite de cardinalidade para os
-baldes (`LOGIN_RATE_LIMIT_MAX_BUCKETS`). Com mais de um worker cada um mantém
-seus próprios contadores; para produção, complementar com um limitador na
-borda (reverse proxy / WAF).
+Os contadores de login e das rotas públicas usam Redis com incrementos atômicos
+e expiração compartilhada entre réplicas; o modo em memória fica restrito ao
+desenvolvimento local. O WAF do CloudFront identifica o IP real do visitante.
+O WAF Regional mantém um teto agregado alto porque pode ver o IP de saída do
+CloudFront. A aplicação não confia em `X-Forwarded-For` vindo pelo endpoint
+Regional público. As respostas do alias de login que contém Bearer usam
+`Cache-Control: no-store`.
 
 ---
 

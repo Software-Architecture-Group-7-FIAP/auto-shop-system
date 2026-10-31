@@ -57,7 +57,7 @@ Este relatório consolida o **scan SAST original** (baseline em `main` antes do 
 | VULN-03 | CWE-352 — CSRF em `GET /approve` | Alta | **Corrigido** | Hardening 010/011 — `POST /public/budgets/decisions` com token no corpo + confirmação no Angular |
 | VULN-04 | CWE-613 — Token de aprovação sem `exp` | Alta | **Corrigido** | `79a5be9` — `BUDGET_APPROVAL_TOKEN_EXPIRE_HOURS` (default 72h) + `validate_approval_token()` |
 | VULN-05 | CWE-200 — Lookup público por documento | Média | **Corrigido** | `de5343a` — `POST /customers/lookup` com segundo fator (email, phone ou placa) |
-| VULN-06 | CWE-307 — Sem rate limiting | Média | **Corrigida** | Throttle por IP/usuário com janela, bloqueio e limite de cardinalidade em `src/api/rate_limit.py` |
+| VULN-06 | CWE-307 — Sem rate limiting | Média | **Mitigada** | CloudFront WAF por IP do visitante, limite Regional agregado e contadores Redis compartilhados para login e rotas públicas |
 | VULN-07 | CWE-319 — SMTP sem TLS | Média | **Corrigido** | `de5343a`, `c88c26f` — `SMTP_USE_TLS` / `SMTP_STARTTLS`; obrigatório em `APP_ENV=production\|staging` |
 | VULN-08 | CWE-287 — Rastreio OS por ID + documento | Média | **Corrigido** | Hardening 010/011 — `POST /public/service-orders/track` com token no corpo, HMAC e expiração |
 | VULN-09 | CWE-942 — CORS hardcoded | Baixa | **Corrigido** | `de5343a` — `CORS_ALLOWED_ORIGINS` via env; validação anti-wildcard com credentials |
@@ -178,7 +178,7 @@ Resposta de erro sempre genérica (`404` — `"Cliente não encontrado"`) para e
 | Security headers | Middleware em `src/main.py` |
 | HSTS | `SECURITY_HSTS_ENABLED=true` em produção com HTTPS |
 | Docker secrets | Variáveis obrigatórias com sintaxe `${VAR:?mensagem}` |
-| CI | `.github/workflows/security.yml` — pytest + bandit + pip-audit + unsafe defaults |
+| CI | `.github/workflows/ci.yml` — pytest + bandit + pip-audit + unsafe defaults |
 
 ---
 
@@ -189,9 +189,9 @@ Resposta de erro sempre genérica (`404` — `"Cliente não encontrado"`) para e
 | Campo | Valor |
 |-------|-------|
 | **Severidade** | Média (mitigação adicional) |
-| **Status** | Throttle local corrigido; distribuição permanece recomendada |
-| **Risco residual** | Contadores não são compartilhados entre workers/instâncias |
-| **Recomendação** | Complementar o throttle por processo com rate limit no API Gateway/WAF antes de go-live em produção |
+| **Status** | Redis aplica contadores de login e rotas públicas atomicamente entre réplicas; CloudFront WAF limita pelo IP do visitante |
+| **Risco residual** | O limite Regional agregado vê o IP do proxy CloudFront para tráfego encaminhado; as cotas precisam ser calibradas durante a homologação |
+| **Recomendação** | Confirmar as taxas e a disponibilidade do Redis na sessão de staging; não usar `X-Forwarded-For` sem uma origem confiável |
 
 ---
 
@@ -272,7 +272,7 @@ docker compose up --build
 
 | Rota | Método | Autenticação | Proteção |
 |------|--------|--------------|----------|
-| `/api/v1/auth/login` | POST | Nenhuma | bcrypt + sessão em cookies + rate limit por IP/usuário |
+| `/api/v1/auth/login` | POST | Nenhuma | bcrypt + sessão em cookies + WAF por IP + limite de aplicação por usuário |
 | `/api/v1/customers/lookup` | POST | Documento + 2º fator | Erro genérico 404 |
 | `/api/v1/public/budgets/decisions` | **POST** | JWT assinado + exp, uso único | Confirmação UI Angular |
 | `/api/v1/public/service-orders/track` | **POST** | Token opaco (HMAC no DB) + expiração | Sem ID sequencial exposto |
@@ -285,7 +285,7 @@ docker compose up --build
 
 ### Já implementado no PR #26
 
-- [x] Pipeline `.github/workflows/security.yml` (PR + push main)
+- [x] Pipeline `.github/workflows/ci.yml` (PR + push main/develop)
 - [x] Script `scripts/check_unsafe_defaults.py` no CI
 - [x] Testes de configuração: `tests/unit/test_config.py`, `tests/unit/test_seed_dev_admin.py`
 - [x] Testes de tokens: `tests/unit/auth/test_approval_tokens.py`

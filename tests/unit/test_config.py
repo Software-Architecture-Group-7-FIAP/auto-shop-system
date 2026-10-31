@@ -95,6 +95,10 @@ def test_settings_rejects_plaintext_smtp_in_production():
             app_base_url="https://api.example.com",
             frontend_public_url="https://app.example.com",
             cors_allowed_origins="https://app.example.com",
+            customer_jwt_jwks_url="https://auth.example.com/.well-known/jwks.json",
+            customer_jwt_issuer="https://auth.example.com",
+            customer_jwt_audience="auto-shop-api",
+            service_order_event_bus_name="auto-shop-service-orders-production",
             smtp_user="smtp-user",
             smtp_password="strong-smtp-secret",
             smtp_use_tls=False,
@@ -126,6 +130,10 @@ def test_settings_accepts_starttls_smtp_in_production():
         smtp_starttls=True,
         smtp_require_tls=True,
         invertexto_api_token="test-token",
+        customer_jwt_jwks_url="https://auth.example.com/.well-known/jwks.json",
+        customer_jwt_issuer="https://auth.example.com",
+        customer_jwt_audience="auto-shop-api",
+        service_order_event_bus_name="auto-shop-service-orders-production",
         _env_file=None,
         **PRODUCTION_PURPOSE_SECRETS,
     )
@@ -157,6 +165,10 @@ def test_settings_requires_invertexto_token_in_production():
             app_base_url="https://api.example.com",
             frontend_public_url="https://app.example.com",
             cors_allowed_origins="https://app.example.com",
+            customer_jwt_jwks_url="https://auth.example.com/.well-known/jwks.json",
+            customer_jwt_issuer="https://auth.example.com",
+            customer_jwt_audience="auto-shop-api",
+            service_order_event_bus_name="auto-shop-service-orders-production",
             smtp_user="smtp-user",
             smtp_password="strong-smtp-secret",
             smtp_host="smtp.relay.internal",
@@ -195,6 +207,10 @@ def production_settings(**overrides):
         "smtp_starttls": True,
         "smtp_require_tls": True,
         "invertexto_api_token": "live-invertexto-token",
+        "customer_jwt_jwks_url": "https://auth.example.com/.well-known/jwks.json",
+        "customer_jwt_issuer": "https://auth.example.com",
+        "customer_jwt_audience": "auto-shop-api",
+        "service_order_event_bus_name": "auto-shop-service-orders-production",
         "_env_file": None,
     }
     return Settings(**{**values, **overrides})
@@ -203,6 +219,44 @@ def production_settings(**overrides):
 def test_production_rejects_http_urls():
     with pytest.raises(ValidationError, match="HTTPS"):
         production_settings(app_base_url="http://api.example.com")
+
+
+def test_customer_jwks_url_requires_http_scheme_and_no_credentials():
+    for jwks_url in (
+        "file:///etc/passwd",
+        "https://user:password@auth.example.com/.well-known/jwks.json",
+    ):
+        with pytest.raises(ValidationError, match="CUSTOMER_JWT_JWKS_URL"):
+            Settings(
+                secret_key="strong-test-secret-with-at-least-32-chars",
+                app_env="development",
+                customer_jwt_jwks_url=jwks_url,
+                _env_file=None,
+            )
+
+
+def test_production_requires_https_customer_jwks_url():
+    with pytest.raises(ValidationError, match="CUSTOMER_JWT_JWKS_URL must use HTTPS"):
+        production_settings(customer_jwt_jwks_url="http://auth.example.com/.well-known/jwks.json")
+
+
+@pytest.mark.parametrize(
+    ("setting_name", "message"),
+    [
+        ("customer_jwt_jwks_url", "CUSTOMER_JWT_JWKS_URL is required"),
+        ("customer_jwt_issuer", "CUSTOMER_JWT_ISSUER is required"),
+        ("customer_jwt_audience", "CUSTOMER_JWT_AUDIENCE is required"),
+        ("service_order_event_bus_name", "SERVICE_ORDER_EVENT_BUS_NAME is required"),
+    ],
+)
+@pytest.mark.parametrize("app_env", ("staging", "production"))
+def test_production_like_environments_require_customer_identity_and_event_configuration(
+    setting_name: str,
+    message: str,
+    app_env: str,
+):
+    with pytest.raises(ValidationError, match=message):
+        production_settings(app_env=app_env, **{setting_name: ""})
 
 
 def test_production_rejects_placeholder_database_url():

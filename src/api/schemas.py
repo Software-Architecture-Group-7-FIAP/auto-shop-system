@@ -6,6 +6,7 @@ from pydantic import BaseModel, EmailStr, Field, StrictInt, model_validator
 
 from src.domain.enums import (
     BudgetStatus,
+    CustomerStatus,
     InvoiceStatus,
     PaymentMethod,
     Priority,
@@ -24,6 +25,14 @@ class MessageResponse(BaseModel):
 
 
 class SessionResponse(BaseModel):
+    username: str
+    role: UserRole
+
+
+class GatewayTokenResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int
     username: str
     role: UserRole
 
@@ -52,6 +61,10 @@ class CustomerDocumentAdd(BaseModel):
     document: str
 
 
+class CustomerStatusRequest(BaseModel):
+    status: CustomerStatus
+
+
 class CustomerResponse(BaseModel):
     id: int
     name: str
@@ -60,11 +73,43 @@ class CustomerResponse(BaseModel):
     phone: str | None
     address: str
     created_at: datetime
+    status: CustomerStatus
 
 
 class CustomerPublicResponse(BaseModel):
     id: int
     name: str
+
+
+class CustomerIdentityResponse(BaseModel):
+    customer_id: int
+
+
+class CustomerServiceOrderServiceLineResponse(BaseModel):
+    service_id: int
+    quantity: int
+    unit_price: float
+
+
+class CustomerServiceOrderProductLineResponse(BaseModel):
+    product_id: int
+    quantity: int
+    unit_price: float
+
+
+class CustomerServiceOrderResponse(BaseModel):
+    id: int
+    status: ServiceOrderStatus
+    total_price: float
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    service_lines: list[CustomerServiceOrderServiceLineResponse] = Field(
+        default_factory=list
+    )
+    product_lines: list[CustomerServiceOrderProductLineResponse] = Field(
+        default_factory=list
+    )
 
 
 class CustomerPublicLookupRequest(BaseModel):

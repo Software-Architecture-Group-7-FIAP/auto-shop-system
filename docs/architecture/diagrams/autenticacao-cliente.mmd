@@ -1,0 +1,40 @@
+%%{init: {"theme": "base", "themeVariables": {"fontSize": "16px"}, "sequence": {"actorFontSize": 16, "messageFontSize": 16, "noteFontSize": 14}}}%%
+sequenceDiagram
+    autonumber
+    actor Cliente
+    participant Gateway as API Gateway REST + WAF
+    participant Lambda as Lambda lambda-auth
+    participant Banco as RDS PostgreSQL
+    participant KMS as AWS KMS
+    participant API as FastAPI em EKS
+
+    Cliente->>Gateway: POST /auth/customer/token com CPF
+    Gateway->>Lambda: Encaminha a rota de token
+    Lambda->>Lambda: Valida formato e dígitos do CPF
+    Note over Lambda,Banco: A credencial de leitura vem do Secrets Manager e é mantida em cache
+    Lambda->>Banco: Consulta ID e status do cliente
+    alt cliente inexistente ou inativo
+        Lambda-->>Gateway: 401 uniforme
+        Gateway-->>Cliente: Credenciais inválidas
+    else cliente ativo
+        Lambda->>KMS: Assina JWT RS256
+        KMS-->>Lambda: Assinatura e kid
+        Lambda-->>Gateway: 200 Bearer token, TTL configurado até 900 s
+        Gateway-->>Cliente: Retorna o token
+    end
+
+    Cliente->>Gateway: GET /api/v1/customer/service-orders/{id} com Bearer
+    Gateway->>API: VPC Link V2 e ALB interno
+    opt cache JWKS vazio ou expirado
+        API->>Gateway: GET /.well-known/jwks.json
+        Gateway->>Lambda: Encaminha a rota JWKS
+        Lambda-->>Gateway: Chaves públicas e kid
+        Gateway-->>API: JWKS
+    end
+    API->>API: Valida alg, kid, iss, aud, exp e scope
+    API->>Banco: Consulta a OS pelo ID e pelo sub autenticado
+    Banco-->>API: Dados da OS autorizada
+    API-->>Gateway: 200 com Cache-Control no-store
+    Gateway-->>Cliente: Status, valores e linhas da OS
+
+    Note over Cliente,API: CPF não aparece nas claims ou logs. A resposta omite CPF e dados cadastrais.

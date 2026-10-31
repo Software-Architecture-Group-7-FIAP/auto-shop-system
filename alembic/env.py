@@ -7,7 +7,6 @@ from src.config import settings
 from src.infrastructure.database import Base
 
 config = context.config
-# ConfigParser uses percent-based interpolation; preserve SQLAlchemy URL escapes.
 config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 if config.config_file_name is not None:

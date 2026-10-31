@@ -1,0 +1,66 @@
+flowchart TB
+    subgraph devops ["CI/CD — GitHub Actions"]
+        PR["Pull request → develop/main"]
+        CI["ci.yml<br/>testes, segurança, gateway,<br/>Terraform K8s/AWS, smoke, frontend"]
+        Merge["Merge"]
+        CD["cd-staging / cd-prod<br/>GHCR sha-tag + ECR mirror + deploy.sh"]
+        PR --> CI --> Merge --> CD
+    end
+
+    subgraph registry ["Registry"]
+        GHCR[("GHCR<br/>ghcr.io/org/auto-shop-system:sha-…")]
+    end
+
+    CD --> GHCR
+
+    subgraph aws ["AWS — borda pública"]
+        R53["Route53 / ACM<br/>(opcional)"]
+        APIGW["API Gateway REST"]
+        WAF["WAFv2"]
+        R53 --> APIGW --> WAF
+    end
+
+    subgraph lambda ["lambda-auth"]
+        LLogin["Lambda login gateway"]
+        LCustomer["Lambda token cliente + JWKS"]
+    end
+
+    subgraph k8s ["Kubernetes — EKS / Kind local"]
+        ING["Ingress"]
+        SVC["Service"]
+        POD["Pods FastAPI + Angular build"]
+        CM["ConfigMap / Secret"]
+        CM --> POD
+        ING --> SVC --> POD
+    end
+
+    subgraph data ["Dados"]
+        PG[("PostgreSQL<br/>database-infra")]
+        EB["EventBridge bus<br/>falha OS #67"]
+    end
+
+    subgraph obs ["Observabilidade (#92–#94)"]
+        LOGS["Logs JSON + correlation #93"]
+        APM["APM / dashboards<br/>(pós #87)"]
+    end
+
+    User(["Admin / Cliente / Avaliador"]) --> APIGW
+
+    WAF -->|"POST /auth/login"| LLogin
+    WAF -->|"POST /auth/customer/token<br/>GET /.well-known/jwks.json"| LCustomer
+    WAF -->|"HTTP proxy admin/public/customer/health"| ING
+
+    LLogin -->|"gateway-login HS256 aud=gateway"| POD
+    LCustomer -.->|"RS256 aud=auto-shop-api"| POD
+
+    GHCR --> ECR
+    ECR[("Private ECR<br/>auto-shop-system:sha-…")]
+    ECR --> POD
+    POD --> PG
+    POD --> EB
+    POD --> LOGS
+    POD --> APM
+    APIGW --> LOGS
+
+    classDef external fill:#f5f5f5,stroke:#666
+    class lambda,aws,data external

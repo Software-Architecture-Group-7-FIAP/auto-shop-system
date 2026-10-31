@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only check of the persistent HML customer-auth Lambda before opening infrastructure."""
+"""Check persistent customer-auth Lambdas before starting session resources."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from typing import Any
 AWS_REGION = "us-east-1"
 SSM_PARAMETER_NAMES = {
     "hml": "/auto-shop/staging/auth/customer-token/function-arn/hml",
+    "prd": "/auto-shop/staging/auth/customer-token/function-arn/prd",
 }
 NETWORK_PARAMETER_NAMES = {
     "vpc_id": "/auto-shop/staging/network/vpc-id",
@@ -23,8 +24,9 @@ NETWORK_PARAMETER_NAMES = {
 ALL_PARAMETER_NAMES = (*SSM_PARAMETER_NAMES.values(), *NETWORK_PARAMETER_NAMES.values())
 DATABASE_SECRET_IDS = {
     "hml": "auto-shop/staging/hml/lambda-auth",
+    "prd": "auto-shop/staging/prd/lambda-auth",
 }
-LAMBDA_FUNCTION_NAMES = {"hml": "lambda-auth-hml"}
+LAMBDA_ENVIRONMENTS = {"hml": "hml", "prd": "prd"}
 ACCOUNT_ID_PATTERN = re.compile(r"^[0-9]{12}$")
 VPC_ID_PATTERN = re.compile(r"^vpc-[0-9a-f]{8,17}$")
 SUBNET_ID_PATTERN = re.compile(r"^subnet-[0-9a-f]{8,17}$")
@@ -64,9 +66,10 @@ def _aws_json(*arguments: str) -> Any:
 def _expected_function_arn(value: object, *, stage: str, account_id: str) -> bool:
     if not isinstance(value, str):
         return False
+    environment = LAMBDA_ENVIRONMENTS[stage]
     pattern = (
         rf"^arn:aws:lambda:{re.escape(AWS_REGION)}:{re.escape(account_id)}:"
-        rf"function:{re.escape(LAMBDA_FUNCTION_NAMES[stage])}$"
+        rf"function:[A-Za-z0-9_-]+-{environment}$"
     )
     return re.fullmatch(pattern, value) is not None
 
@@ -99,9 +102,10 @@ def _verify_function_configuration(
         and len(security_group_ids) == len(set(security_group_ids))
         and set(security_group_ids) == expected_security_group_ids
     )
+    expected_function_name = function_arn.rsplit(":", 1)[-1]
     if (
         configuration.get("FunctionArn") != function_arn
-        or configuration.get("FunctionName") != LAMBDA_FUNCTION_NAMES[stage]
+        or configuration.get("FunctionName") != expected_function_name
         or configuration.get("State") != "Active"
         or configuration.get("LastUpdateStatus") != "Successful"
         or configuration.get("DatabaseSecretId") != DATABASE_SECRET_IDS[stage]
@@ -221,7 +225,7 @@ def main() -> int:
         print(f"::error::{error}", file=sys.stderr)
         return 1
 
-    print("The persistent HML customer-auth Lambda matches the approved private network contract.")
+    print("Persistent HML and PRD customer-auth Lambdas match the approved private network contract.")
     return 0
 
 

@@ -1,5 +1,17 @@
 # Terraform para Kubernetes
 
+## Índice de infraestrutura da Fase 3
+
+Este diretório gerencia recursos Kubernetes em um cluster existente; não cria a infraestrutura AWS. Para a topologia cloud e suas dependências, consulte:
+
+- [`infra/aws/README.md`](../infra/aws/README.md): API Gateway, VPC Link, WAF, ACM, CloudFront/S3 e state desta stack.
+- [`ADR-0071`](../docs/architecture/decisions/ADR-0071-infraestrutura-cloud-fase-3.md): contratos atuais, ownership dos repositórios e gates para a sessão AWS.
+- [`k8s-infra`](https://github.com/Software-Architecture-Group-7-FIAP/k8s-infra): rede, EKS e ALB interno.
+- [`database-infra`](https://github.com/Software-Architecture-Group-7-FIAP/database-infra): RDS e credenciais.
+- [`lambda-auth`](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth): autenticação de cliente.
+
+O workflow de CI com Kind valida manifests localmente; isso não é evidência de staging AWS nem conclui a issue [#87](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/87).
+
 Este diretório oferece um caminho declarativo alternativo ao Kustomize para
 gerenciar a stack do Auto Shop em um cluster Kubernetes já existente. Ele não
 cria EKS, VPC, IAM, RDS ou qualquer recurso AWS.
@@ -29,6 +41,11 @@ ownership.
    valores não sensíveis do ambiente.
 3. Crie `auto-shop-secrets` por um mecanismo externo e seguro. Nunca coloque
    credenciais no arquivo `.tfvars` versionado.
+
+Para `staging` e `production`, também forneça `service_order_publisher_role_arn`
+com o ARN da role IRSA do stage. A ServiceAccount `auto-shop-backend` recebe essa
+annotation; em `local`, deixe o valor vazio. O Terraform deste diretório não lê
+o parâmetro SSM automaticamente.
 
 O provider usa `kubeconfig_path` e `kube_context` quando informados; quando
 omitidos, usa a configuração padrão do Kubernetes. O arquivo de state local,
@@ -143,9 +160,19 @@ terraform -chdir=infra plan `
   -var "enable_local_database=true"
 ```
 
-Após um apply bem-sucedido, o segundo plano deve retornar `No changes`. Em Kind,
-os campos de métricas do HPA podem aparecer como `unknown` se o Metrics Server
-não estiver instalado; o recurso ainda estará criado com as metas configuradas.
+Após um apply bem-sucedido, o segundo plano deve retornar `No changes`. O
+Terraform inicia o Deployment com uma réplica, igual a um Deployment novo criado
+pelos manifests sem `spec.replicas`, e ignora alterações posteriores desse campo,
+que pertence ao HPA. O HPA reconcilia a contagem para o mínimo configurado de duas
+réplicas. Em Kind, instale o Metrics Server
+antes de validar a escala e confirme que `kubectl top pods --namespace $namespace`
+retorna CPU e memória. Valores `unknown` no HPA indicam que a escala automática
+não foi validada; investigue a Metrics API antes de considerar o deploy concluído.
+
+Os alvos atuais de 70% de CPU e 80% de memória são valores de configuração,
+não resultados de calibração. Ajustar esses percentuais, requests, limits ou
+limites de réplicas exige um perfil de carga de homologação com medições de CPU,
+memória, latência e taxa de erros.
 
 ## Recursos existentes
 

@@ -14,6 +14,7 @@ from src.domain.service_order.entity import (
     ServiceOrderStatusTransition,
 )
 from src.domain.service_order.rules import (
+    PRIORITY_RANKING,
     STATUS_RANKING,
     ServiceOrderListItem,
     ServiceOrderListQuery,
@@ -42,6 +43,21 @@ class SqlAlchemyServiceOrderRepository:
         if not model:
             return None
         return self._to_domain(model)
+
+    def get_by_id_for_customer(
+        self,
+        service_order_id: int,
+        customer_id: int,
+    ) -> ServiceOrder | None:
+        model = (
+            self.db.query(ServiceOrderModel)
+            .filter(
+                ServiceOrderModel.id == service_order_id,
+                ServiceOrderModel.customer_id == customer_id,
+            )
+            .first()
+        )
+        return self._to_domain(model) if model else None
 
     def get_by_budget_id(self, budget_id: int) -> ServiceOrder | None:
         model = (
@@ -144,6 +160,20 @@ class SqlAlchemyServiceOrderRepository:
             )
         if ordering is ServiceOrderOrdering.CREATED_AT_ASC:
             return query.order_by(
+                ServiceOrderModel.created_at.asc(),
+                ServiceOrderModel.id.asc(),
+            )
+
+        if ordering is ServiceOrderOrdering.PRIORITY:
+            priority_rank = case(
+                *(
+                    (ServiceOrderModel.priority == priority, rank)
+                    for rank, priority in enumerate(PRIORITY_RANKING)
+                ),
+                else_=len(PRIORITY_RANKING),
+            )
+            return query.order_by(
+                priority_rank.asc(),
                 ServiceOrderModel.created_at.asc(),
                 ServiceOrderModel.id.asc(),
             )

@@ -80,6 +80,85 @@ variable "app_base_url" {
   }
 }
 
+variable "customer_jwt_jwks_url" {
+  description = "URL pública HTTPS do JWKS de clientes; vazio desabilita as rotas de cliente em local."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      var.environment == "local" ||
+      (trimspace(var.customer_jwt_jwks_url) != "" && can(regex("^https://", var.customer_jwt_jwks_url)))
+    )
+    error_message = "customer_jwt_jwks_url deve ser HTTPS e não pode ficar vazio fora do ambiente local."
+  }
+}
+
+variable "customer_jwt_issuer" {
+  description = "Issuer público esperado nos JWTs de cliente."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.environment == "local" || trimspace(var.customer_jwt_issuer) != ""
+    error_message = "customer_jwt_issuer não pode ficar vazio fora do ambiente local."
+  }
+}
+
+variable "customer_jwt_audience" {
+  description = "Audience esperada nos JWTs de cliente."
+  type        = string
+  default     = "auto-shop-api"
+
+  validation {
+    condition     = trimspace(var.customer_jwt_audience) != ""
+    error_message = "customer_jwt_audience não pode ficar vazio."
+  }
+}
+
+variable "customer_jwt_clock_skew_seconds" {
+  description = "Tolerância de relógio do verificador de JWT de cliente."
+  type        = number
+  default     = 0
+}
+
+variable "customer_jwt_jwks_timeout_seconds" {
+  description = "Timeout de leitura do JWKS."
+  type        = number
+  default     = 2
+}
+
+variable "customer_jwt_jwks_cache_seconds" {
+  description = "Duração do cache local do JWKS."
+  type        = number
+  default     = 300
+}
+
+variable "service_order_event_bus_name" {
+  description = "Nome público do event bus de falhas de OS; vazio mantém publisher desabilitado."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.environment == "local" || trimspace(var.service_order_event_bus_name) != ""
+    error_message = "service_order_event_bus_name não pode ficar vazio fora do ambiente local."
+  }
+}
+
+variable "service_order_publisher_role_arn" {
+  description = "IRSA role ARN permitted to publish service-order failure events."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = var.environment == "local" || can(regex(
+      "^arn:aws:iam::[0-9]{12}:role/.+$",
+      trimspace(var.service_order_publisher_role_arn),
+    ))
+    error_message = "service_order_publisher_role_arn must be a valid IAM role ARN outside local development."
+  }
+}
+
 variable "frontend_public_url" {
   description = "URL pública do frontend."
   type        = string
@@ -111,7 +190,7 @@ variable "cors_allowed_methods" {
 variable "cors_allowed_headers" {
   description = "Headers permitidos pelo CORS."
   type        = string
-  default     = "Authorization,Content-Type,X-CSRF-Token,X-Request-ID,Accept"
+  default     = "Authorization,Content-Type,X-CSRF-Token,X-Request-ID,X-Correlation-ID,Accept"
 }
 
 variable "cors_allow_credentials" {
@@ -190,17 +269,6 @@ variable "skip_cpf_external_validation" {
   validation {
     condition     = var.environment == "local" || !var.skip_cpf_external_validation
     error_message = "A validação externa de CPF não pode ser ignorada fora do ambiente local."
-  }
-}
-
-variable "replicas" {
-  description = "Réplicas iniciais do Deployment; deve ser compatível com o mínimo do HPA."
-  type        = number
-  default     = 2
-
-  validation {
-    condition     = var.replicas >= 2 && var.replicas <= 10
-    error_message = "replicas deve estar entre 2 e 10 para manter a disponibilidade mínima."
   }
 }
 

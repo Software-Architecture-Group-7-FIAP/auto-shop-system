@@ -5,6 +5,7 @@ import pytest
 
 from src.config import settings
 from src.domain.exceptions import UnauthorizedError
+from src.domain.auth.jwt_audience import JWT_AUD_GATEWAY, JWT_AUD_WEB
 from src.infrastructure.auth.jwt import JwtAccessTokenService
 
 
@@ -15,6 +16,22 @@ def test_access_token_round_trip_uses_hs256():
 
     assert header["alg"] == "HS256"
     assert JwtAccessTokenService().decode_token(token) == "admin"
+
+
+def test_access_token_includes_audience_claim():
+    service = JwtAccessTokenService()
+    web_token = service.create_access_token("admin", "session-1")
+    gateway_token = service.create_access_token(
+        "admin",
+        "session-1",
+        audience=JWT_AUD_GATEWAY,
+    )
+
+    web_claims = service.decode_claims(web_token)
+    gateway_claims = service.decode_claims(gateway_token)
+
+    assert web_claims["aud"] == JWT_AUD_WEB
+    assert gateway_claims["aud"] == JWT_AUD_GATEWAY
 
 
 def test_access_token_rejects_expired_token():

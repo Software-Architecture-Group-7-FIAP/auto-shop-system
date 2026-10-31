@@ -13,6 +13,13 @@ smtp_host              = "mailhog"
 smtp_port              = 1025
 security_hsts_enabled  = false
 skip_cpf_external_validation = true
+customer_jwt_jwks_url             = ""
+customer_jwt_issuer               = ""
+customer_jwt_audience             = "auto-shop-api"
+customer_jwt_clock_skew_seconds   = 0
+customer_jwt_jwks_timeout_seconds = 2
+customer_jwt_jwks_cache_seconds   = 300
+service_order_event_bus_name      = ""
 
 # O Secret deve ser criado previamente fora do Terraform.
 # kube_context = "kind-kind"
