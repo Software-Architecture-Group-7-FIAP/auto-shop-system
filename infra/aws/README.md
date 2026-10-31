@@ -27,6 +27,8 @@ Este repositório contém a definição da infraestrutura. Isso não significa q
 
 A stack upstream precisa exportar os parâmetros abaixo sob o prefixo fixo `/auto-shop/staging`, compartilhado com o preflight read-only da Lambda:
 
+Esta lista reúne apenas os parâmetros consumidos por esta stack. Para o banco, ela inclui os quatro parâmetros de migration; o contrato completo publicado por `database-infra` possui 16 chaves e está descrito na [PR #13](https://github.com/Software-Architecture-Group-7-FIAP/database-infra/pull/13).
+
 - `network/vpc-id`
 - `network/workload-private-subnet-ids`
 - `network/lambda-security-group-id`
