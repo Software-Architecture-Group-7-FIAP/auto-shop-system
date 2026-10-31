@@ -7,7 +7,6 @@ locals {
   frontend_api_paths = toset([
     "api/*",
     "auth/*",
-    "health/*",
     ".well-known/*",
   ])
 

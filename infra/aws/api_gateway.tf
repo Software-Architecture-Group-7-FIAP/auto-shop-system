@@ -133,18 +133,6 @@ resource "aws_api_gateway_resource" "public_proxy" {
   path_part   = "{proxy+}"
 }
 
-resource "aws_api_gateway_resource" "health" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  parent_id   = aws_api_gateway_rest_api.main.root_resource_id
-  path_part   = "health"
-}
-
-resource "aws_api_gateway_resource" "health_proxy" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  parent_id   = aws_api_gateway_resource.health.id
-  path_part   = "{proxy+}"
-}
-
 resource "aws_api_gateway_method" "api_v1_auth_endpoint" {
   for_each = aws_api_gateway_resource.api_v1_auth_endpoint
 
@@ -414,35 +402,6 @@ resource "aws_api_gateway_integration" "customers_lookup_options" {
   }
 }
 
-resource "aws_api_gateway_method" "health_any" {
-  rest_api_id   = aws_api_gateway_rest_api.main.id
-  resource_id   = aws_api_gateway_resource.health_proxy.id
-  http_method   = "ANY"
-  authorization = "NONE"
-
-  request_parameters = {
-    "method.request.path.proxy" = true
-  }
-}
-
-resource "aws_api_gateway_integration" "health_http" {
-  rest_api_id        = aws_api_gateway_rest_api.main.id
-  resource_id        = aws_api_gateway_resource.health_proxy.id
-  http_method        = aws_api_gateway_method.health_any.http_method
-  type               = "HTTP_PROXY"
-  uri                = "http://${var.api_domain_name}:$${stageVariables.backendListenerPort}/health/{proxy}"
-  connection_type    = "VPC_LINK"
-  connection_id      = aws_apigatewayv2_vpc_link.gateway.id
-  integration_target = data.aws_lb.internal.arn
-
-  integration_http_method = "ANY"
-
-  request_parameters = {
-    "integration.request.path.proxy"              = "method.request.path.proxy"
-    "integration.request.header.X-Correlation-ID" = "context.requestId"
-  }
-}
-
 resource "aws_api_gateway_deployment" "main" {
   rest_api_id = aws_api_gateway_rest_api.main.id
 
@@ -465,7 +424,6 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_integration.customers_lookup_post,
       aws_api_gateway_integration.customers_lookup_options,
       aws_api_gateway_integration.public_http.id,
-      aws_api_gateway_integration.health_http.id,
       aws_api_gateway_method.api_v1_auth_endpoint,
       aws_api_gateway_method.auth_login_post,
       aws_api_gateway_method.auth_login_options,
@@ -478,7 +436,6 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_method.customer_any,
       aws_api_gateway_method.customers_lookup_post,
       aws_api_gateway_method.customers_lookup_options,
-      aws_api_gateway_method.health_any,
       aws_api_gateway_authorizer.jwt,
       aws_api_gateway_integration.auth_login_backend.uri,
       aws_api_gateway_integration.auth_login_backend.integration_target,
@@ -497,8 +454,6 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_integration.customer_http.integration_target,
       aws_api_gateway_integration.public_http.uri,
       aws_api_gateway_integration.public_http.integration_target,
-      aws_api_gateway_integration.health_http.uri,
-      aws_api_gateway_integration.health_http.integration_target,
     ]))
   }
 
@@ -519,7 +474,6 @@ resource "aws_api_gateway_deployment" "main" {
     aws_api_gateway_integration.customers_lookup_post,
     aws_api_gateway_integration.customers_lookup_options,
     aws_api_gateway_integration.public_http,
-    aws_api_gateway_integration.health_http,
   ]
 }
 
