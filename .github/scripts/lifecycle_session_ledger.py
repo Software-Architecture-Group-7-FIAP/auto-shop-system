@@ -313,8 +313,11 @@ def authorize_open(
                 {
                     "Key": _key(session_id, "STATE"),
                     "UpdateExpression": "SET start_run_attempt = :attempt",
-                    "ConditionExpression": "#status = :active AND start_run_id = :run AND operator = :actor AND started_at = :started AND expires_at > :now",
-                    "ExpressionAttributeNames": {"#status": "status"},
+                    "ConditionExpression": (
+                        "#status = :active AND start_run_id = :run AND "
+                        "#operator = :actor AND started_at = :started AND expires_at > :now"
+                    ),
+                    "ExpressionAttributeNames": {"#status": "status", "#operator": "operator"},
                     "ExpressionAttributeValues": {
                         ":attempt": _n(run_attempt),
                         ":active": _s("active"),

@@ -106,6 +106,59 @@ def test_open_persists_the_requested_hml_session_scope(
     assert writes[0]["Item"]["session_scope"] == {"S": expected_scope}
 
 
+def test_open_retry_aliases_reserved_operator_attribute_in_update_condition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    started_at = "2026-10-30T12:00:00Z"
+    now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
+    stored = {
+        "status": "active",
+        "operator": "trusted-operator",
+        "start_run_id": "123",
+        "start_run_attempt": 1,
+        "started_at": started_at,
+        "stage": "hml",
+        "session_scope": "infrastructure-only",
+        "expires_at": now + 60,
+    }
+    updates: list[dict[str, object]] = []
+    monkeypatch.setattr(LEDGER, "_require_main_branch", lambda: None)
+    monkeypatch.setattr(LEDGER, "_operator", lambda **_kwargs: "trusted-operator")
+    monkeypatch.setattr(LEDGER, "_run_identity", lambda: ("123", 2))
+    monkeypatch.setattr(
+        LEDGER,
+        "_session_values",
+        lambda *_args: (
+            datetime(2026, 10, 30, 12, 0, tzinfo=timezone.utc),
+            datetime(2026, 10, 30, 14, 0, tzinfo=LEDGER.BRT),
+            now + 60,
+            now + 86400,
+        ),
+    )
+    monkeypatch.setattr(LEDGER.time, "time", lambda: now)
+
+    def capture_update(operation: str, request: dict[str, object]) -> dict[str, object]:
+        if operation == "put-item":
+            raise LEDGER.LedgerConflict("The state already exists.")
+        updates.append(request)
+        return {}
+
+    monkeypatch.setattr(LEDGER, "_ddb", capture_update)
+    monkeypatch.setattr(LEDGER, "_get_item", lambda *_args: stored)
+
+    LEDGER.authorize_open(
+        "hml-2026-10-30",
+        "hml",
+        started_at,
+        "hml",
+        session_scope="infrastructure-only",
+    )
+
+    assert len(updates) == 1
+    assert updates[0]["ExpressionAttributeNames"] == {"#status": "status", "#operator": "operator"}
+    assert "#operator = :actor" in str(updates[0]["ConditionExpression"])
+
+
 @pytest.mark.parametrize("scope", ["infrastructure-only", "release-validation"])
 def test_limited_session_scopes_are_rejected_for_prd(
     monkeypatch: pytest.MonkeyPatch, scope: str
