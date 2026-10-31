@@ -72,12 +72,23 @@ def main() -> int:
         if created_at.astimezone(BRT).date() == local_day:
             matching_runs.append(run)
 
-    if any(str(run.get("id")) != current_run_id for run in matching_runs):
-        print(f"::error::Only one {arguments.stage.upper()} opening run is allowed per BRT day; rerun the original run for recovery.", file=sys.stderr)
+    # Only block if there's a successful prior run on the same day.
+    # Failed attempts can be retried on the same day.
+    successful_prior_runs = [
+        run for run in matching_runs
+        if str(run.get("id")) != current_run_id and run.get("conclusion") == "success"
+    ]
+    if successful_prior_runs:
+        print(f"::error::A successful {arguments.stage.upper()} opening run already exists for today; only retrying failed runs is allowed.", file=sys.stderr)
         return 1
     if len(matching_runs) > 1:
-        print("::error::Multiple HML starts were found for today; refusing to continue.", file=sys.stderr)
-        return 1
+        # Multiple runs on same day are allowed if none are successful (all are failures/in-progress)
+        failed_count = sum(1 for run in matching_runs if str(run.get("id")) != current_run_id)
+        if failed_count > 0:
+            print(f"Previous {arguments.stage.upper()} opening run(s) failed today; retrying is allowed.")
+        else:
+            print("::error::Multiple HML starts were found for today; refusing to continue.", file=sys.stderr)
+            return 1
 
     print(f"No earlier {arguments.stage.upper()} lifecycle opening was found for {local_day.isoformat()} BRT.")
     return 0
