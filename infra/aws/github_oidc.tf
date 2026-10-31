@@ -11,6 +11,23 @@ variable "github_repository" {
   description = "GitHub repo in org/name form allowed to assume deploy roles."
   type        = string
   default     = "Software-Architecture-Group-7-FIAP/auto-shop-system"
+
+  validation {
+    condition     = length(split("/", var.github_repository)) == 2
+    error_message = "github_repository must use org/name form."
+  }
+}
+
+variable "github_repository_owner_id" {
+  description = "Immutable GitHub organization ID used in the Actions OIDC subject."
+  type        = string
+  default     = "279547328"
+}
+
+variable "github_repository_id" {
+  description = "Immutable GitHub repository ID used in the Actions OIDC subject."
+  type        = string
+  default     = "1221936756"
 }
 
 variable "auth_lambda_function_name" {
@@ -31,6 +48,7 @@ variable "github_oidc_thumbprint" {
 }
 
 locals {
+  github_oidc_subject_prefix = "repo:${split("/", var.github_repository)[0]}@${var.github_repository_owner_id}/${split("/", var.github_repository)[1]}@${var.github_repository_id}"
   github_environment_api_stage = {
     staging    = "hml"
     production = "prd"
@@ -62,7 +80,7 @@ data "aws_iam_policy_document" "github_deploy_assume" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:environment:${each.key}"]
+      values   = ["${local.github_oidc_subject_prefix}:environment:${each.key}"]
     }
   }
 }
@@ -157,7 +175,7 @@ data "aws_iam_policy_document" "github_auth_preflight_assume" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:environment:operations"]
+      values   = ["${local.github_oidc_subject_prefix}:environment:operations"]
     }
   }
 }

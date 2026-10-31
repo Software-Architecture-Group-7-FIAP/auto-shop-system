@@ -111,7 +111,7 @@ def test_auth_preflight_role_is_read_only_and_scoped_to_exact_resources() -> Non
 
     assert 'variable = "token.actions.githubusercontent.com:aud"' in configuration
     assert 'values   = ["sts.amazonaws.com"]' in configuration
-    assert 'values   = ["repo:${var.github_repository}:environment:operations"]' in configuration
+    assert 'values   = ["${local.github_oidc_subject_prefix}:environment:operations"]' in configuration
     assert 'actions = ["ssm:GetParameters"]' in configuration
     assert 'actions = ["lambda:GetFunctionConfiguration"]' in configuration
     assert 'name                 = "auto-shop-staging-github-auth-preflight"' in configuration

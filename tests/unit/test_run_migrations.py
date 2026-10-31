@@ -38,6 +38,10 @@ def test_run_migrations_holds_database_advisory_lock():
     completed = Mock(returncode=0)
 
     with (
+        patch(
+            "src.scripts.run_migrations._migration_config",
+            return_value=("postgresql+psycopg2://user:password@localhost:5432/testdb", 5, False),
+        ),
         patch("src.scripts.run_migrations.psycopg2.connect", return_value=connection),
         patch("src.scripts.run_migrations.subprocess.run", return_value=completed) as run,
     ):
@@ -47,6 +51,61 @@ def test_run_migrations_holds_database_advisory_lock():
         "SELECT pg_advisory_lock(%s)", (MIGRATION_LOCK_KEY,)
     )
     run.assert_called_once_with(["alembic", "upgrade", "head"], check=False)
+
+
+def test_run_migrations_uses_libpq_arguments_for_escaped_credentials():
+    connection = FakeConnection()
+    completed = Mock(returncode=0)
+    database_url = (
+        "postgresql+psycopg2://autoshop_migrations_hml:test-password%3A%2F%25%3F%23"
+        "@db.example.us-east-1.rds.amazonaws.com:5432/autoshop_hml"
+        "?sslmode=verify-full&sslrootcert=%2Fetc%2Fssl%2Frds%20ca.pem"
+    )
+
+    with (
+        patch(
+            "src.scripts.run_migrations._migration_config",
+            return_value=(database_url, 2, True),
+        ),
+        patch(
+            "src.scripts.run_migrations.psycopg2.connect",
+            return_value=connection,
+        ) as connect,
+        patch("src.scripts.run_migrations.subprocess.run", return_value=completed),
+    ):
+        assert run_migrations() == 0
+
+    connect.assert_called_once_with(
+        dbname="autoshop_hml",
+        host="db.example.us-east-1.rds.amazonaws.com",
+        user="autoshop_migrations_hml",
+        password="test-password:/%?#",
+        port=5432,
+        sslmode="verify-full",
+        sslrootcert="/etc/ssl/rds ca.pem",
+        connect_timeout=2,
+    )
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "connect_timeout=5",
+        "sslmode=verify-full&sslmode=require",
+        "host=attacker.example",
+        "user=autoshop_owner",
+    ],
+)
+def test_psycopg2_connection_arguments_reject_unapproved_url_query_parameters(query):
+    from src.scripts.run_migrations import _psycopg2_connection_arguments
+
+    database_url = (
+        "postgresql+psycopg2://autoshop_migrations_hml:test-password@"
+        "db.example.us-east-1.rds.amazonaws.com:5432/autoshop_hml?" + query
+    )
+
+    with pytest.raises(RuntimeError, match="configuration is invalid"):
+        _psycopg2_connection_arguments(database_url)
 
 
 def test_migration_database_url_uses_the_scoped_migration_secret(monkeypatch):
@@ -122,6 +181,9 @@ def test_deployed_migration_config_fails_closed_without_migration_secret(
 
 def test_run_migrations_returns_database_unavailable_code_without_logging_connection_details():
     with patch(
+        "src.scripts.run_migrations._migration_config",
+        return_value=("postgresql+psycopg2://user:password@localhost:5432/testdb", 5, False),
+    ), patch(
         "src.scripts.run_migrations.psycopg2.connect",
         side_effect=psycopg2.OperationalError("connection refused"),
     ), patch("src.scripts.run_migrations.subprocess.run") as run:
@@ -134,6 +196,10 @@ def test_run_migrations_propagates_alembic_failure_code():
     connection = FakeConnection()
 
     with (
+        patch(
+            "src.scripts.run_migrations._migration_config",
+            return_value=("postgresql+psycopg2://user:password@localhost:5432/testdb", 5, False),
+        ),
         patch("src.scripts.run_migrations.psycopg2.connect", return_value=connection),
         patch(
             "src.scripts.run_migrations.subprocess.run",

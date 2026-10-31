@@ -7,10 +7,12 @@ from pathlib import Path
 import boto3
 import psycopg2
 from botocore.exceptions import BotoCoreError, ClientError
-from sqlalchemy.engine import URL
+from sqlalchemy.exc import ArgumentError
+from sqlalchemy.engine import URL, make_url
 
 
 MIGRATION_LOCK_KEY = 7_349_841
+ALLOWED_PG_QUERY_PARAMETERS = frozenset({"sslmode", "sslrootcert"})
 RDS_CA_BUNDLE = (
     Path(__file__).resolve().parents[1]
     / "infrastructure"
@@ -90,15 +92,36 @@ def _migration_config() -> tuple[str, int, bool]:
     return settings.database_url, settings.database_health_check_timeout_seconds, False
 
 
+def _psycopg2_connection_arguments(database_url: str) -> dict[str, object]:
+    url = make_url(database_url)
+    if url.drivername not in {"postgresql", "postgresql+psycopg2"} or not url.database:
+        raise RuntimeError("Migration database configuration is invalid")
+    if set(url.query) - ALLOWED_PG_QUERY_PARAMETERS:
+        raise RuntimeError("Migration database configuration is invalid")
+
+    arguments: dict[str, object] = {
+        "dbname": url.database,
+        "host": url.host,
+        "user": url.username,
+        "password": url.password,
+        "port": url.port,
+    }
+    for key, value in url.query.items():
+        if not isinstance(value, str) or not value:
+            raise RuntimeError("Migration database configuration is invalid")
+        arguments[key] = value
+    return {key: value for key, value in arguments.items() if value is not None}
+
+
 def run_migrations() -> int:
     database_url, connect_timeout, use_migration_identity = _migration_config()
 
     try:
         connection = psycopg2.connect(
-            database_url,
+            **_psycopg2_connection_arguments(database_url),
             connect_timeout=connect_timeout,
         )
-    except (psycopg2.Error, OSError):
+    except (ArgumentError, OSError, RuntimeError, psycopg2.Error):
         return 10
 
     try:
