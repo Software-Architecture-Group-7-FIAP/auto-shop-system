@@ -23,7 +23,7 @@ FIRST_MUTATION_MARKER = "Apply the exact K8s foundation opening plan"
 CLOSE_MUTATION_MARKERS = (
     "Cancel and wait for this session's app deployment",
     "Reconcile the public edge into maintenance while preserving its URL",
-    "Destroy the ephemeral database after edge maintenance",
+    "Destroy the ephemeral database after optional edge maintenance",
     "Apply the exact NAT shutdown plan",
     "Apply the reviewed platform destroy plan",
     "Apply the reviewed compute-only foundation destroy plan",

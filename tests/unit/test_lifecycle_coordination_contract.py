@@ -132,6 +132,21 @@ def test_upstream_ssm_prefix_matches_the_auth_preflight_contract() -> None:
     assert 'condition     = var.upstream_ssm_prefix == "/auto-shop/staging"' in upstream_prefix
 
 
+def test_hml_infrastructure_only_profile_skips_application_release_and_public_edge() -> None:
+    start = (ROOT / ".github" / "workflows" / "environment-start.yml").read_text(encoding="utf-8")
+    stop = (ROOT / ".github" / "workflows" / "environment-stop.yml").read_text(encoding="utf-8")
+
+    assert "SESSION_PROFILE: ${{ steps.window.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE || 'full' }}" in start
+    assert "Infra-only HML sessions require both application deploy gates to remain false." in start
+    assert start.count("if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'") == 5
+    assert "Bootstrap the synthetic lifecycle database" in start
+    assert "SESSION_PROFILE: ${{ needs.resolve_session.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE || 'full' }}" in stop
+    assert "HML infrastructure-only close selected; public-edge and app release steps will be skipped." in stop
+    assert stop.count("vars.STAGING_SESSION_PROFILE != 'infra-only'") >= 3
+    destroy_step = stop.split("- name: Destroy the ephemeral database after optional edge maintenance", 1)[1]
+    assert "if: steps.close_decision.outputs.close_needed == 'true'" in destroy_step.split("\n", 4)[1]
+
+
 def test_public_ghcr_images_are_verified_anonymously_before_eks_deploy() -> None:
     for workflow_name, deploy_command, role_reference in (
         (
