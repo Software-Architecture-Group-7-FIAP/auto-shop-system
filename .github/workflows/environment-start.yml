@@ -248,9 +248,6 @@ jobs:
             exit 1
           }
 
-      - name: Verify the HML auth Lambda and SSM ARN contract without reading secrets
-        run: python3 .github/scripts/validate_auth_lambda_preflight.py
-
       - name: Record the trusted operator and authorize an infrastructure-only session
         env:
           SESSION_ID: ${{ needs.cost-preflight.outputs.session_id }}

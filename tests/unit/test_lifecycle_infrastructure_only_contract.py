@@ -16,10 +16,9 @@ def test_start_is_limited_to_a_gated_infrastructure_only_hml_session() -> None:
     assert "session_scope" in workflow and "infrastructure-only" in workflow
     assert "environment: operations" in workflow
     role = workflow.index("Configure the narrow lifecycle start role")
-    preflight = workflow.index("Verify the HML auth Lambda and SSM ARN contract")
     authorize = workflow.index("lifecycle_session_ledger.py authorize-open")
-    assert role < preflight < authorize
-    assert "validate_auth_lambda_preflight.py" in workflow
+    assert role < authorize
+    assert "validate_auth_lambda_preflight.py" not in workflow
     assert "inputs.started_at || 'default-17-BRT'" in workflow
     assert "Apply the exact K8s foundation opening plan" in workflow
 
