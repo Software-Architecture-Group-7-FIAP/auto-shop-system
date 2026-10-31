@@ -13,6 +13,12 @@ on:
         description: Optional HML UTC session start. Omit for the default 17:00 BRT start; PRD is fixed at 06:00 BRT.
         required: false
         type: string
+      test_mode:
+        description: Skip safe-retry recovery for clean manual testing (HML only).
+        required: false
+        default: 'false'
+        type: choice
+        options: ['true', 'false']
   schedule:
     - cron: "0 9 1-5 11 *" # PRD preparation starts 06:00 BRT, 1-5 November.
 
@@ -243,6 +249,7 @@ jobs:
 
       - name: Plan the K8s foundation opening
         id: k8s_foundation
+        if: ${{ inputs.test_mode != 'true' }}
         env:
           SESSION_ID: ${{ steps.window.outputs.session_id }}
           STARTED_AT: ${{ steps.window.outputs.started_at }}
@@ -256,6 +263,7 @@ jobs:
           --github-output "$GITHUB_OUTPUT" --output-name foundation --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
 
       - name: Apply the exact K8s foundation opening plan
+        if: ${{ inputs.test_mode != 'true' }}
         env:
           SESSION_ID: ${{ steps.window.outputs.session_id }}
           STARTED_AT: ${{ steps.window.outputs.started_at }}
@@ -271,6 +279,7 @@ jobs:
 
       - name: Plan the K8s platform opening
         id: k8s_platform
+        if: ${{ inputs.test_mode != 'true' }}
         env:
           SESSION_ID: ${{ steps.window.outputs.session_id }}
           STARTED_AT: ${{ steps.window.outputs.started_at }}
@@ -284,6 +293,7 @@ jobs:
           --github-output "$GITHUB_OUTPUT" --output-name platform --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
 
       - name: Apply the exact K8s platform opening plan
+        if: ${{ inputs.test_mode != 'true' }}
         env:
           SESSION_ID: ${{ steps.window.outputs.session_id }}
           STARTED_AT: ${{ steps.window.outputs.started_at }}
@@ -298,6 +308,7 @@ jobs:
           --github-output "$GITHUB_OUTPUT" --output-name platform_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
 
       - name: Bootstrap the synthetic lifecycle database
+        if: ${{ inputs.test_mode != 'true' }}
         env:
           SESSION_ID: ${{ steps.window.outputs.session_id }}
           STARTED_AT: ${{ steps.window.outputs.started_at }}
@@ -311,6 +322,7 @@ jobs:
           --github-output "$GITHUB_OUTPUT" --output-name database_bootstrap --timeout-seconds 1200 --deadline-utc "$WORK_DEADLINE"
 
       - name: Deploy the application and recreate its synthetic seed
+        if: ${{ inputs.test_mode != 'true' }}
         env:
           STAGE: ${{ steps.window.outputs.stage }}
           SESSION_ID: ${{ steps.window.outputs.session_id }}
@@ -328,6 +340,7 @@ jobs:
           --github-output "$GITHUB_OUTPUT" --output-name app_deploy --timeout-seconds 1500 --deadline-utc "$WORK_DEADLINE"
 
       - name: Apply the database grants after application migrations
+        if: ${{ inputs.test_mode != 'true' }}
         env:
           SESSION_ID: ${{ steps.window.outputs.session_id }}
           STARTED_AT: ${{ steps.window.outputs.started_at }}
