@@ -332,6 +332,22 @@ jobs:
             --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"platform\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}" \
             --github-output "$GITHUB_OUTPUT" --output-name platform_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
 
+      - name: Provision the HML database role and SSM contract
+        id: database_provision
+        env:
+          SESSION_ID: ${{ needs.cost-preflight.outputs.session_id }}
+          STARTED_AT: ${{ needs.cost-preflight.outputs.started_at }}
+          SESSION_MODE: ${{ needs.cost-preflight.outputs.session_mode }}
+          WORK_DEADLINE: ${{ needs.cost-preflight.outputs.work_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$DATABASE_INFRA_REPOSITORY" --workflow apply.yml --ref main
+          --expected-title "database/$SESSION_ID/apply/provision"
+          --authorization-action open
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"phase\":\"provision\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name database_provision --timeout-seconds 1800
+          --deadline-utc "$WORK_DEADLINE"
+
       - name: Plan the isolated HML namespace opening
         id: k8s_hml
         env:

@@ -277,24 +277,6 @@ jobs:
             exit 1
           }
 
-      - name: Destroy the ephemeral HML database
-        if: steps.close_decision.outputs.close_needed == 'true'
-        id: database_destroy
-        env:
-          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
-          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
-          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
-          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
-        run: >-
-          python3 .github/scripts/cross_repo_lifecycle.py
-          --repository "$DATABASE_INFRA_REPOSITORY" --workflow destroy.yml --ref main
-          --cancel-active-workflow apply.yml --cancel-title-prefix "database/$SESSION_ID/apply/"
-          --expected-title "database/$SESSION_ID/teardown/destroy"
-          --authorization-action close
-          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"confirm\":\"destroy\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name database_destroy --timeout-seconds 3600
-          --deadline-utc "$TEARDOWN_END"
-
       - name: Plan the isolated HML namespace teardown
         if: steps.close_decision.outputs.close_needed == 'true'
         id: hml_destroy_plan
@@ -328,6 +310,24 @@ jobs:
           --authorization-action close
           --inputs "{\"operation\":\"destroy\",\"stack\":\"hml\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"destroy\"}"
           --github-output "$GITHUB_OUTPUT" --output-name hml_destroy_apply --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Destroy the ephemeral HML database
+        if: steps.close_decision.outputs.close_needed == 'true'
+        id: database_destroy
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$DATABASE_INFRA_REPOSITORY" --workflow destroy.yml --ref main
+          --cancel-active-workflow apply.yml --cancel-title-prefix "database/$SESSION_ID/apply/"
+          --expected-title "database/$SESSION_ID/teardown/destroy"
+          --authorization-action close
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"confirm\":\"destroy\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name database_destroy --timeout-seconds 3600
           --deadline-utc "$TEARDOWN_END"
 
       - name: Plan the full K8s platform teardown
