@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1180" viewBox="0 0 1800 1180" role="img" aria-labelledby="title desc">
+  <title id="title">Arquitetura da solução Auto Shop — Fase 2</title>
+  <desc id="desc">Diagrama da aplicação FastAPI em arquitetura limpa, executada em Kubernetes local existente, com PostgreSQL, HPA, Terraform, Kustomize, Docker Compose e pipeline GitHub Actions.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#eef2ff"/>
+    </linearGradient>
+    <linearGradient id="cluster" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f4f7ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#172554" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+    </marker>
+    <style>
+      .title { font: 700 32px 'Segoe UI', Arial, sans-serif; fill: #0f172a; }
+      .subtitle { font: 400 17px 'Segoe UI', Arial, sans-serif; fill: #475569; }
+      .section { font: 700 20px 'Segoe UI', Arial, sans-serif; fill: #1e3a8a; }
+      .label { font: 700 16px 'Segoe UI', Arial, sans-serif; fill: #0f172a; }
+      .text { font: 400 14px 'Segoe UI', Arial, sans-serif; fill: #334155; }
+      .small { font: 400 12px 'Segoe UI', Arial, sans-serif; fill: #64748b; }
+      .node { stroke: #cbd5e1; stroke-width: 1.5; filter: url(#shadow); }
+      .arrow { stroke: #475569; stroke-width: 2.2; fill: none; marker-end: url(#arrow); }
+      .arrow-blue { stroke: #2563eb; stroke-width: 2.4; fill: none; marker-end: url(#arrowBlue); }
+      .dashed { stroke-dasharray: 8 7; }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1180" fill="url(#bg)"/>
+  <rect x="48" y="38" width="1704" height="1104" rx="26" fill="#ffffff" opacity="0.65"/>
+
+  <text x="90" y="92" class="title">Auto Shop — Arquitetura da solução | Fase 2</text>
+  <text x="90" y="124" class="subtitle">Componentes da aplicação, infraestrutura escolhida e fluxo de deploy</text>
+  <line x1="90" y1="150" x2="1710" y2="150" stroke="#dbeafe" stroke-width="2"/>
+
+  <!-- Entry point -->
+  <text x="90" y="190" class="section">Consumo</text>
+  <rect x="90" y="210" width="230" height="82" rx="14" fill="#eff6ff" class="node"/>
+  <text x="205" y="244" text-anchor="middle" class="label">Admin / cliente</text>
+  <text x="205" y="268" text-anchor="middle" class="text">Navegador Angular</text>
+  <text x="205" y="287" text-anchor="middle" class="text">ou API client</text>
+
+  <!-- Kubernetes boundary -->
+  <rect x="350" y="178" width="1080" height="700" rx="24" fill="url(#cluster)" stroke="#93c5fd" stroke-width="2.5"/>
+  <rect x="350" y="178" width="1080" height="60" rx="24" fill="#dbeafe"/>
+  <rect x="350" y="214" width="1080" height="24" fill="#dbeafe"/>
+  <text x="382" y="216" class="section">Cluster Kubernetes local existente</text>
+  <text x="1398" y="216" text-anchor="end" class="small">Kind ou Docker Desktop · bootstrap prévio</text>
+
+  <!-- Request path -->
+  <rect x="400" y="270" width="164" height="68" rx="12" fill="#ffffff" class="node"/>
+  <text x="482" y="298" text-anchor="middle" class="label">Ingress NGINX</text>
+  <text x="482" y="320" text-anchor="middle" class="small">entrada HTTP/HTTPS</text>
+  <rect x="604" y="270" width="174" height="68" rx="12" fill="#ffffff" class="node"/>
+  <text x="691" y="298" text-anchor="middle" class="label">Service ClusterIP</text>
+  <text x="691" y="320" text-anchor="middle" class="small">auto-shop-backend</text>
+  <rect x="818" y="260" width="350" height="88" rx="14" fill="#dbeafe" stroke="#60a5fa" stroke-width="2" filter="url(#shadow)"/>
+  <text x="993" y="293" text-anchor="middle" class="label">Deployment API FastAPI</text>
+  <text x="993" y="317" text-anchor="middle" class="text">2 réplicas iniciais · rolling update</text>
+  <text x="993" y="338" text-anchor="middle" class="small">health checks + usuário não-root</text>
+  <path d="M 320 251 L 400 304" class="arrow"/>
+  <path d="M 564 304 L 604 304" class="arrow"/>
+  <path d="M 778 304 L 818 304" class="arrow"/>
+
+  <!-- Internal application layers -->
+  <rect x="400" y="380" width="825" height="190" rx="16" fill="#ffffff" stroke="#bfdbfe" stroke-width="1.5"/>
+  <text x="430" y="413" class="section">Aplicação — Clean Architecture / DDD-light</text>
+  <rect x="430" y="437" width="148" height="84" rx="10" fill="#f8fafc" class="node"/>
+  <text x="504" y="468" text-anchor="middle" class="label">API</text>
+  <text x="504" y="491" text-anchor="middle" class="text">routers</text>
+  <text x="504" y="509" text-anchor="middle" class="small">schemas + auth</text>
+  <rect x="606" y="437" width="180" height="84" rx="10" fill="#f8fafc" class="node"/>
+  <text x="696" y="468" text-anchor="middle" class="label">Application</text>
+  <text x="696" y="491" text-anchor="middle" class="text">casos de uso</text>
+  <text x="696" y="509" text-anchor="middle" class="small">services + ports</text>
+  <rect x="814" y="437" width="180" height="84" rx="10" fill="#f8fafc" class="node"/>
+  <text x="904" y="468" text-anchor="middle" class="label">Domain</text>
+  <text x="904" y="491" text-anchor="middle" class="text">agregados</text>
+  <text x="904" y="509" text-anchor="middle" class="small">regras + estados</text>
+  <rect x="1022" y="437" width="180" height="84" rx="10" fill="#f8fafc" class="node"/>
+  <text x="1112" y="468" text-anchor="middle" class="label">Adapters</text>
+  <text x="1112" y="491" text-anchor="middle" class="text">SQLAlchemy</text>
+  <text x="1112" y="509" text-anchor="middle" class="small">SMTP + PDF + APIs</text>
+  <path d="M 578 479 L 606 479" class="arrow-blue"/>
+  <path d="M 786 479 L 814 479" class="arrow-blue"/>
+  <path d="M 994 479 L 1022 479" class="arrow-blue"/>
+  <path d="M 993 348 L 993 380" class="arrow-blue"/>
+
+  <!-- Data and supporting resources -->
+  <rect x="400" y="615" width="230" height="96" rx="13" fill="#fff7ed" class="node"/>
+  <text x="515" y="649" text-anchor="middle" class="label">PostgreSQL 16</text>
+  <text x="515" y="672" text-anchor="middle" class="text">banco relacional</text>
+  <text x="515" y="693" text-anchor="middle" class="small">PVC no ambiente local</text>
+  <rect x="670" y="615" width="220" height="96" rx="13" fill="#f0fdf4" class="node"/>
+  <text x="780" y="649" text-anchor="middle" class="label">Migration Job</text>
+  <text x="780" y="672" text-anchor="middle" class="text">Alembic</text>
+  <text x="780" y="693" text-anchor="middle" class="small">antes do rollout da API</text>
+  <rect x="930" y="615" width="238" height="96" rx="13" fill="#f5f3ff" class="node"/>
+  <text x="1049" y="649" text-anchor="middle" class="label">ConfigMap + Secret</text>
+  <text x="1049" y="672" text-anchor="middle" class="text">configuração e credenciais</text>
+  <text x="1049" y="693" text-anchor="middle" class="small">Secret criado fora do state</text>
+  <path d="M 1049 615 L 1049 570" class="arrow dashed"/>
+  <path d="M 1022 535 C 880 565, 690 585, 515 615" class="arrow"/>
+  <path d="M 670 663 L 630 663" class="arrow"/>
+
+  <!-- HPA and external/local services -->
+  <rect x="1210" y="270" width="170" height="100" rx="13" fill="#ecfeff" class="node"/>
+  <text x="1295" y="304" text-anchor="middle" class="label">HPA</text>
+  <text x="1295" y="327" text-anchor="middle" class="text">CPU 70%</text>
+  <text x="1295" y="348" text-anchor="middle" class="text">memória 80%</text>
+  <text x="1295" y="365" text-anchor="middle" class="small">máx. 10 pods</text>
+  <path d="M 1210 320 C 1185 320, 1185 300, 1168 300" class="arrow-blue dashed"/>
+  <text x="1480" y="190" class="section">Dependências</text>
+  <rect x="1480" y="270" width="230" height="92" rx="13" fill="#ecfeff" class="node"/>
+  <text x="1595" y="301" text-anchor="middle" class="label">Redis</text>
+  <text x="1595" y="324" text-anchor="middle" class="text">rate limit</text>
+  <text x="1595" y="345" text-anchor="middle" class="small">Compose local / externo</text>
+  <path d="M 1168 340 C 1250 400, 1380 410, 1480 310" class="arrow dashed"/>
+  <rect x="1480" y="400" width="230" height="92" rx="13" fill="#fefce8" class="node"/>
+  <text x="1595" y="431" text-anchor="middle" class="label">SMTP / MailHog</text>
+  <text x="1595" y="454" text-anchor="middle" class="text">MailHog no local</text>
+  <text x="1595" y="475" text-anchor="middle" class="small">SMTP externo fora</text>
+  <path d="M 1202 480 C 1320 465, 1400 440, 1480 446" class="arrow"/>
+  <rect x="1480" y="530" width="230" height="92" rx="13" fill="#fef2f2" class="node"/>
+  <text x="1595" y="561" text-anchor="middle" class="label">Integrações</text>
+  <text x="1595" y="584" text-anchor="middle" class="text">Invertexto</text>
+  <text x="1595" y="604" text-anchor="middle" class="text">Brasil API</text>
+  <path d="M 1202 520 C 1320 530, 1400 565, 1480 575" class="arrow"/>
+
+  <!-- CI/CD -->
+  <text x="90" y="924" class="section">CI/CD e infraestrutura como código</text>
+  <rect x="90" y="950" width="250" height="110" rx="14" fill="#f8fafc" class="node"/>
+  <text x="215" y="985" text-anchor="middle" class="label">GitHub Actions</text>
+  <text x="215" y="1008" text-anchor="middle" class="text">testes + cobertura ≥ 80%</text>
+  <text x="215" y="1028" text-anchor="middle" class="text">Bandit + pip-audit</text>
+  <text x="215" y="1048" text-anchor="middle" class="small">frontend build + Docker build</text>
+  <rect x="395" y="950" width="220" height="110" rx="14" fill="#eff6ff" class="node"/>
+  <text x="505" y="985" text-anchor="middle" class="label">Imagem Docker</text>
+  <text x="505" y="1008" text-anchor="middle" class="text">tag SHA imutável</text>
+  <text x="505" y="1030" text-anchor="middle" class="small">tag local no smoke test</text>
+  <rect x="670" y="950" width="250" height="110" rx="14" fill="#f0fdf4" class="node"/>
+  <text x="795" y="985" text-anchor="middle" class="label">Kustomize</text>
+  <text x="795" y="1008" text-anchor="middle" class="text">foundation → migration</text>
+  <text x="795" y="1030" text-anchor="middle" class="text">→ app → ingress</text>
+  <rect x="975" y="950" width="250" height="110" rx="14" fill="#fff7ed" class="node"/>
+  <text x="1100" y="985" text-anchor="middle" class="label">Terraform</text>
+  <text x="1100" y="1008" text-anchor="middle" class="text">provider Kubernetes</text>
+  <text x="1100" y="1030" text-anchor="middle" class="small">gerencia a stack no cluster</text>
+  <path d="M 340 1005 L 395 1005" class="arrow-blue"/>
+  <path d="M 615 1005 L 670 1005" class="arrow-blue"/>
+  <path d="M 920 1005 L 975 1005" class="arrow-blue"/>
+  <path d="M 795 950 C 795 900, 940 900, 940 878" class="arrow-blue dashed"/>
+  <path d="M 1100 950 C 1100 900, 1120 900, 1120 878" class="arrow-blue dashed"/>
+
+  <!-- Local compose -->
+  <rect x="1270" y="950" width="410" height="110" rx="14" fill="#f5f3ff" class="node"/>
+  <text x="1475" y="985" text-anchor="middle" class="label">Docker Compose — desenvolvimento</text>
+  <text x="1475" y="1008" text-anchor="middle" class="text">API + PostgreSQL + Redis + MailHog</text>
+  <text x="1475" y="1033" text-anchor="middle" class="small">alternativa para execução local rápida</text>
+
+  <!-- Notes -->
+  <rect x="90" y="1090" width="1590" height="34" rx="9" fill="#e0e7ff"/>
+  <text x="885" y="1113" text-anchor="middle" class="small">Escopo desta entrega: não criar Kind/EKS, VPC, IAM ou RDS automaticamente; o cluster local é iniciado previamente.</text>
+</svg>

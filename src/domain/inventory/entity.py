@@ -28,6 +28,22 @@ class Reservation:
             quantity=positive_quantity(quantity),
         )
 
+    def reconcile_quantity(self, quantity: int) -> None:
+        self.quantity = positive_quantity(quantity)
+
+    def release(self) -> None:
+        self.status = ReservationStatus.RELEASED
+
+    def consume(self, quantity: int) -> None:
+        if self.status != ReservationStatus.ACTIVE:
+            raise ValidationError("Reserva não está ativa")
+        if quantity <= 0 or quantity > self.quantity:
+            raise ValidationError("Quantidade excede a reserva ativa")
+        if quantity == self.quantity:
+            self.status = ReservationStatus.CONSUMED
+            return
+        self.quantity -= quantity
+
 
 @dataclass
 class PurchaseRequest:
@@ -56,7 +72,22 @@ class PurchaseRequest:
         )
 
     def mark_received(self) -> None:
+        if self.status not in (
+            PurchaseRequestStatus.PENDING,
+            PurchaseRequestStatus.ORDERED,
+        ):
+            raise ValidationError("Solicitação de compra não está pendente")
         self.status = PurchaseRequestStatus.RECEIVED
+
+    def reconcile_quantity(self, quantity: int) -> None:
+        self.quantity = positive_quantity(quantity)
+
+    def cancel(self) -> None:
+        if self.status in (
+            PurchaseRequestStatus.PENDING,
+            PurchaseRequestStatus.ORDERED,
+        ):
+            self.status = PurchaseRequestStatus.CANCELLED
 
 
 @dataclass

@@ -1,5 +1,4 @@
 from contextlib import asynccontextmanager
-import logging
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -7,10 +6,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.exceptions import RequestValidationError
 
+from src.api.rate_limit import rate_limit_storage_available
 from src.api.routers import (
     auth,
     budgets,
     customers,
+    customer_identity,
+    customer_service_orders,
     execution,
     inventory,
     invoices,
@@ -20,21 +22,13 @@ from src.api.routers import (
     services,
     vehicles,
 )
-from src.domain.exceptions import DomainError
+from src.api.correlation import CorrelationMiddleware
 from src.config import settings
+from src.domain.exceptions import DomainError
+from src.infrastructure import database
+from src.infrastructure.observability.json_logging import configure_json_logging, log_domain_error
 
-
-def _configure_app_logging() -> None:
-    app_logger = logging.getLogger("src")
-    app_logger.setLevel(logging.INFO)
-    if app_logger.handlers:
-        return
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s - %(message)s"))
-    app_logger.addHandler(handler)
-
-
-_configure_app_logging()
+configure_json_logging(settings.app_env)
 
 
 @asynccontextmanager
@@ -46,6 +40,7 @@ app = FastAPI(
     title="Oficina Mecânica API",
     description="Sistema Integrado de Atendimento e Execução de Serviços - FIAP 15SOAT Tech Challenge",
     version="1.0.0",
+    root_path=settings.api_root_path,
     lifespan=lifespan,
 )
 
@@ -53,9 +48,30 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins(),
     allow_credentials=settings.cors_allow_credentials,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=settings.cors_methods(),
+    allow_headers=settings.cors_headers(),
+    expose_headers=["X-Correlation-ID", "X-Request-ID"],
 )
+
+# The bundled pages ship no inline or third-party scripts; only the inline
+# <style> on the landing page needs an exception.
+CONTENT_SECURITY_POLICY = "; ".join(
+    [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data:",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+    ]
+)
+
+# Swagger and ReDoc pull their assets from a CDN, so the policy above would
+# break them; the API docs are the one surface left without CSP.
+CSP_EXEMPT_PATHS = ("/docs", "/redoc", "/openapi.json")
 
 
 @app.middleware("http")
@@ -68,6 +84,10 @@ async def add_security_headers(request: Request, call_next):
         "Permissions-Policy",
         "camera=(), microphone=(), geolocation=()",
     )
+    if not request.url.path.startswith(CSP_EXEMPT_PATHS):
+        response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+    if request.url.path.startswith(("/api/v1/public/", "/api/v1/customer/")):
+        response.headers.setdefault("Cache-Control", "no-store")
     if settings.security_hsts_enabled:
         response.headers.setdefault(
             "Strict-Transport-Security",
@@ -76,8 +96,12 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
+app.add_middleware(CorrelationMiddleware)
+
+
 @app.exception_handler(DomainError)
 async def domain_exception_handler(request: Request, exc: DomainError):
+    log_domain_error(exc)
     status_map = {
         "not_found": 404,
         "validation_error": 422,
@@ -179,14 +203,29 @@ def home(request: Request):
 </html>"""
 
 
-@app.get("/health", tags=["Health"])
-def health_check():
+@app.get("/health/live", tags=["Health"])
+def liveness_check():
     return {"status": "ok"}
+
+
+@app.get("/health/ready", tags=["Health"])
+def readiness_check():
+    if not database.check_database_connection() or not rate_limit_storage_available():
+        return JSONResponse(status_code=503, content={"status": "unavailable"})
+    return {"status": "ok"}
+
+
+@app.get("/health", tags=["Health"], include_in_schema=False)
+def health_check():
+    return liveness_check()
 
 
 api_prefix = "/api/v1"
 
 app.include_router(auth.router, prefix=api_prefix)
+app.include_router(auth.admin_router, prefix=api_prefix)
+app.include_router(customer_identity.router, prefix=api_prefix)
+app.include_router(customer_service_orders.router, prefix=api_prefix)
 app.include_router(customers.router, prefix=api_prefix)
 app.include_router(public_customers.router, prefix=api_prefix)
 app.include_router(vehicles.router, prefix=api_prefix)

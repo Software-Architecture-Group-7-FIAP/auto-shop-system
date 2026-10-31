@@ -8,6 +8,7 @@ from src.infrastructure.persistence.service_order_repository import (
     SqlAlchemyServiceOrderContactLookup,
     SqlAlchemyServiceOrderRepository,
 )
+from src.infrastructure.persistence.budget_repository import SqlAlchemyBudgetRepository
 from src.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from src.infrastructure.service_order import (
     ReportLabServiceOrderPdfGenerator,
@@ -21,6 +22,7 @@ def compose_service_order_service(db: Session) -> ServiceOrderService:
         contacts=SqlAlchemyServiceOrderContactLookup(db),
         tracking_tokens=HmacServiceOrderTrackingTokenService(),
         uow=SqlAlchemyUnitOfWork(db),
+        budgets=SqlAlchemyBudgetRepository(db),
     )
 
 

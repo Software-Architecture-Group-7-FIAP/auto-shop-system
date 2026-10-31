@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from src.api.composition.inventory import compose_inventory_service
-from src.api.dependencies import domain_error_handler, get_current_user
+from src.api.dependencies import get_current_user
 from src.api.schemas import (
     GoodsReceiptCreate,
     PurchaseRequestCreate,
@@ -10,7 +10,6 @@ from src.api.schemas import (
     ReservationCreate,
     ReservationResponse,
 )
-from src.domain.exceptions import DomainError
 from src.infrastructure.database import UserModel, get_db
 
 router = APIRouter(tags=["Inventory"])
@@ -30,10 +29,7 @@ def create_reservations(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_inventory_service(db).create_reservations_for_os(data.service_order_id)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_inventory_service(db).create_reservations_for_os(data.service_order_id)
 
 
 @router.post(
@@ -46,10 +42,7 @@ def create_reservations_for_os(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_inventory_service(db).create_reservations_for_os(service_order_id)
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_inventory_service(db).create_reservations_for_os(service_order_id)
 
 
 @router.get("/admin/purchase-requests", response_model=list[PurchaseRequestResponse])
@@ -66,12 +59,9 @@ def create_purchase_request(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        return compose_inventory_service(db).create_purchase_request(
-            data.product_id, data.quantity, data.service_order_id
-        )
-    except DomainError as e:
-        raise domain_error_handler(e)
+    return compose_inventory_service(db).create_purchase_request(
+        data.product_id, data.quantity, data.service_order_id
+    )
 
 
 @router.post("/admin/purchase-requests/{purchase_request_id}/receipt", status_code=201)
@@ -81,14 +71,11 @@ def register_receipt(
     db: Session = Depends(get_db),
     _: UserModel = Depends(get_current_user),
 ):
-    try:
-        receipt = compose_inventory_service(db).register_receipt(
-            purchase_request_id,
-            data.quantity,
-        )
-        return {"id": receipt.id, "purchase_request_id": receipt.purchase_request_id, "quantity": receipt.quantity}
-    except DomainError as e:
-        raise domain_error_handler(e)
+    receipt = compose_inventory_service(db).register_receipt(
+        purchase_request_id,
+        data.quantity,
+    )
+    return {"id": receipt.id, "purchase_request_id": receipt.purchase_request_id, "quantity": receipt.quantity}
 
 
 @router.get("/admin/products/{product_id}/pending-receipts", response_model=list[PurchaseRequestResponse])

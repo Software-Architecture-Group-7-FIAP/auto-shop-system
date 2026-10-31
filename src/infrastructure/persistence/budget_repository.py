@@ -31,7 +31,11 @@ class SqlAlchemyBudgetRepository:
             status=budget.status,
             total_price=budget.total_price,
             estimated_delivery=budget.estimated_delivery,
-            approval_token=budget.approval_token,
+            approval_token_hash=budget.approval_token_hash,
+            approval_expires_at=budget.approval_expires_at,
+            approval_used_at=budget.approval_used_at,
+            revision_number=budget.revision_number,
+            supersedes_budget_id=budget.supersedes_budget_id,
         )
         self.db.add(model)
         self.db.flush()
@@ -44,10 +48,20 @@ class SqlAlchemyBudgetRepository:
             return None
         return self._to_domain(model)
 
-    def get_by_approval_token(self, token: str) -> Budget | None:
+    def get_by_id_for_update(self, budget_id: int) -> Budget | None:
         model = (
             self.db.query(BudgetModel)
-            .filter(BudgetModel.approval_token == token)
+            .filter(BudgetModel.id == budget_id)
+            .with_for_update()
+            .first()
+        )
+        return self._to_domain(model) if model else None
+
+    def get_by_approval_token_fingerprint(self, token_fingerprint: str) -> Budget | None:
+        model = (
+            self.db.query(BudgetModel)
+            .filter(BudgetModel.approval_token_hash == token_fingerprint)
+            .with_for_update()
             .first()
         )
         if not model:
@@ -57,6 +71,45 @@ class SqlAlchemyBudgetRepository:
     def list_all(self) -> list[Budget]:
         models = self.db.query(BudgetModel).all()
         return [self._to_domain(model) for model in models]
+
+    def list_revision_family(self, budget_id: int) -> list[Budget]:
+        """Walk the revision chain both ways using indexed lookups only.
+
+        A revision family is a handful of rows, so this costs a few indexed
+        queries instead of scanning (and lazily hydrating the lines of) every
+        budget in the table.
+        """
+        found: dict[int, BudgetModel] = {}
+
+        root = self.db.get(BudgetModel, budget_id)
+        if root is None:
+            return []
+        found[root.id] = root
+
+        ancestor = root
+        while ancestor.supersedes_budget_id is not None:
+            if ancestor.supersedes_budget_id in found:
+                break
+            parent = self.db.get(BudgetModel, ancestor.supersedes_budget_id)
+            if parent is None:
+                break
+            found[parent.id] = parent
+            ancestor = parent
+
+        frontier = list(found)
+        while frontier:
+            children = (
+                self.db.query(BudgetModel)
+                .filter(BudgetModel.supersedes_budget_id.in_(frontier))
+                .all()
+            )
+            frontier = []
+            for child in children:
+                if child.id not in found:
+                    found[child.id] = child
+                    frontier.append(child.id)
+
+        return [self._to_domain(model) for model in found.values()]
 
     # --------------- Serviços ------------------
 
@@ -210,7 +263,11 @@ class SqlAlchemyBudgetRepository:
         model.status = budget.status
         model.total_price = budget.total_price
         model.estimated_delivery = budget.estimated_delivery
-        model.approval_token = budget.approval_token
+        model.approval_token_hash = budget.approval_token_hash
+        model.approval_expires_at = budget.approval_expires_at
+        model.approval_used_at = budget.approval_used_at
+        model.revision_number = budget.revision_number
+        model.supersedes_budget_id = budget.supersedes_budget_id
         self.db.flush()
         self.db.refresh(model)
 
@@ -239,7 +296,11 @@ class SqlAlchemyBudgetRepository:
             status=model.status,
             total_price=model.total_price,
             estimated_delivery=model.estimated_delivery,
-            approval_token=model.approval_token,
+            approval_token_hash=model.approval_token_hash,
+            approval_expires_at=model.approval_expires_at,
+            approval_used_at=model.approval_used_at,
+            revision_number=model.revision_number,
+            supersedes_budget_id=model.supersedes_budget_id,
             created_at=model.created_at,
             service_lines=[
                 cls._service_line_to_domain(line) for line in model.service_lines

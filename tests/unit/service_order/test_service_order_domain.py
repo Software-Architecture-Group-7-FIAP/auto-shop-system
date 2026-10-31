@@ -44,6 +44,25 @@ def test_service_order_sets_priority():
     assert service_order.priority == Priority.HIGH
 
 
+@pytest.mark.parametrize(
+    "status",
+    [ServiceOrderStatus.FINALIZADA, ServiceOrderStatus.ENTREGUE],
+)
+def test_service_order_rejects_priority_changes_when_closed(status):
+    service_order = ServiceOrder(
+        id=1,
+        budget_id=2,
+        customer_id=3,
+        vehicle_id=4,
+        status=status,
+    )
+
+    with pytest.raises(ValidationError, match="OS encerrada"):
+        service_order.set_priority(Priority.URGENT)
+
+    assert service_order.priority == Priority.NORMAL
+
+
 def test_service_order_assign_mechanic_trims_name():
     service_order = ServiceOrder(
         id=1,
@@ -56,3 +75,34 @@ def test_service_order_assign_mechanic_trims_name():
 
     assert service_order.mechanic_name == "Mecânico A"
     assert service_order.status == ServiceOrderStatus.EM_DIAGNOSTICO
+
+
+def test_service_order_assigns_mechanic_without_leaving_ready_queue():
+    service_order = ServiceOrder(
+        id=1,
+        budget_id=2,
+        customer_id=3,
+        vehicle_id=4,
+        status=ServiceOrderStatus.AGUARDANDO_INICIO,
+    )
+
+    service_order.assign_mechanic("Mecânico A")
+
+    assert service_order.mechanic_name == "Mecânico A"
+    assert service_order.status == ServiceOrderStatus.AGUARDANDO_INICIO
+    assert service_order.status_history[-1].transition_type == "mechanic_assignment"
+
+
+def test_service_order_assigns_mechanic_while_waiting_for_purchase():
+    service_order = ServiceOrder(
+        id=1,
+        budget_id=2,
+        customer_id=3,
+        vehicle_id=4,
+        status=ServiceOrderStatus.AGUARDANDO_COMPRA,
+    )
+
+    service_order.assign_mechanic("Mecânico A")
+
+    assert service_order.mechanic_name == "Mecânico A"
+    assert service_order.status == ServiceOrderStatus.AGUARDANDO_COMPRA

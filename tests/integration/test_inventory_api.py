@@ -1,4 +1,6 @@
-def _create_os_with_product(client, auth_headers, stock_quantity: int, product_quantity: int):
+def _create_os_with_product(
+    client, auth_headers, captured_emails, stock_quantity: int, product_quantity: int
+):
     customer = client.post(
         "/api/v1/admin/customers",
         headers=auth_headers,
@@ -59,12 +61,15 @@ def _create_os_with_product(client, auth_headers, stock_quantity: int, product_q
         json={"product_id": product["id"], "quantity": product_quantity},
     )
 
-    send = client.post(
+    client.post(
         f"/api/v1/admin/budgets/{budget['id']}/send-email",
         headers=auth_headers,
     )
-    token = send.json()["approval_token"]
-    approve = client.post(f"/api/v1/public/budgets/{token}/approve")
+    token = captured_emails.approval_token()
+    approve = client.post(
+        "/api/v1/public/budgets/decisions",
+        json={"token": token, "decision": "approve"},
+    )
     assert approve.status_code == 200
 
     service_orders = client.get(
@@ -72,8 +77,8 @@ def _create_os_with_product(client, auth_headers, stock_quantity: int, product_q
         headers=auth_headers,
     )
     assert service_orders.status_code == 200
-    assert len(service_orders.json()) == 1
-    service_order_id = service_orders.json()[0]["id"]
+    assert len(service_orders.json()["items"]) == 1
+    service_order_id = service_orders.json()["items"][0]["id"]
 
     return {
         "product_id": product["id"],
@@ -81,10 +86,11 @@ def _create_os_with_product(client, auth_headers, stock_quantity: int, product_q
     }
 
 
-def test_inventory_reservations_and_purchase_requests_flow(client, auth_headers):
+def test_inventory_reservations_and_purchase_requests_flow(client, auth_headers, captured_emails):
     context = _create_os_with_product(
         client,
         auth_headers,
+        captured_emails,
         stock_quantity=1,
         product_quantity=5,
     )
@@ -98,8 +104,15 @@ def test_inventory_reservations_and_purchase_requests_flow(client, auth_headers)
     reservations = create_reservations.json()
     assert len(reservations) == 1
     assert reservations[0]["product_id"] == context["product_id"]
-    assert reservations[0]["quantity"] == 5
+    assert reservations[0]["quantity"] == 1
     assert reservations[0]["service_order_id"] == context["service_order_id"]
+
+    waiting_order = client.get(
+        f"/api/v1/admin/service-orders/{context['service_order_id']}",
+        headers=auth_headers,
+    )
+    assert waiting_order.status_code == 200
+    assert waiting_order.json()["status"] == "Aguardando compra"
 
     list_reservations = client.get("/api/v1/admin/reservations", headers=auth_headers)
     assert list_reservations.status_code == 200
@@ -144,6 +157,13 @@ def test_inventory_reservations_and_purchase_requests_flow(client, auth_headers)
     )
     assert pending_after_receipt.status_code == 200
     assert pending_after_receipt.json() == []
+
+    ready_order = client.get(
+        f"/api/v1/admin/service-orders/{context['service_order_id']}",
+        headers=auth_headers,
+    )
+    assert ready_order.status_code == 200
+    assert ready_order.json()["status"] == "Aguardando início"
 
 
 def test_inventory_create_purchase_request_and_reject_missing_os(client, auth_headers):

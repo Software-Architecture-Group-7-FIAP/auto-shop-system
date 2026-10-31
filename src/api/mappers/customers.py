@@ -11,6 +11,7 @@ def customer_to_response(customer: Customer) -> CustomerResponse:
         phone=customer.phone,
         address=customer.address,
         created_at=customer.created_at,
+        status=customer.status,
     )
 
 

@@ -14,6 +14,7 @@ class SqlAlchemyUserRepository:
             email=user.email,
             hashed_password=user.hashed_password,
             is_active=user.is_active,
+            role=user.role,
         )
         self.db.add(model)
         self.db.flush()
@@ -26,6 +27,10 @@ class SqlAlchemyUserRepository:
             return None
         return self._to_domain(model)
 
+    def get_by_id(self, user_id: int) -> User | None:
+        model = self.db.query(UserModel).filter(UserModel.id == user_id).first()
+        return self._to_domain(model) if model else None
+
     @staticmethod
     def _to_domain(model: UserModel) -> User:
         return User(
@@ -34,5 +39,6 @@ class SqlAlchemyUserRepository:
             email=model.email,
             hashed_password=model.hashed_password,
             is_active=model.is_active,
+            role=model.role,
             created_at=model.created_at,
         )

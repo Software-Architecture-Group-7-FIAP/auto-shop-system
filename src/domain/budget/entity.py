@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import ClassVar
 from zoneinfo import ZoneInfo
 
 from src.domain.budget.value_objects import BudgetValidator
@@ -89,16 +90,42 @@ class Budget:
     status: BudgetStatus = BudgetStatus.DRAFT
     total_price: float = 0.0
     estimated_delivery: datetime | None = None
-    approval_token: str | None = None
+    # A fingerprint is safe to carry in the domain model; the raw bearer
+    # token is intentionally not represented here.
+    approval_token_hash: str | None = None
+    approval_expires_at: datetime | None = None
+    approval_used_at: datetime | None = None
+    revision_number: int = 1
+    supersedes_budget_id: int | None = None
     created_at: datetime | None = None
     service_lines: list[BudgetServiceLine] = field(default_factory=list)
     product_lines: list[BudgetProductLine] = field(default_factory=list)
+
+    _ALLOWED_TRANSITIONS: ClassVar[dict[BudgetStatus, frozenset[BudgetStatus]]] = {
+        BudgetStatus.DRAFT: frozenset({BudgetStatus.SENT, BudgetStatus.SUPERSEDED}),
+        BudgetStatus.SENT: frozenset(
+            {BudgetStatus.APPROVED, BudgetStatus.REJECTED, BudgetStatus.SUPERSEDED}
+        ),
+        BudgetStatus.APPROVED: frozenset(),
+        BudgetStatus.REJECTED: frozenset(),
+        BudgetStatus.SUPERSEDED: frozenset(),
+    }
 
     @classmethod
     def create(cls, customer_id: int, vehicle_id: int) -> "Budget":
         return cls(id=None, customer_id=customer_id, vehicle_id=vehicle_id)
 
+    def transition_to(self, status: BudgetStatus) -> None:
+        if status == self.status:
+            raise ValidationError("Orçamento já está neste status")
+        if status not in self._ALLOWED_TRANSITIONS.get(self.status, frozenset()):
+            raise ValidationError(
+                f"Transição de {self.status.value} para {status.value} não permitida"
+            )
+        self.status = status
+
     def add_service_line(self, service_id: int, quantity: int, base_price: int, resolved_requirements: list[dict]) -> BudgetServiceLine:
+        self._ensure_editable()
         valid_quantity = BudgetValidator.ServiceLineValidator.validate_quantity(quantity)
 
         if any(line.service_id == service_id for line in self.service_lines):
@@ -113,6 +140,7 @@ class Budget:
         )
     
     def update_service_line(self, line_id: int, quantity: int) -> BudgetServiceLine:
+        self._ensure_editable()
         line = next((line for line in self.service_lines if line.id == line_id), None)
         if not line:
             raise ValidationError("Linha de serviço não encontrada")
@@ -148,6 +176,7 @@ class Budget:
         from_service: bool,
         service_id: int | None = None,
     ) -> BudgetProductLine:
+        self._ensure_editable()
         valid_quantity = BudgetValidator.ProductLineValidator.validate_quantity(quantity)
         if not from_service and any(
             line.product_id == product_id and not line.from_service
@@ -165,6 +194,7 @@ class Budget:
         )
 
     def update_product_line(self, line_id: int, quantity: int) -> BudgetProductLine:
+        self._ensure_editable()
         line = next((line for line in self.product_lines if line.id == line_id), None)
         if not line:
             raise ValidationError("Linha de produto não encontrada")
@@ -178,6 +208,7 @@ class Budget:
         line_id: int,
         service_requirements: list[dict] | None = None,
     ) -> tuple[BudgetServiceLine, list[BudgetProductLine]]:
+        self._ensure_editable()
         line = next((line for line in self.service_lines if line.id == line_id), None)
         if not line:
             raise ValidationError("Linha de serviço não encontrada")
@@ -193,6 +224,7 @@ class Budget:
         return line, removed_product_lines
 
     def remove_product_line(self, line_id: int) -> BudgetProductLine:
+        self._ensure_editable()
         line = next((line for line in self.product_lines if line.id == line_id), None)
         if not line:
             raise ValidationError("Linha de produto não encontrada")
@@ -215,6 +247,7 @@ class Budget:
         service_hours: dict[int, float],
         now: datetime | None = None,
     ) -> datetime:
+        self._ensure_editable()
         total_hours = 0.0
         for line in self.service_lines:
             estimated_hours = service_hours.get(line.service_id)
@@ -235,22 +268,140 @@ class Budget:
         return self.estimated_delivery
 
     def recalculate_total_price(self) -> float:
+        self._ensure_editable()
         self.total_price = sum(line.unit_price * line.quantity for line in self.service_lines) + sum(
             line.unit_price * line.quantity for line in self.product_lines
         )
         return self.total_price
 
-    def mark_sent(self, token: str) -> None:
-        self.approval_token = token
-        self.status = BudgetStatus.SENT
+    def mark_sent(self, token_hash: str, expires_at: datetime) -> None:
+        """Send the revision, or reissue the approval link for a sent one.
 
-    def approve(self) -> None:
+        Reissuing matters because the customer link expires: without it an
+        ignored e-mail would strand the revision forever, since an expired
+        token blocks approve, reject and every further edit.
+        """
+        if not token_hash or not token_hash.strip():
+            raise ValidationError("Fingerprint do token de aprovação é obrigatório")
+        if self.status == BudgetStatus.SENT:
+            if self.approval_used_at is not None:
+                raise ValidationError("Orçamento já teve uma decisão registrada")
+            self.approval_token_hash = token_hash
+            self.approval_expires_at = expires_at
+            return
+        if self.status != BudgetStatus.DRAFT:
+            raise ValidationError("Somente uma revisão em rascunho pode ser enviada")
+        self.approval_token_hash = token_hash
+        self.approval_expires_at = expires_at
+        self.approval_used_at = None
+        self.transition_to(BudgetStatus.SENT)
+
+    def mark_approval_used(self, used_at: datetime) -> None:
+        self.approval_used_at = used_at
+
+    def approve(
+        self,
+        approved_at: datetime | None = None,
+        *,
+        require_token: bool = True,
+    ) -> None:
+        """Approve the revision.
+
+        ``require_token`` is the customer path, where the decision rides on the
+        public bearer token and must respect its expiry. An authenticated staff
+        approval (customer confirmed by phone) passes ``False``: the e-mail
+        link's TTL says nothing about whether an admin may approve.
+        """
         if self.status == BudgetStatus.APPROVED:
             raise ValidationError("Orçamento já aprovado")
-        self.status = BudgetStatus.APPROVED
+        if self.status != BudgetStatus.SENT:
+            raise ValidationError("Somente um orçamento enviado pode ser aprovado")
+        decision_time = approved_at or datetime.now(ZoneInfo("UTC"))
+        self._ensure_decidable(decision_time, require_token)
+        self.transition_to(BudgetStatus.APPROVED)
+        self.approval_used_at = decision_time
 
-    def reject(self) -> None:
-        self.status = BudgetStatus.REJECTED
+    def reject(
+        self,
+        rejected_at: datetime | None = None,
+        *,
+        require_token: bool = True,
+    ) -> None:
+        if self.status == BudgetStatus.REJECTED:
+            raise ValidationError("Orçamento já recusado")
+        if self.status != BudgetStatus.SENT:
+            raise ValidationError("Somente um orçamento enviado pode ser recusado")
+        decision_time = rejected_at or datetime.now(ZoneInfo("UTC"))
+        self._ensure_decidable(decision_time, require_token)
+        self.transition_to(BudgetStatus.REJECTED)
+        self.approval_used_at = decision_time
+
+    def supersede(self) -> None:
+        if self.status not in (BudgetStatus.DRAFT, BudgetStatus.SENT):
+            raise ValidationError("Somente uma revisão pendente pode ser substituída")
+        self.transition_to(BudgetStatus.SUPERSEDED)
+        self.approval_token_hash = None
+        self.approval_expires_at = None
+
+    def clone_as_revision(self) -> "Budget":
+        """Return an editable snapshot for a new diagnostic revision."""
+        if self.status != BudgetStatus.APPROVED:
+            raise ValidationError("A nova revisão deve ser clonada da revisão aprovada")
+
+        revision = Budget(
+            id=None,
+            customer_id=self.customer_id,
+            vehicle_id=self.vehicle_id,
+            status=BudgetStatus.DRAFT,
+            total_price=self.total_price,
+            estimated_delivery=self.estimated_delivery,
+            revision_number=self.revision_number + 1,
+            supersedes_budget_id=self.id,
+        )
+        revision.service_lines = [
+            BudgetServiceLine(
+                id=None,
+                budget_id=0,
+                service_id=line.service_id,
+                quantity=line.quantity,
+                unit_price=line.unit_price,
+            )
+            for line in self.service_lines
+        ]
+        revision.product_lines = [
+            BudgetProductLine(
+                id=None,
+                budget_id=0,
+                product_id=line.product_id,
+                quantity=line.quantity,
+                unit_price=line.unit_price,
+                from_service=line.from_service,
+                service_id=line.service_id,
+            )
+            for line in self.product_lines
+        ]
+        return revision
+
+    def _ensure_editable(self) -> None:
+        if self.status != BudgetStatus.DRAFT:
+            raise ValidationError("Somente revisões em rascunho podem ser editadas")
+
+    def _ensure_decidable(self, now: datetime, require_token: bool) -> None:
+        if require_token:
+            self._ensure_approval_active(now)
+        elif self.approval_used_at is not None:
+            raise ValidationError("Orçamento já teve uma decisão registrada")
+
+    def _ensure_approval_active(self, now: datetime) -> None:
+        if self.approval_used_at is not None:
+            raise ValidationError("Token de aprovação já foi utilizado")
+        if self.approval_expires_at is None:
+            raise ValidationError("Token de aprovação sem expiração")
+        expires_at = self.approval_expires_at
+        if expires_at.tzinfo is None and now.tzinfo is not None:
+            now = now.replace(tzinfo=None)
+        if now >= expires_at:
+            raise ValidationError("Token de aprovação expirado")
 
     def _required_id(self) -> int:
         if self.id is None:

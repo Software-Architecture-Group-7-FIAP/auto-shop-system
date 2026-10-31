@@ -1,13 +1,15 @@
 from dataclasses import replace
+from datetime import datetime, timedelta
 
 import pytest
 
 from src.application.ports.inventory import (
     InventoryProduct,
     InventoryServiceOrderProductLine,
+    InventoryServiceOrderSnapshot,
 )
 from src.application.services.inventory_service import InventoryService
-from src.domain.enums import PurchaseRequestStatus, ReservationStatus
+from src.domain.enums import PurchaseRequestStatus, ReservationStatus, ServiceOrderStatus
 from src.domain.exceptions import NotFoundError
 from src.domain.inventory.entity import GoodsReceipt, PurchaseRequest, Reservation
 
@@ -30,6 +32,37 @@ class InMemoryInventoryRepository:
     def list_reservations(self) -> list[Reservation]:
         return list(self.reservations.values())
 
+    def get_active_reservation(
+        self,
+        service_order_id: int,
+        product_id: int,
+        *,
+        for_update: bool = False,
+    ) -> Reservation | None:
+        return next(
+            (
+                reservation
+                for reservation in self.reservations.values()
+                if reservation.service_order_id == service_order_id
+                and reservation.product_id == product_id
+                and reservation.status == ReservationStatus.ACTIVE
+            ),
+            None,
+        )
+
+    def save_reservation(self, reservation: Reservation) -> Reservation:
+        assert reservation.id is not None
+        self.reservations[reservation.id] = reservation
+        return reservation
+
+    def release_active_for_service_order(self, service_order_id: int) -> None:
+        for reservation in self.reservations.values():
+            if (
+                reservation.service_order_id == service_order_id
+                and reservation.status == ReservationStatus.ACTIVE
+            ):
+                reservation.release()
+
     def active_quantity_for_product(self, product_id: int) -> int:
         return sum(
             reservation.quantity
@@ -47,16 +80,32 @@ class InMemoryInventoryRepository:
         self.next_purchase_request_id += 1
         return created
 
-    def get_purchase_request(self, purchase_request_id: int) -> PurchaseRequest | None:
-        return self.purchase_requests.get(purchase_request_id)
-
-    def save_purchase_request(
+    def get_pending_purchase_request(
         self,
-        purchase_request: PurchaseRequest,
-    ) -> PurchaseRequest:
+        service_order_id: int,
+        product_id: int,
+        *,
+        for_update: bool = False,
+    ) -> PurchaseRequest | None:
+        return next(
+            (
+                request
+                for request in self.purchase_requests.values()
+                if request.service_order_id == service_order_id
+                and request.product_id == product_id
+                and request.status
+                in (PurchaseRequestStatus.PENDING, PurchaseRequestStatus.ORDERED)
+            ),
+            None,
+        )
+
+    def save_purchase_request(self, purchase_request: PurchaseRequest) -> PurchaseRequest:
         assert purchase_request.id is not None
         self.purchase_requests[purchase_request.id] = purchase_request
         return purchase_request
+
+    def get_purchase_request(self, purchase_request_id: int) -> PurchaseRequest | None:
+        return self.purchase_requests.get(purchase_request_id)
 
     def list_purchase_requests(self) -> list[PurchaseRequest]:
         return list(self.purchase_requests.values())
@@ -92,6 +141,9 @@ class FakeProductGateway:
     def get_product(self, product_id: int) -> InventoryProduct | None:
         return self.products.get(product_id)
 
+    def get_product_for_update(self, product_id: int) -> InventoryProduct | None:
+        return self.get_product(product_id)
+
     def add_stock(self, product_id: int, quantity: int) -> None:
         product = self.products.get(product_id)
         if product:
@@ -106,13 +158,54 @@ class FakeServiceOrderLookup:
         self,
         product_lines: dict[int, list[InventoryServiceOrderProductLine]],
     ):
-        self.product_lines = product_lines
+        self.snapshots = {
+            service_order_id: InventoryServiceOrderSnapshot(
+                id=service_order_id,
+                status=ServiceOrderStatus.AGUARDANDO_INICIO,
+                product_lines=tuple(lines),
+                created_at=datetime(2026, 1, 1) + timedelta(days=service_order_id),
+            )
+            for service_order_id, lines in product_lines.items()
+        }
 
     def get_product_lines(
         self,
         service_order_id: int,
     ) -> list[InventoryServiceOrderProductLine] | None:
-        return self.product_lines.get(service_order_id)
+        snapshot = self.get_reservation_snapshot(service_order_id)
+        return list(snapshot.product_lines) if snapshot else None
+
+    def get_reservation_snapshot(
+        self,
+        service_order_id: int,
+    ) -> InventoryServiceOrderSnapshot | None:
+        return self.snapshots.get(service_order_id)
+
+    def list_reservation_queue(
+        self,
+        product_id: int,
+    ) -> list[InventoryServiceOrderSnapshot]:
+        return sorted(
+            [
+                snapshot
+                for snapshot in self.snapshots.values()
+                if snapshot.status
+                in {
+                    ServiceOrderStatus.AGUARDANDO_INICIO,
+                    ServiceOrderStatus.AGUARDANDO_COMPRA,
+                }
+                and any(line.product_id == product_id for line in snapshot.product_lines)
+            ],
+            key=lambda snapshot: (snapshot.created_at or datetime.max, snapshot.id),
+        )
+
+    def set_reservation_status(
+        self,
+        service_order_id: int,
+        status: ServiceOrderStatus,
+    ) -> None:
+        snapshot = self.snapshots[service_order_id]
+        self.snapshots[service_order_id] = replace(snapshot, status=status)
 
 
 class FakeUnitOfWork:

@@ -4,6 +4,7 @@ from datetime import datetime
 import pytest
 
 from src.application.services.execution_service import ExecutionService
+from src.application.ports.events import ServiceOrderProcessingFailed
 from src.domain.enums import Priority, ServiceOrderStatus, StockWithdrawalStatus
 from src.domain.exceptions import NotFoundError, ValidationError
 from src.domain.execution.entity import StockWithdrawal
@@ -123,11 +124,28 @@ class FakeProductGateway:
 
 
 class FakeReservationGateway:
-    def __init__(self):
+    def __init__(self, active_quantities: dict[tuple[int, int], int] | None = None):
+        self.active_quantities = active_quantities or {}
         self.consumed: list[tuple[int, int]] = []
+        self.withdrawal_consumptions: list[tuple[int, int, int]] = []
+        self.released: list[int] = []
+
+    def active_quantity_for_product(self, service_order_id: int, product_id: int) -> int:
+        return self.active_quantities.get((service_order_id, product_id), 0)
+
+    def consume_for_withdrawal(
+        self,
+        service_order_id: int,
+        product_id: int,
+        quantity: int,
+    ) -> None:
+        self.withdrawal_consumptions.append((service_order_id, product_id, quantity))
 
     def consume_active_for_product(self, service_order_id: int, product_id: int) -> None:
         self.consumed.append((service_order_id, product_id))
+
+    def release_active_for_service_order(self, service_order_id: int) -> None:
+        self.released.append(service_order_id)
 
 
 class FakeClock:
@@ -160,15 +178,48 @@ class FakeEmailSender:
 
 
 class FakeUnitOfWork:
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        commit_error: Exception | None = None,
+        rollback_error: Exception | None = None,
+        calls: list[str] | None = None,
+    ):
         self.commits = 0
         self.rollbacks = 0
+        self.commit_error = commit_error
+        self.rollback_error = rollback_error
+        self.calls = calls
 
     def commit(self) -> None:
         self.commits += 1
+        if self.commit_error is not None:
+            raise self.commit_error
 
     def rollback(self) -> None:
         self.rollbacks += 1
+        if self.calls is not None:
+            self.calls.append("rollback")
+        if self.rollback_error is not None:
+            raise self.rollback_error
+
+
+class FakeServiceOrderEventPublisher:
+    def __init__(
+        self,
+        error: Exception | None = None,
+        calls: list[str] | None = None,
+    ):
+        self.events: list[ServiceOrderProcessingFailed] = []
+        self.error = error
+        self.calls = calls
+
+    def publish(self, event: ServiceOrderProcessingFailed) -> None:
+        if self.calls is not None:
+            self.calls.append("publish")
+        self.events.append(event)
+        if self.error is not None:
+            raise self.error
 
 
 def make_service_order(**overrides) -> ServiceOrder:
@@ -177,7 +228,7 @@ def make_service_order(**overrides) -> ServiceOrder:
         budget_id=2,
         customer_id=3,
         vehicle_id=4,
-        status=ServiceOrderStatus.AGUARDANDO_APROVACAO,
+        status=ServiceOrderStatus.AGUARDANDO_INICIO,
         product_lines=[
             ServiceOrderProductLine(
                 id=1,
@@ -198,6 +249,7 @@ def make_service(
     reservations: FakeReservationGateway | None = None,
     emails: FakeEmailSender | None = None,
     uow: FakeUnitOfWork | None = None,
+    event_publisher: FakeServiceOrderEventPublisher | None = None,
 ) -> ExecutionService:
     return ExecutionService(
         service_orders=service_orders
@@ -209,15 +261,176 @@ def make_service(
         recipients=FakeRecipient(),
         emails=emails or FakeEmailSender(),
         uow=uow or FakeUnitOfWork(),
+        event_publisher=event_publisher,
     )
+
+
+def test_unexpected_execution_failure_publishes_a_sanitized_event_and_rolls_back(caplog):
+    repository = InMemoryServiceOrderRepository([make_service_order()])
+    original_error = RuntimeError("CPF 52998224725 and token secret-value")
+    repository.save = lambda _order: (_ for _ in ()).throw(original_error)
+    publisher = FakeServiceOrderEventPublisher()
+    uow = FakeUnitOfWork()
+    service = make_service(
+        service_orders=repository,
+        uow=uow,
+        event_publisher=publisher,
+    )
+    request_id = "0e8cf6ae-93a5-4bc5-a902-4ef9cb8d6a30"
+
+    with pytest.raises(RuntimeError) as raised:
+        service.enqueue(1, request_id=request_id)
+
+    assert raised.value is original_error
+    assert uow.rollbacks == 1
+    assert len(publisher.events) == 1
+    event = publisher.events[0]
+    assert event.event_type == "ServiceOrderProcessingFailed"
+    assert event.event_version == 1
+    assert event.request_id == request_id
+    assert event.service_order_id == 1
+    assert event.severity == "error"
+    assert event.event_id
+    assert event.occurred_at.tzinfo is not None
+    assert "52998224725" not in repr(event)
+    assert "secret-value" not in repr(event)
+    assert "52998224725" not in caplog.text
+    assert "secret-value" not in caplog.text
+
+
+def test_expected_domain_validation_does_not_publish_operational_event():
+    publisher = FakeServiceOrderEventPublisher()
+    service = make_service(event_publisher=publisher)
+
+    with pytest.raises(ValidationError):
+        service.start_service(1)
+
+    assert publisher.events == []
+
+
+def test_event_publisher_failure_does_not_hide_original_execution_error(caplog):
+    repository = InMemoryServiceOrderRepository([make_service_order()])
+    original_error = RuntimeError("sensitive failure CPF 52998224725")
+    repository.save = lambda _order: (_ for _ in ()).throw(original_error)
+    publisher = FakeServiceOrderEventPublisher(
+        RuntimeError("publisher detail includes token secret-value")
+    )
+    service = make_service(
+        service_orders=repository,
+        event_publisher=publisher,
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        service.enqueue(1, request_id="0e8cf6ae-93a5-4bc5-a902-4ef9cb8d6a30")
+
+    assert raised.value is original_error
+    assert len(publisher.events) == 1
+    assert "event_publish_failed" in caplog.text
+    assert "52998224725" not in caplog.text
+    assert "secret-value" not in caplog.text
+
+
+def test_rollback_happens_before_failure_event_publication():
+    calls: list[str] = []
+    original_error = RuntimeError("commit failed")
+    uow = FakeUnitOfWork(commit_error=original_error, calls=calls)
+    publisher = FakeServiceOrderEventPublisher(calls=calls)
+    service = make_service(uow=uow, event_publisher=publisher)
+
+    with pytest.raises(RuntimeError) as raised:
+        service.enqueue(1)
+
+    assert raised.value is original_error
+    assert calls == ["rollback", "publish"]
+
+
+def test_rollback_failure_does_not_hide_original_execution_error(caplog):
+    original_error = RuntimeError("commit failed")
+    uow = FakeUnitOfWork(
+        commit_error=original_error,
+        rollback_error=RuntimeError("rollback failed with sensitive detail"),
+    )
+    publisher = FakeServiceOrderEventPublisher()
+    service = make_service(uow=uow, event_publisher=publisher)
+
+    with pytest.raises(RuntimeError) as raised:
+        service.enqueue(1)
+
+    assert raised.value is original_error
+    assert len(publisher.events) == 1
+    assert "processing_rollback_failed" in caplog.text
+    assert "sensitive detail" not in caplog.text
+
+
+def test_missing_publisher_does_not_hide_original_execution_error(caplog):
+    original_error = RuntimeError("commit failed")
+    service = make_service(uow=FakeUnitOfWork(commit_error=original_error))
+
+    with pytest.raises(RuntimeError) as raised:
+        service.enqueue(1)
+
+    assert raised.value is original_error
+    assert "reason=publisher_not_configured" in caplog.text
+
+
+@pytest.mark.parametrize("operation", ("enqueue", "start", "finish"))
+def test_each_monitored_execution_operation_preserves_unexpected_commit_failure(operation):
+    original_error = RuntimeError(f"{operation} commit failed")
+    uow = FakeUnitOfWork(commit_error=original_error)
+    publisher = FakeServiceOrderEventPublisher()
+    order = make_service_order(
+        status=(
+            ServiceOrderStatus.EM_EXECUCAO
+            if operation == "finish"
+            else ServiceOrderStatus.AGUARDANDO_INICIO
+        ),
+        mechanic_name="Carlos" if operation == "start" else None,
+    )
+    withdrawals = InMemoryStockWithdrawalRepository(
+        [
+            StockWithdrawal(
+                id=1,
+                service_order_id=1,
+                product_id=10,
+                quantity=2,
+                status=StockWithdrawalStatus.FULFILLED,
+            )
+        ]
+        if operation == "finish"
+        else None
+    )
+    service = make_service(
+        service_orders=InMemoryServiceOrderRepository([order]),
+        withdrawals=withdrawals,
+        reservations=FakeReservationGateway({(1, 10): 2}),
+        uow=uow,
+        event_publisher=publisher,
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        if operation == "enqueue":
+            service.enqueue(1)
+        elif operation == "start":
+            service.start_service(1)
+        else:
+            service.finish_service(1)
+
+    assert raised.value is original_error
+    assert uow.rollbacks == 1
+    assert len(publisher.events) == 1
 
 
 def test_execution_service_starts_service_order_without_sqlalchemy():
     repository = InMemoryServiceOrderRepository(
         [make_service_order(mechanic_name="Carlos")]
     )
+    reservations = FakeReservationGateway({(1, 10): 2})
     uow = FakeUnitOfWork()
-    service = make_service(service_orders=repository, uow=uow)
+    service = make_service(
+        service_orders=repository,
+        reservations=reservations,
+        uow=uow,
+    )
 
     updated = service.start_service(1)
 
@@ -260,6 +473,18 @@ def test_execution_service_rejects_invalid_start_status():
         service.start_service(1)
 
 
+def test_execution_service_rejects_start_without_all_active_reservations():
+    service = make_service(
+        service_orders=InMemoryServiceOrderRepository(
+            [make_service_order(mechanic_name="Carlos")]
+        ),
+        reservations=FakeReservationGateway({(1, 10): 1}),
+    )
+
+    with pytest.raises(ValidationError, match="Estoque não reservado"):
+        service.start_service(1)
+
+
 def test_execution_service_finishes_order_and_consumes_inventory():
     products = FakeProductGateway()
     reservations = FakeReservationGateway()
@@ -287,7 +512,7 @@ def test_execution_service_finishes_order_and_consumes_inventory():
     assert updated.status == ServiceOrderStatus.FINALIZADA
     assert updated.finished_at == datetime(2026, 1, 1, 8, 0, 0)
     assert products.decrements == []
-    assert reservations.consumed == [(1, 10)]
+    assert reservations.released == [1]
 
 
 def test_execution_service_blocks_finish_when_withdrawal_not_fulfilled():
@@ -341,12 +566,12 @@ def test_execution_service_lists_execution_queue_ordered_by_priority():
             [
                 make_service_order(
                     id=1,
-                    status=ServiceOrderStatus.AGUARDANDO_APROVACAO,
+                    status=ServiceOrderStatus.AGUARDANDO_INICIO,
                     priority=Priority.LOW,
                 ),
                 make_service_order(
                     id=2,
-                    status=ServiceOrderStatus.AGUARDANDO_APROVACAO,
+                    status=ServiceOrderStatus.AGUARDANDO_INICIO,
                     priority=Priority.URGENT,
                 ),
                 make_service_order(id=3, status=ServiceOrderStatus.EM_EXECUCAO),

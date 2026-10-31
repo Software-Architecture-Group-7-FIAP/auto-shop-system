@@ -1,0 +1,8 @@
+__pycache__
+*.pyc
+.git
+.env
+tests/
+frontend/
+k8s/**/secrets.env
+plans/

@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: auto-shop-hml
+resources:
+  - ../../../base/app
+  - ../../../base/redis
+images:
+  - name: auto-shop-system
+    newName: registry.example.com/auto-shop-system
+    newTag: __IMAGE_TAG__
+patches:
+  - path: redis-url-patch.yaml
+    target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: auto-shop-backend

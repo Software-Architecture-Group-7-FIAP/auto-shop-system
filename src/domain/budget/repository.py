@@ -10,10 +10,14 @@ class BudgetRepository(Protocol):
     def get_by_id(self, budget_id: int) -> Budget | None:
         ...
 
-    def get_by_approval_token(self, token: str) -> Budget | None:
+    def get_by_approval_token_fingerprint(self, token_fingerprint: str) -> Budget | None:
         ...
 
     def list_all(self) -> list[Budget]:
+        ...
+
+    def list_revision_family(self, budget_id: int) -> list[Budget]:
+        """Return every revision linked to the given one, ancestors included."""
         ...
 
     def add_service_line(self, line: BudgetServiceLine) -> BudgetServiceLine:

@@ -1,0 +1,66 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: auto-shop-seed
+  namespace: auto-shop
+  labels:
+    app.kubernetes.io/name: auto-shop-system
+    app.kubernetes.io/component: seed
+    app.kubernetes.io/part-of: auto-shop-platform
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app: auto-shop-seed
+        app.kubernetes.io/name: auto-shop-system
+        app.kubernetes.io/component: seed
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: synthetic-seed
+          image: auto-shop-system:__IMAGE_TAG__
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "src.scripts.seed_synthetic_environment"]
+          args: ["--dataset", "fase3-v1", "--stage", "local"]
+          env:
+            - name: SEED_SYNTHETIC_DATA
+              value: "true"
+            - name: DEPLOYMENT_STAGE
+              value: "local"
+            - name: ALLOW_SYNTHETIC_SEED_IN_PRD
+              value: "false"
+          envFrom:
+            - configMapRef:
+                name: auto-shop-config
+            - secretRef:
+                name: auto-shop-secrets
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

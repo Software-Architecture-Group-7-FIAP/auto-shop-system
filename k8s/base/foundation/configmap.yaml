@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: auto-shop-config
+  namespace: auto-shop
+  labels:
+    app.kubernetes.io/name: auto-shop-system
+    app.kubernetes.io/component: backend
+    app.kubernetes.io/part-of: auto-shop-platform
+data:
+  APP_ENV: "production"
+  APP_BASE_URL: "https://api.autoshop.com"
+  FRONTEND_PUBLIC_URL: "https://app.autoshop.com"
+  CORS_ALLOWED_ORIGINS: "https://app.autoshop.com"
+  CORS_ALLOWED_METHODS: "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+  CORS_ALLOWED_HEADERS: "Authorization,Content-Type,X-CSRF-Token,X-Request-ID,X-Correlation-ID,Accept"
+  CORS_ALLOW_CREDENTIALS: "true"
+  SECURITY_HSTS_ENABLED: "true"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+  BUDGET_APPROVAL_TOKEN_EXPIRE_HOURS: "72"
+  SMTP_HOST: "smtp.relay.internal"
+  SMTP_PORT: "587"
+  SMTP_FROM: "noreply@autoshop.com"
+  SMTP_USE_TLS: "false"
+  SMTP_STARTTLS: "true"
+  SMTP_REQUIRE_TLS: "true"
+  AUTO_CREATE_SCHEMA: "false"
+  SKIP_CPF_EXTERNAL_VALIDATION: "false"
+  CUSTOMER_JWT_JWKS_URL: "https://auth.autoshop.com/.well-known/jwks.json"
+  CUSTOMER_JWT_ISSUER: "https://auth.autoshop.com"
+  CUSTOMER_JWT_AUDIENCE: "auto-shop-api"
+  CUSTOMER_JWT_CLOCK_SKEW_SECONDS: "0"
+  CUSTOMER_JWT_JWKS_TIMEOUT_SECONDS: "2"
+  CUSTOMER_JWT_JWKS_CACHE_SECONDS: "300"
+  SERVICE_ORDER_EVENT_BUS_NAME: "__SERVICE_ORDER_EVENT_BUS_NAME__"

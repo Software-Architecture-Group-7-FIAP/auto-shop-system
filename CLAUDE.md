@@ -10,7 +10,7 @@ Sistema integrado de gestão para uma oficina mecânica (Tech Challenge Fase 1 �
 
 - **Backend:** Python 3.12 + FastAPI, monolito em camadas, REST + OpenAPI/Swagger
 - **Banco:** PostgreSQL (escolhido por ACID, integridade referencial, escalabilidade de filas de OS) + SQLAlchemy + Alembic
-- **Auth:** JWT (`python-jose`) nas rotas `/api/v1/admin/*`
+- **Auth:** JWT (`PyJWT`, algoritmo fixo `HS256`) nas rotas `/api/v1/admin/*`
 - **PDF:** ReportLab (orçamentos e OS)
 - **E-mail:** SMTP (MailHog em dev)
 - **Frontend:** Angular 15 (painel admin completo) + um painel legado "vanilla JS" servido em `/app/` pelo próprio FastAPI (remanescente da T02)

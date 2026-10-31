@@ -245,8 +245,13 @@
                 Verificar disponibilidade
             </button>
 
-            <button class="btn btn-primary" type="button" (click)="sendEmail()">
-                Enviar e-mail
+            <button
+                    class="btn btn-primary"
+                    type="button"
+                    (click)="sendEmail()"
+                    [disabled]="isSendingEmail"
+            >
+                {{ isSendingEmail ? 'Enviando...' : 'Enviar e-mail' }}
             </button>
 
             <button
@@ -261,7 +266,7 @@
         </div>
 
         <p *ngIf="actionMessage" class="action-message">{{ actionMessage }}</p>
-        <p *ngIf="errorMessage" class="error-message">{{ errorMessage }}</p>
+        <p *ngIf="errorMessage" class="error-message" role="alert">{{ errorMessage }}</p>
     </div>
 
     <div *ngIf="availabilityItems.length" class="action-section">

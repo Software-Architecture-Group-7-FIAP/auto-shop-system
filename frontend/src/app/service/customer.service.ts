@@ -33,11 +33,11 @@ export class CustomerService {
   }
 
   validateCnpj(cnpj: string): Observable<CnpjValidation> {
-    return this.http.get<CnpjValidation>(`${this.url}/validate-cnpj/${encodeURIComponent(cnpj)}`);
+    return this.http.post<CnpjValidation>(`${this.url}/validate-cnpj`, { document: cnpj }, this.httpOptions);
   }
 
   validateCpf(cpf: string): Observable<CpfValidation> {
-    return this.http.get<CpfValidation>(`${this.url}/validate-cpf/${encodeURIComponent(cpf)}`);
+    return this.http.post<CpfValidation>(`${this.url}/validate-cpf`, { document: cpf }, this.httpOptions);
   }
 
   addDocument(id: number, document: string): Observable<Customer> {

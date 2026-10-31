@@ -10,6 +10,9 @@ class StockWithdrawalRepository(Protocol):
     def get_by_id(self, withdrawal_id: int) -> StockWithdrawal | None:
         ...
 
+    def get_by_id_for_update(self, withdrawal_id: int) -> StockWithdrawal | None:
+        ...
+
     def save(self, withdrawal: StockWithdrawal) -> StockWithdrawal:
         ...
 

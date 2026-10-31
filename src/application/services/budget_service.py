@@ -16,7 +16,8 @@ from src.domain.budget.entity import (
 )
 from src.domain.budget.value_objects import BudgetValidator
 from src.domain.budget.repository import BudgetRepository
-from src.domain.exceptions import NotFoundError
+from src.domain.enums import BudgetStatus
+from src.domain.exceptions import NotFoundError, ValidationError
 
 
 class BudgetService:
@@ -55,6 +56,30 @@ class BudgetService:
 
     def list_all(self) -> list[Budget]:
         return self.budgets.list_all()
+
+    def create_revision(self, budget_id: int) -> Budget:
+        self.get_by_id(budget_id)
+        related = self.budgets.list_revision_family(budget_id)
+        approved = [item for item in related if item.status == BudgetStatus.APPROVED]
+        if not approved:
+            raise ValidationError("A nova revisão deve ser clonada da revisão aprovada")
+        source = max(approved, key=lambda item: item.revision_number)
+        revision = source.clone_as_revision()
+        revision.revision_number = max(
+            (item.revision_number for item in related),
+            default=source.revision_number,
+        ) + 1
+        persisted = self.budgets.add(revision)
+        for line in revision.service_lines:
+            line.budget_id = persisted.id or 0
+            saved = self.budgets.add_service_line(line)
+            line.id = saved.id
+        for line in revision.product_lines:
+            line.budget_id = persisted.id or 0
+            saved = self.budgets.add_product_line(line)
+            line.id = saved.id
+        self.uow.commit()
+        return self.get_by_id(persisted.id or 0)
 
     def add_service_line(self, budget_id: int, service_id: int, quantity: int) -> BudgetServiceLine:
         budget = self.budgets.get_by_id(budget_id)

@@ -22,7 +22,7 @@ Login: `admin` / senha definida em `DEV_ADMIN_PASSWORD` ao rodar o seed do backe
 Em banco novo, execute na raiz do projeto antes de entrar no painel:
 
 ```bash
-DEV_ADMIN_PASSWORD=admin123 poetry run python -m src.scripts.seed_dev_admin
+DEV_ADMIN_PASSWORD=<senha-forte> poetry run python -m src.scripts.seed_dev_admin
 ```
 
 O proxy em `proxy.conf.json` encaminha `/api/*` para `http://localhost:8000`.

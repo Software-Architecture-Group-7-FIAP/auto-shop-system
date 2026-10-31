@@ -41,6 +41,7 @@ import { ServiceOrderTrackingComponent } from './component/service-order-trackin
 import { BudgetApprovalComponent } from './component/budget-approval/budget-approval.component';
 
 import { FormErrorAlertComponent } from './component/shared/form-error-alert.component';
+import { NotificationsComponent } from './component/shared/notifications.component';
 import { AuthInterceptor } from './service/auth.interceptor';
 import { HttpErrorInterceptor } from './service/http-error.interceptor';
 
@@ -74,6 +75,7 @@ import { HttpErrorInterceptor } from './service/http-error.interceptor';
     ServiceOrderTrackingComponent,
     BudgetApprovalComponent,
     FormErrorAlertComponent,
+    NotificationsComponent,
   ],
   imports: [BrowserModule, FormsModule, AppRoutingModule, HttpClientModule],
   providers: [

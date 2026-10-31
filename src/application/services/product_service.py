@@ -67,9 +67,13 @@ class ProductService:
         return updated
 
     def update_stock(self, product_id: int, quantity: int) -> Product:
-        product = self.get_by_id(product_id)
-        product.update_stock(quantity)
-        updated = self.products.save(product)
+        adjust_stock = getattr(self.products, "adjust_stock", None)
+        if adjust_stock is not None:
+            updated = adjust_stock(product_id, quantity)
+        else:
+            product = self.get_by_id(product_id)
+            product.update_stock(quantity)
+            updated = self.products.save(product)
         self.uow.commit()
         return updated
 

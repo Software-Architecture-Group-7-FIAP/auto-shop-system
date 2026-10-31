@@ -1,0 +1,199 @@
+name: Reusable frontend deploy
+
+on:
+  workflow_call:
+    inputs:
+      github_environment:
+        description: GitHub Environment containing the deploy role and AWS region.
+        required: true
+        type: string
+      api_stage:
+        description: API stage selected by this frontend distribution's API origin.
+        required: true
+        type: string
+      session_id:
+        description: Coordinator-provided session identifier.
+        required: true
+        type: string
+      started_at:
+        description: Coordinator-provided UTC session start.
+        required: true
+        type: string
+      session_mode:
+        description: Coordinator-authorized session mode.
+        required: true
+        type: string
+      session_token:
+        description: Signed coordinator session capability.
+        required: true
+        type: string
+      ssm_parameter_prefix:
+        description: Prefix containing the stage-specific S3 and CloudFront deployment targets.
+        required: false
+        type: string
+        default: /auto-shop/staging
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: ${{ inputs.github_environment }}
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Require the matching HML or PRD source branch
+        env:
+          SOURCE_REF: ${{ github.ref }}
+          GITHUB_ENVIRONMENT: ${{ inputs.github_environment }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$GITHUB_ENVIRONMENT" in
+            hml) expected_ref="refs/heads/develop" ;;
+            prd) expected_ref="refs/heads/main" ;;
+            *) echo "::error::The frontend deploy Environment must be hml or prd."; exit 1 ;;
+          esac
+          [[ "$SOURCE_REF" == "$expected_ref" ]] || {
+            echo "::error::The frontend deployment source branch does not match its Environment."
+            exit 1
+          }
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Require the authorized environment operating window
+        env:
+          ENVIRONMENT_ACTIVE: ${{ inputs.github_environment == 'staging' && vars.STAGING_ACTIVE || vars.ENVIRONMENT_ACTIVE }}
+          ENVIRONMENT_WINDOW_AUTHORIZED: ${{ inputs.github_environment == 'staging' && vars.STAGING_SESSION_AUTHORIZED || vars.ENVIRONMENT_WINDOW_AUTHORIZED }}
+          ENVIRONMENT_SESSION_ID: ${{ inputs.session_id }}
+          ENVIRONMENT_WINDOW_STARTED_AT: ${{ inputs.started_at }}
+          ENVIRONMENT_STAGE: ${{ inputs.api_stage }}
+          SESSION_MODE: ${{ inputs.session_mode }}
+          LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          local_hour="$(TZ=America/Sao_Paulo date +%H)"
+          if [[ "${ENVIRONMENT_STAGE}" == "prd" && "${local_hour}" -lt 7 ]]; then
+            action=start
+          else
+            action=operate
+          fi
+          python3 .github/scripts/validate_environment_window.py --action "${action}"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Validate API stage
+        env:
+          API_STAGE: ${{ inputs.api_stage }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${API_STAGE}" in
+            hml|prd) ;;
+            *) echo "Unsupported API stage." >&2; exit 1 ;;
+          esac
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Angular production bundle
+        run: npm run build -- --configuration production
+
+      - name: Validate the Terraform-managed frontend deploy role ARN
+        env:
+          GITHUB_ENVIRONMENT: ${{ inputs.github_environment }}
+          DEPLOY_ROLE_ARN: ${{ inputs.github_environment == 'hml' && vars.AWS_FRONTEND_DEPLOY_ROLE_ARN_HML || (inputs.github_environment == 'prd' && vars.AWS_FRONTEND_DEPLOY_ROLE_ARN_PRD || '') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$GITHUB_ENVIRONMENT" in
+            hml)
+              expected_role_arn="arn:aws:iam::035611741563:role/auto-shop-staging-github-staging-frontend"
+              output_name="github_frontend_deploy_role_arn_staging"
+              variable_name="AWS_FRONTEND_DEPLOY_ROLE_ARN_HML"
+              ;;
+            prd)
+              expected_role_arn="arn:aws:iam::035611741563:role/auto-shop-staging-github-production-frontend"
+              output_name="github_frontend_deploy_role_arn_production"
+              variable_name="AWS_FRONTEND_DEPLOY_ROLE_ARN_PRD"
+              ;;
+            *) echo "::error::The frontend deploy Environment must be hml or prd."; exit 1 ;;
+          esac
+          [[ "$DEPLOY_ROLE_ARN" == "$expected_role_arn" ]] || {
+            echo "::error::Set $variable_name to Terraform output $output_name before frontend deployment."
+            exit 1
+          }
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.github_environment == 'hml' && vars.AWS_FRONTEND_DEPLOY_ROLE_ARN_HML || vars.AWS_FRONTEND_DEPLOY_ROLE_ARN_PRD }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Resolve stage deployment targets
+        id: targets
+        env:
+          API_STAGE: ${{ inputs.api_stage }}
+          SSM_PARAMETER_PREFIX: ${{ inputs.ssm_parameter_prefix }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${SSM_PARAMETER_PREFIX}" =~ ^/[A-Za-z0-9/_-]+/?$ ]]; then
+            echo "SSM_PARAMETER_PREFIX must be an absolute parameter path." >&2
+            exit 1
+          fi
+          prefix="${SSM_PARAMETER_PREFIX%/}"
+          bucket="$(aws ssm get-parameter \
+            --name "${prefix}/frontend/${API_STAGE}/bucket-name" \
+            --query 'Parameter.Value' --output text)"
+          distribution_id="$(aws ssm get-parameter \
+            --name "${prefix}/frontend/${API_STAGE}/distribution-id" \
+            --query 'Parameter.Value' --output text)"
+          if [[ ! "${bucket}" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]]; then
+            echo "The frontend bucket name in SSM is invalid." >&2
+            exit 1
+          fi
+          if [[ ! "${distribution_id}" =~ ^E[A-Z0-9]{13}$ ]]; then
+            echo "The CloudFront distribution ID in SSM is invalid." >&2
+            exit 1
+          fi
+          echo "bucket=${bucket}" >> "${GITHUB_OUTPUT}"
+          echo "distribution_id=${distribution_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Publish static assets
+        env:
+          FRONTEND_BUCKET: ${{ steps.targets.outputs.bucket }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws s3 sync dist/oficina-frontend "s3://${FRONTEND_BUCKET}" \
+            --delete \
+            --exclude "index.html" \
+            --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp dist/oficina-frontend/index.html "s3://${FRONTEND_BUCKET}/index.html" \
+            --content-type "text/html; charset=utf-8" \
+            --cache-control "no-cache, no-store, must-revalidate"
+
+      - name: Invalidate CloudFront cache
+        env:
+          DISTRIBUTION_ID: ${{ steps.targets.outputs.distribution_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudfront create-invalidation \
+            --distribution-id "${DISTRIBUTION_ID}" \
+            --paths "/*"

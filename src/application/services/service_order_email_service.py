@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from src.application.ports.email import EmailAttachment
 from src.application.ports.service_order import (
     ServiceOrderContactLookup,
@@ -7,6 +9,7 @@ from src.application.ports.service_order import (
 from src.application.ports.service_order_tracking import ServiceOrderTrackingTokenService
 from src.application.ports.unit_of_work import UnitOfWork
 from src.application.services.service_order_tracking import build_service_order_tracking_url
+from src.config import settings
 from src.domain.exceptions import NotFoundError
 from src.domain.service_order.repository import ServiceOrderRepository
 
@@ -41,6 +44,9 @@ class ServiceOrderEmailService:
         if not customer or not vehicle:
             raise NotFoundError("Dados da OS não encontrados")
         token = self.tracking_tokens.create_token()
+        expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(
+            days=settings.tracking_token_expire_days
+        )
         tracking_url = build_service_order_tracking_url(self.frontend_public_url, token)
 
         pdf = self.pdfs.generate_service_order_pdf(
@@ -72,5 +78,6 @@ class ServiceOrderEmailService:
         self.service_orders.set_tracking_token_fingerprint(
             service_order.id,
             self.tracking_tokens.fingerprint(token),
+            expires_at,
         )
         self.uow.commit()

@@ -2,16 +2,65 @@
 
 Backend MVP para gestão de ordens de serviço (OS), clientes, veículos, peças/insumos e faturamento.
 
-**FIAP 15SOAT — Tech Challenge Fase 1**
+**FIAP 15SOAT — Tech Challenge Fase 2**
 
 ## Stack
 
 - Python 3.12 + FastAPI
 - PostgreSQL (escolhido por suporte a transações ACID, integridade referencial e escalabilidade para filas de OS)
 - SQLAlchemy + Alembic
-- JWT para APIs administrativas
+- JWT de curta duracao em cookie HttpOnly + refresh token opaco rotativo em cookie HttpOnly
 - Docker + docker-compose
 - MailHog para email em desenvolvimento
+
+## Fase 2 - qualidade, resiliência e escala
+
+Esta fase evolui o MVP com Clean Architecture/DDD-light, ports and adapters,
+fluxo completo de OS, reserva transacional de estoque, fila operacional por
+status, testes automatizados, imagem de container e deploy Kubernetes.
+
+### Arquitetura e fluxo de deploy
+
+![Diagrama da arquitetura da solução](docs/architecture/fase2-architecture.png)
+
+Arquivos do diagrama: [PNG para o PDF](docs/architecture/fase2-architecture.png), [SVG vetorial](docs/architecture/fase2-architecture.svg) e [fonte Mermaid editável](docs/architecture/fase2-architecture.mmd).
+
+O Terraform desta entrega gerencia os recursos da aplicação em um cluster
+Kubernetes local já existente (Kind ou Docker Desktop). O cluster deve ser
+iniciado previamente; o Terraform não cria Kind, EKS, VPC, IAM ou RDS.
+
+## Fase 3 — operacional (API Gateway, CI/CD, observabilidade)
+
+Documentação da trilha [#88–#95](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/95): diagrama ponta a ponta, ADRs e links para os outros repositórios do grupo.
+
+| Recurso | Caminho |
+| --- | --- |
+| Índice de arquitetura | [docs/architecture/README.md](docs/architecture/README.md) |
+| Diagrama operacional (Mermaid) | [docs/architecture/fase-operacional.mmd](docs/architecture/fase-operacional.mmd) |
+| CI no PR | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
+| CD / OIDC / deploy | [.github/CD.md](.github/CD.md) |
+| Proteção de branches | [.github/BRANCH_PROTECTION.md](.github/BRANCH_PROTECTION.md) |
+| Templates CI outros repos | [.github/ecosystem-templates/README.md](.github/ecosystem-templates/README.md) |
+| API Gateway (Terraform AWS) | [infra/aws/README.md](infra/aws/README.md) |
+| Deploy K8s | [k8s/scripts/deploy.sh](k8s/scripts/deploy.sh) |
+
+**Ecossistema (quatro repositórios):** este monorepo (`backend` + `frontend/`), [`lambda-auth`](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth), `database-infra` e `k8s-infra` — papéis descritos no [ADR-0071](docs/architecture/decisions/ADR-0071-infraestrutura-cloud-fase-3.md).
+
+**Pipeline (resumo):** abrir PR → `ci.yml` verde → merge em `develop` → build GHCR (`cd-staging.yml`, gate `DEPLOY_STAGING_ENABLED`) → deploy via script K8s. Produção: merge `develop` → `main` → `cd-prod.yml`. Deploy real aguarda staging ([#87](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/87)).
+
+**Secrets / environments:** segredos de app via Kubernetes Secret e variáveis de Environment GitHub (OIDC); não commitar `.env`. Lista operacional: [.github/CD.md](.github/CD.md).
+### Infraestrutura AWS em andamento
+
+O código de infraestrutura e os workflows desta fase não comprovam que os recursos foram implantados. A homologação (`hml`) e o stage lógico `prd` usam uma única infraestrutura AWS efêmera, com namespaces e bancos lógicos separados, conforme a [ADR-0071](docs/architecture/decisions/ADR-0071-infraestrutura-cloud-fase-3.md).
+
+| Repositório ou diretório | Responsabilidade |
+|---|---|
+| [`infra/aws/`](infra/aws/README.md) | API Gateway, VPC Link, WAF, ACM e frontend em CloudFront/S3 |
+| [`k8s-infra`](https://github.com/Software-Architecture-Group-7-FIAP/k8s-infra) | VPC, EKS e ALB interno |
+| [`database-infra`](https://github.com/Software-Architecture-Group-7-FIAP/database-infra) | RDS e credenciais do banco |
+| [`lambda-auth`](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth) | Emissão de JWT de cliente e JWKS |
+
+As issues [#87](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/87) e [#113](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/113) seguem abertas. A estimativa de custo e a autorização operacional devem ser revistas antes de qualquer sessão AWS; cada `terraform apply` e deploy dependem da validação prevista no [ADR-0064](docs/architecture/decisions/ADR-0064-autenticacao-cliente-cpf-jwt.md). Consulte também o [runbook de deploy](docs/deployment.md) e o [guia de CI/CD](.github/CD.md).
 
 ## Arquitetura
 
@@ -25,21 +74,38 @@ src/
   api/            # routers FastAPI e schemas
 ```
 
+### Documentação da Fase 3
+
+RFCs, ADRs, justificativa do banco e diagramas editáveis/exportados estão reunidos em [docs/architecture/diagramas-fase-3.md](docs/architecture/diagramas-fase-3.md). O documento descreve o desenho-alvo e separa decisões aceitas de validações ainda pendentes.
+
 ## Executar com Docker
 
 ```bash
 cp .env.example .env
-# Edite .env e defina SECRET_KEY com pelo menos 32 caracteres aleatórios
-docker compose up db mailhog -d
-docker compose run --rm app poetry run alembic upgrade head
-docker compose run --rm -e DEV_ADMIN_PASSWORD=admin123 app poetry run python -m src.scripts.seed_dev_admin
-docker compose up --build
+# Edite .env e defina SECRET_KEY (>= 32 caracteres aleatórios) e POSTGRES_PASSWORD
+docker compose up db mailhog redis -d
+docker compose build api
+docker compose run --rm api alembic upgrade head
+docker compose run --rm -e DEV_ADMIN_PASSWORD=<senha-forte> api python -m src.scripts.seed_dev_admin
+docker compose up api
 ```
 
-- API (Docker): http://localhost:8001
+- API (Docker): http://localhost:8000
 - API (local `poetry run uvicorn`): http://localhost:8000
-- Swagger: http://localhost:8000/docs (local) or http://localhost:8001/docs (Docker)
+- Swagger local: http://localhost:8000/docs
+- OpenAPI versionado: [docs/api/openapi.json](docs/api/openapi.json)
 - MailHog UI: http://localhost:8025
+- Coleção completa da API: [docs/api/auto-shop.postman_collection.json](docs/api/auto-shop.postman_collection.json)
+- Ambiente Postman HML: [docs/api/auto-shop-hml.postman_environment.json](docs/api/auto-shop-hml.postman_environment.json)
+- Ambiente Postman PRD: [docs/api/auto-shop-prd.postman_environment.json](docs/api/auto-shop-prd.postman_environment.json)
+
+O `baseUrl` da coleção Postman usa `localhost` por padrão. Para homologação ou
+produção, importe o ambiente correspondente e substitua o host de exemplo e os
+dados sintéticos localmente. A coleção inclui rotas do API Gateway e da Lambda
+de autenticação de clientes; essas rotas não fazem parte do OpenAPI gerado pela
+aplicação FastAPI. Não exporte ambientes preenchidos com CPF, senha ou token.
+
+O container `api` inicia apenas o Uvicorn; migrations são uma etapa explícita e única. Rode `docker compose run --rm api alembic upgrade head` **antes** do seed e da API.
 
 Ao rodar a API localmente fora do Docker, use `SMTP_HOST=localhost`. O host `mailhog` funciona apenas dentro da rede do Docker Compose.
 
@@ -54,14 +120,15 @@ cp .env.example .env
 # Subir o banco: docker compose up db -d  (ou PostgreSQL local)
 # DATABASE_URL usa localhost fora do Docker; dentro do Compose use host db
 poetry run alembic upgrade head   # aplica todas as migrations pendentes
-DEV_ADMIN_PASSWORD=admin123 poetry run python -m src.scripts.seed_dev_admin
+DEV_ADMIN_PASSWORD=<senha-forte> poetry run python -m src.scripts.seed_dev_admin
+poetry run python -m src.scripts.promote_first_admin  # comando explicito de break-glass
 poetry run uvicorn src.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 No PowerShell, use:
 
 ```powershell
-$env:DEV_ADMIN_PASSWORD="admin123"
+$env:DEV_ADMIN_PASSWORD="<senha-forte>"
 poetry run python -m src.scripts.seed_dev_admin
 ```
 
@@ -70,13 +137,13 @@ poetry run python -m src.scripts.seed_dev_admin
 O usuário admin não é criado automaticamente. Em um banco novo, rode o seed após as migrations:
 
 ```bash
-DEV_ADMIN_PASSWORD=admin123 poetry run python -m src.scripts.seed_dev_admin
+DEV_ADMIN_PASSWORD=<senha-forte> poetry run python -m src.scripts.seed_dev_admin
 ```
 
 No PowerShell:
 
 ```powershell
-$env:DEV_ADMIN_PASSWORD="admin123"
+$env:DEV_ADMIN_PASSWORD="<senha-forte>"
 poetry run python -m src.scripts.seed_dev_admin
 ```
 
@@ -88,10 +155,10 @@ Credenciais após o seed:
 ```bash
 curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}'
+  -d '{"username":"admin","password":"<senha-forte>"}'
 ```
 
-Use o token JWT retornado no header `Authorization: Bearer <token>` para rotas `/api/v1/admin/*`.
+O login nao devolve tokens no JSON. A API define cookies `oficina_access`, `oficina_refresh` e `oficina_csrf`; clientes enviam `X-CSRF-Token` em operacoes mutaveis. Use `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout` e `GET /api/v1/admin/me` para renovar, encerrar e consultar a sessao.
 
 Se receber `Credenciais inválidas` em banco novo, verifique:
 
@@ -119,16 +186,16 @@ Cada cliente possui **um ou mais documentos** (CPF e/ou CNPJ). O tipo é inferid
 | `GET` | `/api/v1/admin/customers/{id}` | Buscar por ID |
 | `PUT` | `/api/v1/admin/customers/{id}` | Atualizar contato |
 | `DELETE` | `/api/v1/admin/customers/{id}` | Remover cliente |
-| `GET` | `/api/v1/admin/customers/by-document/{documento}` | Buscar por CPF/CNPJ (dados completos) |
-| `GET` | `/api/v1/admin/customers/validate-cpf/{cpf}` | Pré-validar CPF na Invertexto API |
-| `GET` | `/api/v1/admin/customers/validate-cnpj/{cnpj}` | Pré-validar CNPJ na Brasil API |
+| `POST` | `/api/v1/admin/customers/by-document` | Buscar por CPF/CNPJ (documento no corpo) |
+| `POST` | `/api/v1/admin/customers/validate-cpf` | Pré-validar CPF (documento no corpo) |
+| `POST` | `/api/v1/admin/customers/validate-cnpj` | Pré-validar CNPJ (documento no corpo) |
 | `POST` | `/api/v1/admin/customers/{id}/documents` | Adicionar documento a cliente existente |
 
 Exemplo de criação:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/admin/customers \
-  -H "Authorization: Bearer <token>" \
+  -b cookies.txt -H "X-CSRF-Token: <oficina_csrf>" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Maria Silva",
@@ -145,7 +212,7 @@ Resposta admin inclui `documents: ["52998224725"]` (lista normalizada, sem másc
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
-| `GET` | `/api/v1/customers/by-document/{documento}` | Identificar cliente por documento |
+| `POST` | `/api/v1/customers/lookup` | Identificar cliente por documento + segundo fator |
 
 Por segurança, a rota pública retorna apenas `{ "id", "name" }` — sem e-mail, telefone ou endereço.
 
@@ -173,7 +240,7 @@ Exemplo de criação:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/admin/vehicles \
-  -H "Authorization: Bearer <token>" \
+  -b cookies.txt -H "X-CSRF-Token: <oficina_csrf>" \
   -H "Content-Type: application/json" \
   -d '{
     "customer_id": 1,
@@ -225,11 +292,11 @@ Rotas: clientes, veículos, serviços, produtos, fornecedores, orçamentos e ord
 Interface vanilla servida pelo FastAPI em `/app/`:
 
 - **URL (local):** http://localhost:8000/app/
-- **URL (Docker):** http://localhost:8001/app/
+- **URL (Docker):** http://localhost:8000/app/
 - Login com `admin` / senha definida em `DEV_ADMIN_PASSWORD`
 - Cadastro de clientes (CPF ou CNPJ), validação externa de CPF/CNPJ, busca por documento e listagem
 
-> **Nota:** Se o container Docker `app` estiver rodando na porta 8000, `http://localhost:8000` pode responder pelo Docker (sem o painel `/app/`). Pare o container com `docker compose stop app` ou use a API Docker em http://localhost:8001.
+> **Nota:** Se o container Docker `api` estiver rodando, `http://localhost:8000` responde pelo Docker. Pare o container com `docker compose stop api` para usar o uvicorn local.
 
 ## Fluxos principais
 
@@ -240,10 +307,59 @@ Interface vanilla servida pelo FastAPI em `/app/`:
 5. Atribuir mecânico, reservar peças, executar serviço
 6. Gerar fatura e registrar pagamento → OS entregue
 
+## Deploy por ambiente
+
+O fluxo operacional seguro está documentado em [docs/deployment.md](docs/deployment.md). O projeto possui dois caminhos alternativos para Kubernetes:
+
+- [Kustomize](docs/deployment.md): fluxo existente com as fases independentes `foundation -> migration -> app -> ingress`.
+- [Terraform](infra/README.md): alternativa declarativa para gerenciar a stack completa em um cluster já existente.
+
+Escolha um único proprietário por ambiente. Não aplique Terraform e Kustomize no
+mesmo namespace, pois os dois mecanismos gerenciam recursos com os mesmos nomes.
+Em ambos os fluxos, a API só recebe tráfego depois que a migration termina e o
+readiness check confirma o PostgreSQL.
+
+### Terraform em cluster local
+
+O diretório [`infra/`](infra/) oferece uma alternativa declarativa ao Kustomize
+para gerenciar a stack em um cluster Kubernetes já existente. Para uma execução
+local, inicie Kind ou Docker Desktop e confirme o contexto antes de aplicar:
+
+```bash
+kind create cluster --name auto-shop
+kubectl config use-context kind-auto-shop
+terraform -chdir=infra init
+terraform -chdir=infra validate
+terraform -chdir=infra plan -var-file=terraform.tfvars.example \
+  -var=environment=local -var=enable_local_database=true \
+  -var=kube_context=kind-auto-shop
+terraform -chdir=infra apply -var-file=terraform.tfvars.example \
+  -var=environment=local -var=enable_local_database=true \
+  -var=kube_context=kind-auto-shop
+```
+
+O Secret `auto-shop-secrets` deve ser criado por mecanismo externo e seguro;
+use [`k8s/examples/secret.example.yaml`](k8s/examples/secret.example.yaml)
+somente como referência. Não aplique o exemplo sem substituir os placeholders.
+O deploy de staging/produção cria automaticamente `auto-shop-redis-credentials`
+por namespace se ainda não existir. A senha aleatória fica no Secret Kubernetes;
+o Redis usa memória efêmera e desaparece junto com o namespace da sessão.
+
+Vídeo da entrega: **inserir o link fornecido pelo participante responsável antes do envio**.
+
+## Hardening de OS e links publicos
+
+- OS segue `Recebida -> Em diagnostico -> Aguardando aprovacao -> Aguardando inicio -> Em execucao -> Finalizada -> Entregue`.
+- A primeira atribuicao de mecanico move a OS para diagnostico; trocas posteriores exigem motivo e nao regridem o status.
+- Revisoes de orcamento enviadas sao imutaveis. A decisao publica usa `POST /api/v1/public/budgets/decisions` com `{token, decision}` e e idempotente.
+- Tracking usa `POST /api/v1/public/service-orders/track` com token no corpo, fingerprint HMAC no banco, revogacao no reenvio e expiracao contada desde a emissao.
+- Tokens de aprovacao, refresh e tracking possuem segredos separados. O token bruto nao aparece em respostas administrativas nem em colunas do banco.
+- O override de status exige papel `ADMIN`, motivo e so permite os tres estados iniciais; cada transicao e registrada em historico append-only.
+
 ## Testes
 
 ```bash
-poetry run pytest --cov=src --cov-report=term-missing
+poetry run pytest --cov=src --cov-branch --cov-report=term-missing --cov-fail-under=80
 ```
 
 ## Segurança

@@ -1,0 +1,44 @@
+aws_region   = "us-east-1"
+project_name = "auto-shop"
+environment  = "staging"
+
+# SSM prefix exported by the upstream network and Kubernetes stacks.
+upstream_ssm_prefix = "/auto-shop/staging"
+
+# Customer-auth token and JWKS routes use their stage-specific Lambda from SSM.
+# FastAPI routes use the stage-specific backend_base_url.
+backend_base_url = "https://api.oficina-workshop.com.br/hml"
+
+api_domain_name = "api.oficina-workshop.com.br"
+
+frontend_domains = {
+  hml = "app-hml.oficina-workshop.com.br"
+  prd = "app.oficina-workshop.com.br"
+}
+
+# Keep false until ACM CNAMEs are published and validated in Registro.br.
+enable_custom_domains = false
+
+# Keep false until both custom-domain stages pass their smoke checks.
+disable_execute_api_endpoint = false
+
+# Supply only the Secrets Manager ARN, never the JWT signing secret value.
+jwt_secret_arn = "arn:aws:secretsmanager:us-east-1:000000000000:secret:auto-shop/admin-jwt-EXAMPLE"
+
+# Configure through TF_VAR_service_order_alert_email when an address is chosen.
+# SNS email subscriptions require the recipient to confirm the subscription.
+service_order_alert_email = ""
+
+throttle_burst_limit = 100
+throttle_rate_limit  = 50
+waf_regional_rate_limit = 20000
+waf_rate_limit        = 100
+waf_auth_rate_limit   = 300
+waf_public_rate_limit = 1000
+
+enable_waf_managed_rules = true
+log_retention_days       = 30
+
+tags = {
+  Team = "platform"
+}

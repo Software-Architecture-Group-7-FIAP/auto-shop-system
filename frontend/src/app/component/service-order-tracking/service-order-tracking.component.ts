@@ -20,9 +20,10 @@ export class ServiceOrderTrackingComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    const token = this.route.snapshot.queryParamMap.get('token');
+    const token = this.route.snapshot.fragment;
     if (token) {
       this.token = token;
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
       this.track();
     }
   }

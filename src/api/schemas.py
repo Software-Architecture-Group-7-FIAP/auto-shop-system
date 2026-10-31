@@ -1,17 +1,21 @@
 from datetime import datetime
-from typing import Generic, TypeVar
+from decimal import Decimal
+from typing import Generic, Literal, TypeVar
 
 from pydantic import BaseModel, EmailStr, Field, StrictInt, model_validator
 
 from src.domain.enums import (
     BudgetStatus,
+    CustomerStatus,
     InvoiceStatus,
+    PaymentMethod,
     Priority,
     PurchaseRequestStatus,
     ReservationStatus,
     ServiceOrderStatus,
     StockWithdrawalStatus,
 )
+from src.domain.auth.entity import UserRole
 
 T = TypeVar("T")
 
@@ -20,9 +24,17 @@ class MessageResponse(BaseModel):
     message: str
 
 
-class TokenResponse(BaseModel):
+class SessionResponse(BaseModel):
+    username: str
+    role: UserRole
+
+
+class GatewayTokenResponse(BaseModel):
     access_token: str
-    token_type: str = "bearer"
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int
+    username: str
+    role: UserRole
 
 
 class LoginRequest(BaseModel):
@@ -49,6 +61,10 @@ class CustomerDocumentAdd(BaseModel):
     document: str
 
 
+class CustomerStatusRequest(BaseModel):
+    status: CustomerStatus
+
+
 class CustomerResponse(BaseModel):
     id: int
     name: str
@@ -57,11 +73,43 @@ class CustomerResponse(BaseModel):
     phone: str | None
     address: str
     created_at: datetime
+    status: CustomerStatus
 
 
 class CustomerPublicResponse(BaseModel):
     id: int
     name: str
+
+
+class CustomerIdentityResponse(BaseModel):
+    customer_id: int
+
+
+class CustomerServiceOrderServiceLineResponse(BaseModel):
+    service_id: int
+    quantity: int
+    unit_price: float
+
+
+class CustomerServiceOrderProductLineResponse(BaseModel):
+    product_id: int
+    quantity: int
+    unit_price: float
+
+
+class CustomerServiceOrderResponse(BaseModel):
+    id: int
+    status: ServiceOrderStatus
+    total_price: float
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    service_lines: list[CustomerServiceOrderServiceLineResponse] = Field(
+        default_factory=list
+    )
+    product_lines: list[CustomerServiceOrderProductLineResponse] = Field(
+        default_factory=list
+    )
 
 
 class CustomerPublicLookupRequest(BaseModel):
@@ -75,6 +123,16 @@ class CustomerPublicLookupRequest(BaseModel):
         if self.email is None and self.phone is None and self.plate is None:
             raise ValueError("Informe email, phone ou plate")
         return self
+
+
+class CustomerDocumentLookupRequest(BaseModel):
+    """Request body for document lookups; documents must never be URL data."""
+
+    document: str = Field(..., min_length=1, max_length=18)
+
+
+class DocumentValidationRequest(BaseModel):
+    document: str = Field(..., min_length=1, max_length=18)
 
 
 class CnpjValidationResponse(BaseModel):
@@ -267,10 +325,36 @@ class BudgetResponse(BaseModel):
     status: BudgetStatus
     total_price: float
     estimated_delivery: datetime | None
-    approval_token: str | None = None
     created_at: datetime
+    revision_number: int = 1
+    supersedes_budget_id: int | None = None
 
     model_config = {"from_attributes": True}
+
+
+class BudgetDecisionRequest(BaseModel):
+    token: str = Field(..., min_length=1, max_length=4096)
+    decision: Literal["approve", "reject"]
+
+
+class PaymentCreate(BaseModel):
+    amount: Decimal = Field(
+        gt=Decimal("0.00"),
+        max_digits=12,
+        decimal_places=2,
+    )
+    method: PaymentMethod
+
+
+class BudgetDecisionResponse(BaseModel):
+    message: str
+    status: BudgetStatus
+    already_processed: bool = False
+    service_order_id: int | None = None
+
+
+class ServiceOrderTrackingRequest(BaseModel):
+    token: str = Field(..., min_length=1, max_length=512)
 
 
 class AvailabilityItem(BaseModel):
@@ -306,6 +390,31 @@ class ServiceOrderResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ServiceOrderListItemResponse(BaseModel):
+    id: int
+    budget_id: int | None
+    customer_id: int
+    vehicle_id: int
+    status: ServiceOrderStatus
+    priority: Priority
+    mechanic_name: str | None
+    total_price: float
+    started_at: datetime | None
+    finished_at: datetime | None
+    customer_name: str
+    vehicle_plate: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ServiceOrderListResponse(BaseModel):
+    items: list[ServiceOrderListItemResponse]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
 
 
 class ServiceOrderPublicResponse(BaseModel):
@@ -320,6 +429,7 @@ class ServiceOrderPublicResponse(BaseModel):
 
 class ServiceOrderUpdate(BaseModel):
     mechanic_name: str | None = Field(default=None, min_length=1)
+    reason: str | None = Field(default=None, min_length=1, max_length=1000)
     priority: Priority | None = None
 
     @model_validator(mode="after")
@@ -331,6 +441,7 @@ class ServiceOrderUpdate(BaseModel):
 
 class AssignMechanicRequest(BaseModel):
     mechanic_name: str = Field(min_length=1)
+    reason: str | None = Field(default=None, min_length=1, max_length=1000)
 
 
 class SetPriorityRequest(BaseModel):
@@ -411,13 +522,28 @@ class ServiceOrderWithWithdrawalsResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PaymentResponse(BaseModel):
+    id: int
+    invoice_id: int
+    amount: Decimal
+    method: PaymentMethod
+    paid_at: datetime
+    user_id: int
+    idempotency_key: str
+
+    model_config = {"from_attributes": True}
+
+
 class InvoiceResponse(BaseModel):
     id: int
     service_order_id: int
-    amount: float
+    amount: Decimal
     status: InvoiceStatus
     paid_at: datetime | None
     created_at: datetime
+    total_paid: Decimal
+    balance: Decimal
+    payments: list[PaymentResponse]
 
     model_config = {"from_attributes": True}
 

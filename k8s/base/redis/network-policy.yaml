@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: auto-shop-redis-ingress
+  namespace: auto-shop
+spec:
+  podSelector:
+    matchLabels:
+      app: auto-shop-redis
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: auto-shop-backend
+      ports:
+        - protocol: TCP
+          port: 6379
+  egress: []

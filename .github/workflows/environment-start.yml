@@ -1,0 +1,522 @@
+name: Coordinated environment start
+run-name: lifecycle:${{ inputs.stage || 'prd' }}:open:${{ inputs.started_at || 'default-17-BRT' }}:${{ github.run_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: HML is manual only; PRD is the coordinated November window.
+        required: true
+        type: choice
+        options: [hml, prd]
+      started_at:
+        description: Optional HML UTC session start. Omit for the default 17:00 BRT start; PRD is fixed at 06:00 BRT.
+        required: false
+        type: string
+  schedule:
+    - cron: "0 9 1-5 11 *" # PRD preparation starts 06:00 BRT, 1-5 November.
+
+permissions:
+  actions: write
+  contents: read
+  id-token: write
+
+jobs:
+  prd-gates:
+    if: github.event_name == 'schedule' || inputs.stage == 'prd'
+    runs-on: ubuntu-latest
+    environment: operations
+    steps:
+      - name: Require every PRD lifecycle approval before any AWS or cross-repository action
+        env:
+          ENVIRONMENT_SCHEDULE_ENABLED: ${{ vars.ENVIRONMENT_SCHEDULE_ENABLED || 'false' }}
+          PRD_LIFECYCLE_AUTOMATION_READY: ${{ vars.PRD_LIFECYCLE_AUTOMATION_READY || 'false' }}
+          PRD_COST_EXCEPTION_APPROVED: ${{ vars.PRD_COST_EXCEPTION_APPROVED || 'false' }}
+          ENVIRONMENT_ACTIVE: ${{ vars.ENVIRONMENT_ACTIVE || 'false' }}
+          ENVIRONMENT_WINDOW_AUTHORIZED: ${{ vars.ENVIRONMENT_WINDOW_AUTHORIZED || 'false' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ENVIRONMENT_SCHEDULE_ENABLED" == "true" ]] || { echo "::error::ENVIRONMENT_SCHEDULE_ENABLED is not true; no PRD lifecycle action ran."; exit 1; }
+          [[ "$PRD_LIFECYCLE_AUTOMATION_READY" == "true" ]] || { echo "::error::PRD_LIFECYCLE_AUTOMATION_READY is not true; two successful full cycles are required first."; exit 1; }
+          [[ "$PRD_COST_EXCEPTION_APPROVED" == "true" ]] || { echo "::error::PRD_COST_EXCEPTION_APPROVED is not true; the ADR-0071 cost exception is required."; exit 1; }
+          [[ "$ENVIRONMENT_ACTIVE" == "true" && "$ENVIRONMENT_WINDOW_AUTHORIZED" == "true" ]] || { echo "::error::The production lifecycle window is not explicitly authorized."; exit 1; }
+
+  hml-gates:
+    if: github.event_name == 'workflow_dispatch' && inputs.stage == 'hml'
+    runs-on: ubuntu-latest
+    environment: staging
+    outputs:
+      staging_active: ${{ steps.gates.outputs.staging_active }}
+      staging_authorized: ${{ steps.gates.outputs.staging_authorized }}
+      session_mode: ${{ steps.gates.outputs.session_mode }}
+    steps:
+      - name: Require an explicitly authorized manual HML session
+        env:
+          STAGING_ACTIVE: ${{ vars.STAGING_ACTIVE || 'false' }}
+          STAGING_SESSION_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
+          STAGING_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
+        id: gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$STAGING_ACTIVE" == "true" && "$STAGING_SESSION_AUTHORIZED" == "true" && "$STAGING_SESSION_MODE" == "hml" ]] || {
+            echo "::error::Set STAGING_ACTIVE=true, STAGING_SESSION_AUTHORIZED=true, and STAGING_SESSION_MODE=hml before opening HML."
+            exit 1
+          }
+          {
+            echo "staging_active=$STAGING_ACTIVE"
+            echo "staging_authorized=$STAGING_SESSION_AUTHORIZED"
+            echo "session_mode=$STAGING_SESSION_MODE"
+          } >> "$GITHUB_OUTPUT"
+
+  open:
+    needs: [prd-gates, hml-gates]
+    if: >-
+      always() &&
+      (needs.prd-gates.result == 'success' || needs.prd-gates.result == 'skipped') &&
+      (needs.hml-gates.result == 'success' || needs.hml-gates.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: operations
+    concurrency:
+      group: environment-lifecycle
+      cancel-in-progress: false
+    outputs:
+      stage: ${{ steps.window.outputs.stage }}
+      session_id: ${{ steps.window.outputs.session_id }}
+      started_at: ${{ steps.window.outputs.started_at }}
+      session_mode: ${{ steps.window.outputs.session_mode }}
+      session_end_utc: ${{ steps.window.outputs.session_end_utc }}
+      cleanup_end_utc: ${{ steps.window.outputs.cleanup_end_utc }}
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+      K8S_INFRA_REPOSITORY: ${{ vars.K8S_INFRA_REPOSITORY }}
+      K8S_INFRA_REF: ${{ vars.K8S_INFRA_REF }}
+      DATABASE_INFRA_REPOSITORY: ${{ vars.DATABASE_INFRA_REPOSITORY }}
+      DATABASE_INFRA_REF: ${{ vars.DATABASE_INFRA_REF }}
+      ALERT_TOPIC_ARN: ${{ vars.LIFECYCLE_ALERT_TOPIC_ARN }}
+      EDGE_JWT_SECRET_ARN: ${{ vars.EDGE_JWT_SECRET_ARN }}
+      EDGE_ENABLE_CUSTOM_DOMAINS: ${{ vars.EDGE_ENABLE_CUSTOM_DOMAINS }}
+      EDGE_DISABLE_EXECUTE_API_ENDPOINT: ${{ vars.EDGE_DISABLE_EXECUTE_API_ENDPOINT }}
+      PRD_DAILY_COST_FLOOR_USD: ${{ vars.PRD_DAILY_COST_FLOOR_USD }}
+      HML_DAILY_COST_FLOOR_USD: ${{ vars.HML_DAILY_COST_FLOOR_USD }}
+      ALLOW_SYNTHETIC_SEED_IN_PRD: ${{ vars.ALLOW_SYNTHETIC_SEED_IN_PRD || 'false' }}
+      DEPLOY_PRODUCTION_ENABLED: ${{ vars.DEPLOY_PRODUCTION_ENABLED || 'false' }}
+      DEPLOY_STAGING_ENABLED: ${{ vars.DEPLOY_STAGING_ENABLED || 'false' }}
+      DEPLOY_STAGING_FRONTEND_ENABLED: ${{ vars.DEPLOY_STAGING_FRONTEND_ENABLED || 'false' }}
+      ENVIRONMENT_ACTIVE: ${{ vars.ENVIRONMENT_ACTIVE || 'false' }}
+      ENVIRONMENT_WINDOW_AUTHORIZED: ${{ vars.ENVIRONMENT_WINDOW_AUTHORIZED || 'false' }}
+      STAGING_ACTIVE: ${{ needs.hml-gates.outputs.staging_active || 'false' }}
+      STAGING_SESSION_AUTHORIZED: ${{ needs.hml-gates.outputs.staging_authorized || 'false' }}
+      STAGING_SESSION_MODE: ${{ needs.hml-gates.outputs.session_mode || '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve the one session identifier and all BRT deadlines
+        id: window
+        env:
+          REQUESTED_STAGE: ${{ inputs.stage || 'prd' }}
+          REQUESTED_STARTED_AT: ${{ inputs.started_at }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/resolve_lifecycle_session.py \
+            --action start \
+            --stage "$REQUESTED_STAGE" \
+            --started-at "$REQUESTED_STARTED_AT" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Sign the resolved lifecycle session capability
+        env:
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+        run: python3 .github/scripts/sign_lifecycle_session.py
+
+      - name: Block a second opening run for this BRT date
+        if: steps.window.outputs.stage == 'hml' || steps.window.outputs.stage == 'prd'
+        env:
+          GH_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+          LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+          STAGE: ${{ steps.window.outputs.stage }}
+        run: python3 .github/scripts/assert_daily_lifecycle_unique.py --stage "$STAGE"
+
+      - name: Validate all credentials, repositories, deploy gates, alerting, and cost evidence inputs
+        env:
+          STAGE: ${{ steps.window.outputs.stage }}
+          SESSION_PROFILE: ${{ steps.window.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE || 'full' }}
+          AWS_COST_READER_ROLE_ARN: ${{ secrets.AWS_COST_READER_ROLE_ARN }}
+          AWS_EDGE_LIFECYCLE_ROLE_ARN: ${{ secrets.AWS_EDGE_LIFECYCLE_ROLE_ARN }}
+          LIFECYCLE_ALERT_ROLE_ARN: ${{ secrets.LIFECYCLE_ALERT_ROLE_ARN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$AWS_REGION" == "us-east-1" ]] || { echo "::error::AWS_REGION must be us-east-1."; exit 1; }
+          [[ "$EXPECTED_AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || { echo "::error::AWS_ACCOUNT_ID is missing or invalid."; exit 1; }
+          [[ -n "$LIFECYCLE_CROSS_REPO_TOKEN" ]] || { echo "::error::LIFECYCLE_CROSS_REPO_TOKEN is required; there is no GITHUB_TOKEN fallback."; exit 1; }
+          [[ "$K8S_INFRA_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$K8S_INFRA_REF" == "main" ]] || { echo "::error::Set K8S_INFRA_REPOSITORY and K8S_INFRA_REF=main."; exit 1; }
+          [[ "$DATABASE_INFRA_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$DATABASE_INFRA_REF" == "main" ]] || { echo "::error::Set DATABASE_INFRA_REPOSITORY and DATABASE_INFRA_REF=main."; exit 1; }
+          [[ "$AWS_COST_READER_ROLE_ARN" =~ ^arn:aws:iam::${EXPECTED_AWS_ACCOUNT_ID}:role/.+$ ]] || { echo "::error::AWS_COST_READER_ROLE_ARN is required in the expected account."; exit 1; }
+          [[ "$LIFECYCLE_ALERT_ROLE_ARN" =~ ^arn:aws:iam::${EXPECTED_AWS_ACCOUNT_ID}:role/.+$ ]] || { echo "::error::LIFECYCLE_ALERT_ROLE_ARN is required in the expected account."; exit 1; }
+          [[ "$ALERT_TOPIC_ARN" =~ ^arn:aws:sns:us-east-1:${EXPECTED_AWS_ACCOUNT_ID}:[A-Za-z0-9_-]+$ ]] || { echo "::error::LIFECYCLE_ALERT_TOPIC_ARN must be a valid SNS topic in the expected account."; exit 1; }
+          [[ "$SESSION_PROFILE" == "full" || "$SESSION_PROFILE" == "infra-only" ]] || { echo "::error::STAGING_SESSION_PROFILE must be full or infra-only."; exit 1; }
+          if [[ "$STAGE" == "prd" ]]; then
+            [[ "$SESSION_PROFILE" == "full" ]] || { echo "::error::PRD only permits the full lifecycle profile."; exit 1; }
+            [[ "$DEPLOY_PRODUCTION_ENABLED" == "true" && "$ALLOW_SYNTHETIC_SEED_IN_PRD" == "true" ]] || { echo "::error::Production deploy and synthetic seed must both be explicitly enabled."; exit 1; }
+            [[ "$PRD_DAILY_COST_FLOOR_USD" =~ ^[0-9]+([.][0-9]+)?$ ]] || { echo "::error::Set PRD_DAILY_COST_FLOOR_USD to the reviewed estimate."; exit 1; }
+          else
+            [[ "$HML_DAILY_COST_FLOOR_USD" =~ ^[0-9]+([.][0-9]+)?$ ]] || { echo "::error::Set HML_DAILY_COST_FLOOR_USD to the reviewed estimate."; exit 1; }
+            if [[ "$SESSION_PROFILE" == "full" ]]; then
+              [[ "$DEPLOY_STAGING_ENABLED" == "true" && "$DEPLOY_STAGING_FRONTEND_ENABLED" == "true" ]] || { echo "::error::HML backend and frontend deploy gates must both be explicitly enabled for a full session."; exit 1; }
+              [[ "$AWS_EDGE_LIFECYCLE_ROLE_ARN" =~ ^arn:aws:iam::${EXPECTED_AWS_ACCOUNT_ID}:role/.+$ ]] || { echo "::error::AWS_EDGE_LIFECYCLE_ROLE_ARN is required for a full session."; exit 1; }
+              [[ "$EDGE_JWT_SECRET_ARN" =~ ^arn:aws:secretsmanager:us-east-1:${EXPECTED_AWS_ACCOUNT_ID}:secret:.+$ ]] || { echo "::error::EDGE_JWT_SECRET_ARN must be a non-secret ARN reference in the expected account."; exit 1; }
+              [[ "$EDGE_ENABLE_CUSTOM_DOMAINS" == "true" || "$EDGE_ENABLE_CUSTOM_DOMAINS" == "false" ]] || { echo "::error::Set EDGE_ENABLE_CUSTOM_DOMAINS explicitly to true or false."; exit 1; }
+              [[ "$EDGE_DISABLE_EXECUTE_API_ENDPOINT" == "true" || "$EDGE_DISABLE_EXECUTE_API_ENDPOINT" == "false" ]] || { echo "::error::Set EDGE_DISABLE_EXECUTE_API_ENDPOINT explicitly to true or false."; exit 1; }
+            else
+              [[ "$DEPLOY_STAGING_ENABLED" != "true" && "$DEPLOY_STAGING_FRONTEND_ENABLED" != "true" ]] || { echo "::error::Infra-only HML sessions require both application deploy gates to remain false."; exit 1; }
+              echo "HML infrastructure-only profile selected; application release and public-edge steps will be skipped."
+            fi
+          fi
+
+      - name: Configure the read-only persistent auth preflight role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/auto-shop-staging-github-auth-preflight
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 900
+
+      - name: Validate persistent customer auth Lambdas before opening session resources
+        env:
+          EXPECTED_AWS_ACCOUNT_ID: ${{ env.EXPECTED_AWS_ACCOUNT_ID }}
+        run: python3 .github/scripts/validate_auth_lambda_preflight.py
+
+      - name: Create a cost evidence placeholder before requesting AWS credentials
+        env:
+          STAGE: ${{ steps.window.outputs.stage }}
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          COST_FLOOR: ${{ steps.window.outputs.stage == 'prd' && vars.PRD_DAILY_COST_FLOOR_USD || vars.HML_DAILY_COST_FLOOR_USD }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          report = {
+              "stage": os.environ["STAGE"],
+              "session_id": os.environ["SESSION_ID"],
+              "phase": "before",
+              "captured_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "planning_estimate": {"daily_floor_usd": os.environ["COST_FLOOR"], "type": "estimate"},
+              "observed_billing": {
+                  "source": "AWS Cost Explorer UnblendedCost",
+                  "type": "observed billing",
+                  "status": "unavailable",
+                  "reason": "Cost Explorer identity and billing query have not completed.",
+              },
+          }
+          with open("lifecycle-cost-before.json", "w", encoding="utf-8") as report_file:
+              json.dump(report, report_file, indent=2)
+              report_file.write("\n")
+          PY
+
+      - name: Configure read-only Cost Explorer identity
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_COST_READER_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify the account and record observed pre-cycle billing
+        if: always()
+        env:
+          STAGE: ${{ steps.window.outputs.stage }}
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          COST_FLOOR: ${{ steps.window.outputs.stage == 'prd' && vars.PRD_DAILY_COST_FLOOR_USD || vars.HML_DAILY_COST_FLOOR_USD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/capture_lifecycle_cost.py \
+            --stage "$STAGE" \
+            --session-id "$SESSION_ID" \
+            --phase before \
+            --expected-account-id "$EXPECTED_AWS_ACCOUNT_ID" \
+            --estimate-daily-floor-usd "$COST_FLOOR" \
+            --output lifecycle-cost-before.json
+
+      - name: Plan the K8s foundation opening
+        id: k8s_foundation
+        env:
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow ci.yml --ref "$K8S_INFRA_REF"
+          --expected-title "$SESSION_ID-foundation-open"
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"foundation\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name foundation --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Apply the exact K8s foundation opening plan
+        env:
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          PLAN_ID: ${{ steps.k8s_foundation.outputs.foundation_plan_id }}
+          WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow apply.yml --ref "$K8S_INFRA_REF"
+          --expected-title "$SESSION_ID-foundation-open-apply"
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"foundation\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name foundation_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Plan the K8s platform opening
+        id: k8s_platform
+        env:
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow ci.yml --ref "$K8S_INFRA_REF"
+          --expected-title "$SESSION_ID-platform-open"
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"platform\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name platform --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Apply the exact K8s platform opening plan
+        env:
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          PLAN_ID: ${{ steps.k8s_platform.outputs.platform_plan_id }}
+          WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow apply.yml --ref "$K8S_INFRA_REF"
+          --expected-title "$SESSION_ID-platform-open-apply"
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"platform\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name platform_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Bootstrap the synthetic lifecycle database
+        env:
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$DATABASE_INFRA_REPOSITORY" --workflow apply.yml --ref "$DATABASE_INFRA_REF"
+          --expected-title "database/$SESSION_ID/apply/bootstrap"
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"phase\":\"bootstrap\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name database_bootstrap --timeout-seconds 1200 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Deploy the application and recreate its synthetic seed
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
+        env:
+          STAGE: ${{ steps.window.outputs.stage }}
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          APP_REF: ${{ steps.window.outputs.stage == 'prd' && 'main' || 'develop' }}
+          WORKFLOW: ${{ steps.window.outputs.stage == 'prd' && 'cd-prod.yml' || 'cd-staging.yml' }}
+          EXPECTED_TITLE: lifecycle:${{ steps.window.outputs.session_id }}:app-deploy
+          WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$GITHUB_REPOSITORY" --workflow "$WORKFLOW" --ref "$APP_REF"
+          --expected-title "$EXPECTED_TITLE"
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name app_deploy --timeout-seconds 1500 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Apply the database grants after application migrations
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
+        env:
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$DATABASE_INFRA_REPOSITORY" --workflow apply.yml --ref "$DATABASE_INFRA_REF"
+          --expected-title "database/$SESSION_ID/apply/grants"
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"phase\":\"grants\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name database_grants --timeout-seconds 900 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Configure the narrow public-edge lifecycle role
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_EDGE_LIFECYCLE_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Reconcile the public API edge against the current ALB while preserving its URL
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
+        env:
+          EDGE_RECONCILIATION_MODE: active
+          TF_VAR_jwt_secret_arn: ${{ vars.EDGE_JWT_SECRET_ARN }}
+          TF_VAR_enable_custom_domains: ${{ vars.EDGE_ENABLE_CUSTOM_DOMAINS }}
+          TF_VAR_disable_execute_api_endpoint: ${{ vars.EDGE_DISABLE_EXECUTE_API_ENDPOINT }}
+        run: bash .github/scripts/reconcile_public_edge.sh
+
+      - name: Wait for the PRD health check time
+        if: steps.window.outputs.stage == 'prd'
+        env:
+          HEALTH_AT_UTC: ${{ steps.window.outputs.health_at_utc }}
+          HEALTH_DEADLINE_UTC: ${{ steps.window.outputs.health_alert_deadline_utc }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="$(date -u -d "$HEALTH_AT_UTC" +%s)"
+          deadline="$(date -u -d "$HEALTH_DEADLINE_UTC" +%s)"
+          now="$(date -u +%s)"
+          if (( now >= deadline )); then
+            echo "::error::Opening missed the 07:00 BRT health deadline; PRD is not declared healthy."
+            exit 1
+          fi
+          if (( now < target )); then
+            sleep "$((target - now))"
+          fi
+
+      - name: Dispatch and wait for public endpoint health
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
+        env:
+          STAGE: ${{ steps.window.outputs.stage }}
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          WORK_DEADLINE: ${{ steps.window.outputs.stage == 'prd' && steps.window.outputs.health_alert_deadline_utc || steps.window.outputs.work_deadline_utc }}
+          HEALTH_REF: ${{ steps.window.outputs.stage == 'prd' && 'main' || 'develop' }}
+          HEALTH_TITLE: lifecycle:${{ steps.window.outputs.session_id }}:health:${{ steps.window.outputs.stage }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$GITHUB_REPOSITORY" --workflow environment-health.yml --ref "$HEALTH_REF"
+          --expected-title "$HEALTH_TITLE"
+          --inputs "{\"stage\":\"$STAGE\",\"started_at\":\"$STARTED_AT\",\"session_id\":\"$SESSION_ID\",\"session_mode\":\"$SESSION_MODE\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name health --timeout-seconds 900 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Record the successful opening boundary
+        env:
+          STAGE: ${{ steps.window.outputs.stage }}
+          SESSION_PROFILE: ${{ steps.window.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE || 'full' }}
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_END: ${{ steps.window.outputs.session_end_utc }}
+        run: |
+          {
+            echo "### Environment opened"
+            echo "- Session profile: $SESSION_PROFILE"
+            echo "- Stage: $STAGE"
+            echo "- Session: $SESSION_ID"
+            echo "- Session start (UTC): $STARTED_AT"
+            echo "- Calculated session end (UTC): $SESSION_END"
+            echo "- Public URL remains on the persistent API Gateway and CloudFront edge."
+            echo "- The observed Cost Explorer snapshot is uploaded separately from the planning estimate."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload pre-cycle cost evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifecycle-cost-${{ steps.window.outputs.session_id || github.run_id }}-before
+          path: lifecycle-cost-before.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+  alert-prd-opening-failure:
+    needs: open
+    if: >-
+      always() && needs.open.result == 'failure' &&
+      (github.event_name == 'schedule' || inputs.stage == 'prd')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: operations
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      ALERT_TOPIC_ARN: ${{ vars.LIFECYCLE_ALERT_TOPIC_ARN }}
+      SESSION_ID: ${{ needs.open.outputs.session_id || github.run_id }}
+    steps:
+      - name: Configure the lifecycle alert role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.LIFECYCLE_ALERT_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Alert that PRD did not become healthy before the teacher window
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$ALERT_TOPIC_ARN" =~ ^arn:aws:sns:us-east-1:${EXPECTED_AWS_ACCOUNT_ID}:[A-Za-z0-9_-]+$ ]] || {
+            echo "::error::Lifecycle alert destination is unavailable; inspect this failed GitHub run immediately."
+            exit 1
+          }
+          aws sns publish \
+            --topic-arn "$ALERT_TOPIC_ARN" \
+            --subject "Auto Shop PRD lifecycle failed before health confirmation" \
+            --message "PRD session ${SESSION_ID} did not complete its coordinated opening and health confirmation by 07:00 BRT. The public URL is stable but availability is not confirmed. Review the failed GitHub Actions run before enabling student access."
+
+  hml-auto-stop-wait:
+    needs: open
+    if: always() && needs.open.outputs.stage == 'hml' && needs.open.outputs.session_id != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    environment: operations
+    steps:
+      - name: Wait until the calculated HML session end
+        env:
+          SESSION_END: ${{ needs.open.outputs.session_end_utc }}
+          CLEANUP_END: ${{ needs.open.outputs.cleanup_end_utc }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$SESSION_END" && -n "$CLEANUP_END" ]] || { echo "::error::The HML session boundaries are unavailable; cleanup cannot be scheduled safely."; exit 1; }
+          target="$(date -u -d "$SESSION_END" +%s)"
+          cleanup_deadline="$(date -u -d "$CLEANUP_END" +%s)"
+          now="$(date -u +%s)"
+          if (( now < target )); then sleep "$((target - now))"; fi
+          now="$(date -u +%s)"
+          (( now < cleanup_deadline )) || { echo "::error::The HML cleanup grace window has expired; use the documented manual recovery procedure."; exit 1; }
+
+  hml-auto-stop-close:
+    needs: [open, hml-auto-stop-wait]
+    if: always() && needs.hml-auto-stop-wait.result == 'success' && needs.open.outputs.stage == 'hml' && needs.open.outputs.session_id != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    environment: operations
+    env:
+      LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+      LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+      SESSION_ID: ${{ needs.open.outputs.session_id }}
+      STARTED_AT: ${{ needs.open.outputs.started_at }}
+      SESSION_MODE: hml
+      CLEANUP_END: ${{ needs.open.outputs.cleanup_end_utc }}
+      CLOSE_REQUEST_ID: auto-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Sign the HML session capability for automatic close
+        env:
+          SESSION_ID: ${{ needs.open.outputs.session_id }}
+          STARTED_AT: ${{ needs.open.outputs.started_at }}
+          SESSION_MODE: hml
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+        run: python3 .github/scripts/sign_lifecycle_session.py
+      - name: Dispatch and wait for the HML full close lifecycle
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$GITHUB_REPOSITORY" --workflow environment-stop.yml --ref develop
+          --expected-title "lifecycle:hml:close:$SESSION_ID:$CLOSE_REQUEST_ID"
+          --inputs "{\"stage\":\"hml\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"close_request_id\":\"$CLOSE_REQUEST_ID\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name hml_close --timeout-seconds 3600
+          --deadline-utc "$CLEANUP_END"
