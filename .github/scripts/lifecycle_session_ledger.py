@@ -296,8 +296,23 @@ def _handoff_failed_opening(
         existing_expires_at = int(existing.get("expires_at", 0))
     except (TypeError, ValueError) as error:
         raise LedgerError("The existing lifecycle owner record is malformed; handoff fails closed.") from error
+    closed_at = existing.get("closed_at")
+    close_ownership_fields = (
+        "close_run_id",
+        "close_actor",
+        "close_run_attempt",
+        "close_lease_expires_at",
+        "close_started_at",
+        "close_attempts",
+    )
+    reopen_unclaimed_closed_session = (
+        existing.get("status") == "closed"
+        and type(closed_at) is int
+        and 0 < closed_at <= now
+        and not any(field in existing for field in close_ownership_fields)
+    )
     if (
-        existing.get("status") != "active"
+        (existing.get("status") != "active" and not reopen_unclaimed_closed_session)
         or existing.get("operator") != actor
         or existing.get("start_run_id") != source_run_id
         or previous_attempt < 1
@@ -310,20 +325,50 @@ def _handoff_failed_opening(
     ):
         raise LedgerError("The existing active session does not match the verified failed opening run.")
 
+    condition = (
+        "#operator = :actor AND #stage = :stage AND #mode = :mode AND #scope = :scope AND "
+        "start_run_id = :source_run AND start_run_attempt = :source_attempt AND "
+        "started_at = :started AND expires_at = :expires AND expires_at > :now"
+    )
+    update_expression = (
+        "SET start_run_id = :new_run, start_run_attempt = :attempt, "
+        "retry_handoff_from_run_id = :source_run, retry_handoff_at = :now"
+    )
+    expression_values = {
+        ":new_run": _s(run_id),
+        ":attempt": _n(run_attempt),
+        ":source_run": _s(source_run_id),
+        ":source_attempt": _n(previous_attempt),
+        ":actor": _s(actor),
+        ":stage": _s(stage),
+        ":mode": _s(session_mode),
+        ":scope": _s(session_scope),
+        ":started": _s(started_at),
+        ":expires": _n(expires_at),
+        ":now": _n(now),
+    }
+    if reopen_unclaimed_closed_session:
+        condition = (
+            "#status = :closed AND closed_at = :closed_at AND "
+            "attribute_not_exists(close_run_id) AND attribute_not_exists(close_actor) AND "
+            "attribute_not_exists(close_run_attempt) AND attribute_not_exists(close_lease_expires_at) AND "
+            "attribute_not_exists(close_started_at) AND attribute_not_exists(close_attempts) AND "
+            + condition
+        )
+        update_expression = f"SET #status = :active, {update_expression} REMOVE closed_at"
+        expression_values[":closed"] = _s("closed")
+        expression_values[":active"] = _s("active")
+        expression_values[":closed_at"] = _n(closed_at)
+    else:
+        condition = "#status = :active AND " + condition
+        expression_values[":active"] = _s("active")
+
     _ddb(
         "update-item",
         {
             "Key": _key(session_id, "STATE"),
-            "UpdateExpression": (
-                "SET start_run_id = :new_run, start_run_attempt = :attempt, "
-                "retry_handoff_from_run_id = :source_run, retry_handoff_at = :now"
-            ),
-            "ConditionExpression": (
-                "#status = :active AND #operator = :actor AND #stage = :stage AND "
-                "#mode = :mode AND #scope = :scope AND start_run_id = :source_run AND "
-                "start_run_attempt = :source_attempt AND started_at = :started AND "
-                "expires_at = :expires AND expires_at > :now"
-            ),
+            "UpdateExpression": update_expression,
+            "ConditionExpression": condition,
             "ExpressionAttributeNames": {
                 "#status": "status",
                 "#operator": "operator",
@@ -331,20 +376,7 @@ def _handoff_failed_opening(
                 "#mode": "session_mode",
                 "#scope": "session_scope",
             },
-            "ExpressionAttributeValues": {
-                ":new_run": _s(run_id),
-                ":attempt": _n(run_attempt),
-                ":source_run": _s(source_run_id),
-                ":source_attempt": _n(previous_attempt),
-                ":active": _s("active"),
-                ":actor": _s(actor),
-                ":stage": _s(stage),
-                ":mode": _s(session_mode),
-                ":scope": _s(session_scope),
-                ":started": _s(started_at),
-                ":expires": _n(expires_at),
-                ":now": _n(now),
-            },
+            "ExpressionAttributeValues": expression_values,
         },
     )
 
