@@ -188,6 +188,7 @@ jobs:
       id-token: write
     outputs:
       close_needed: ${{ steps.close_decision.outputs.close_needed }}
+      teardown_needed: ${{ steps.close_decision.outputs.teardown_needed }}
       database_destroy: ${{ steps.database_destroy.outcome }}
       nat_plan: ${{ steps.nat_plan.outcome }}
       nat_apply: ${{ steps.nat_apply.outcome }}
@@ -276,8 +277,14 @@ jobs:
           DECISION: ${{ steps.close_decision.outputs.decision }}
         run: echo "$DECISION" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Record when no teardown is needed
+        if: steps.close_decision.outputs.close_needed == 'true' && steps.close_decision.outputs.teardown_needed == 'false'
+        env:
+          DECISION: ${{ steps.close_decision.outputs.decision }}
+        run: echo "$DECISION" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Validate the HML cross-repository teardown configuration
-        if: steps.close_decision.outputs.close_needed == 'true'
+        if: steps.close_decision.outputs.close_needed == 'true' && steps.close_decision.outputs.teardown_needed == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -293,7 +300,7 @@ jobs:
           }
 
       - name: Plan the isolated HML namespace teardown
-        if: steps.close_decision.outputs.close_needed == 'true'
+        if: steps.close_decision.outputs.close_needed == 'true' && steps.close_decision.outputs.teardown_needed == 'true'
         id: hml_destroy_plan
         env:
           SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
@@ -310,7 +317,7 @@ jobs:
           --deadline-utc "$TEARDOWN_END"
 
       - name: Apply the reviewed HML namespace teardown plan
-        if: steps.close_decision.outputs.close_needed == 'true'
+        if: steps.close_decision.outputs.close_needed == 'true' && steps.close_decision.outputs.teardown_needed == 'true'
         id: hml_destroy_apply
         env:
           SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
@@ -328,7 +335,7 @@ jobs:
           --deadline-utc "$TEARDOWN_END"
 
       - name: Destroy the ephemeral HML database
-        if: steps.close_decision.outputs.close_needed == 'true'
+        if: steps.close_decision.outputs.close_needed == 'true' && steps.close_decision.outputs.teardown_needed == 'true'
         id: database_destroy
         env:
           SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
@@ -346,7 +353,7 @@ jobs:
           --deadline-utc "$TEARDOWN_END"
 
       - name: Plan the full K8s platform teardown
-        if: steps.close_decision.outputs.close_needed == 'true'
+        if: steps.close_decision.outputs.close_needed == 'true' && steps.close_decision.outputs.teardown_needed == 'true'
         id: platform_destroy_plan
         env:
           SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
@@ -363,7 +370,7 @@ jobs:
           --deadline-utc "$TEARDOWN_END"
 
       - name: Apply the reviewed K8s platform teardown plan
-        if: steps.close_decision.outputs.close_needed == 'true'
+        if: steps.close_decision.outputs.close_needed == 'true' && steps.close_decision.outputs.teardown_needed == 'true'
         id: platform_destroy_apply
         env:
           SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
@@ -381,7 +388,7 @@ jobs:
           --deadline-utc "$TEARDOWN_END"
 
       - name: Plan compute-only foundation teardown
-        if: steps.close_decision.outputs.close_needed == 'true'
+        if: steps.close_decision.outputs.close_needed == 'true' && steps.close_decision.outputs.teardown_needed == 'true'
         id: foundation_destroy_plan
         env:
           SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
@@ -398,7 +405,7 @@ jobs:
           --deadline-utc "$TEARDOWN_END"
 
       - name: Apply the reviewed compute-only foundation teardown plan
-        if: steps.close_decision.outputs.close_needed == 'true'
+        if: steps.close_decision.outputs.close_needed == 'true' && steps.close_decision.outputs.teardown_needed == 'true'
         id: foundation_destroy_apply
         env:
           SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
@@ -416,7 +423,7 @@ jobs:
           --deadline-utc "$TEARDOWN_END"
 
       - name: Plan NAT shutdown
-        if: steps.close_decision.outputs.close_needed == 'true'
+        if: steps.close_decision.outputs.close_needed == 'true' && steps.close_decision.outputs.teardown_needed == 'true'
         id: nat_plan
         env:
           SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
@@ -433,7 +440,7 @@ jobs:
           --deadline-utc "$TEARDOWN_END"
 
       - name: Apply the reviewed NAT shutdown plan
-        if: steps.close_decision.outputs.close_needed == 'true'
+        if: steps.close_decision.outputs.close_needed == 'true' && steps.close_decision.outputs.teardown_needed == 'true'
         id: nat_apply
         env:
           SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
