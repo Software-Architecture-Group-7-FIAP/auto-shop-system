@@ -142,6 +142,13 @@ def _canonical_input_hash(inputs: dict[str, str]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _canonical_github_ref(ref: str) -> str:
+    """Store workflow_dispatch refs in the same form exposed as GITHUB_REF."""
+    if ref.startswith("refs/"):
+        return ref
+    return f"refs/heads/{ref}"
+
+
 def _session_scope(state: dict[str, Any]) -> str:
     scope = state.get("session_scope", "integrated")
     if scope not in SESSION_SCOPES or (state.get("stage") != "hml" and scope != "integrated"):
@@ -529,6 +536,7 @@ def issue_dispatch_authorization(
     run_id, run_attempt = _run_identity()
     state = _get_item(session_id, "STATE")
     now = int(time.time())
+    target_ref = _canonical_github_ref(ref)
     if state.get("stage") != session_id.split("-", 1)[0]:
         raise LedgerError("The lifecycle ledger stage does not match the session ID.")
     if (
@@ -604,7 +612,7 @@ def issue_dispatch_authorization(
         "stage": _s(state["stage"]),
         "target_repository": _s(repository),
         "target_workflow": _s(workflow),
-        "target_ref": _s(ref),
+        "target_ref": _s(target_ref),
         "inputs_sha256": _s(dispatch_inputs_hash),
         "expires_at": _n(authorization_expires_at),
         "ttl_epoch_seconds": _n(ttl),
@@ -621,7 +629,7 @@ def issue_dispatch_authorization(
             or int(existing.get("source_run_attempt", 0)) != run_attempt
             or existing.get("target_repository") != repository
             or existing.get("target_workflow") != workflow
-            or existing.get("target_ref") != ref
+            or existing.get("target_ref") != target_ref
             or existing.get("inputs_sha256") != dispatch_inputs_hash
             or existing.get("action") != action
             or existing.get("stage") != state.get("stage")
