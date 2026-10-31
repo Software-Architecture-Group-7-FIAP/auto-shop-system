@@ -117,7 +117,7 @@ jobs:
             --github-output "$GITHUB_OUTPUT"
 
       - name: Require the trusted lifecycle actor before AWS credentials
-        run: python3 "$GITHUB_WORKSPACE/.github/scripts/require_trusted_lifecycle_operator.py" --require-dispatch-actor
+        run: python3 .github/scripts/require_trusted_lifecycle_operator.py --require-dispatch-actor
 
       - name: Configure the stop role to validate session authorization
         uses: aws-actions/configure-aws-credentials@v4
@@ -207,7 +207,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$SOURCE_REF" == "refs/heads/main" ]] || { echo "::error::HML lifecycle operations must run from main."; exit 1; }
-          python3 "$GITHUB_WORKSPACE/.github/scripts/require_trusted_lifecycle_operator.py" --require-dispatch-actor
+          python3 .github/scripts/require_trusted_lifecycle_operator.py --require-dispatch-actor
 
       - uses: actions/checkout@v4
         with:
@@ -467,7 +467,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$SOURCE_REF" == "refs/heads/main" ]] || { echo "::error::HML lifecycle operations must run from main."; exit 1; }
-          python3 "$GITHUB_WORKSPACE/.github/scripts/require_trusted_lifecycle_operator.py" --require-dispatch-actor
+          python3 .github/scripts/require_trusted_lifecycle_operator.py --require-dispatch-actor
 
       - uses: actions/checkout@v4
         with:
@@ -583,7 +583,7 @@ jobs:
           persist-credentials: false
 
       - name: Require the trusted lifecycle actor
-        run: python3 "$GITHUB_WORKSPACE/.github/scripts/require_trusted_lifecycle_operator.py" --require-dispatch-actor
+        run: python3 .github/scripts/require_trusted_lifecycle_operator.py --require-dispatch-actor
 
       - name: Configure the HML-only Cost Explorer reader
         uses: aws-actions/configure-aws-credentials@v4
@@ -636,7 +636,7 @@ jobs:
           persist-credentials: false
 
       - name: Require the trusted lifecycle actor
-        run: python3 "$GITHUB_WORKSPACE/.github/scripts/require_trusted_lifecycle_operator.py" --require-dispatch-actor
+        run: python3 .github/scripts/require_trusted_lifecycle_operator.py --require-dispatch-actor
 
       - name: Configure the lifecycle alert role
         uses: aws-actions/configure-aws-credentials@v4
