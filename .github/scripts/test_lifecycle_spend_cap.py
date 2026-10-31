@@ -65,9 +65,9 @@ class LifecycleSpendCapTests(unittest.TestCase):
         self.assertEqual(projection["usage_derived_daily_usd"], "1.00")
         self.assertEqual(projection["projected_daily_usd"], "2.00")
         self.assertEqual(projection["projection_days"], 7)
-        self.assertEqual(projection["reserved_cost_explorer_requests"], 14)
-        self.assertEqual(projection["reserved_cost_explorer_queries_usd"], "0.14")
-        self.assertEqual(projection["projected_gross_through_cutoff_usd"], "43.14")
+        self.assertEqual(projection["reserved_cost_explorer_requests"], 24)
+        self.assertEqual(projection["reserved_cost_explorer_queries_usd"], "0.24")
+        self.assertEqual(projection["projected_gross_through_cutoff_usd"], "43.24")
 
     def test_uses_gross_recent_usage_rate_when_it_exceeds_the_operator_floor(self) -> None:
         report = self.make_report(daily_amount="4.00", daily_floor="0.50")
@@ -75,7 +75,7 @@ class LifecycleSpendCapTests(unittest.TestCase):
         projection = self.evaluate(report)
 
         self.assertEqual(projection["projected_daily_usd"], "4.00")
-        self.assertEqual(projection["projected_gross_through_cutoff_usd"], "144.14")
+        self.assertEqual(projection["projected_gross_through_cutoff_usd"], "144.24")
         self.assertEqual(projection["status"], "blocked")
 
     def test_projects_from_highest_complete_day_not_recent_average(self) -> None:
@@ -94,7 +94,7 @@ class LifecycleSpendCapTests(unittest.TestCase):
             "maximum gross cost among trailing seven complete billing days",
         )
         self.assertEqual(projection["projected_daily_usd"], "30.00")
-        self.assertEqual(projection["projected_gross_through_cutoff_usd"], "268.14")
+        self.assertEqual(projection["projected_gross_through_cutoff_usd"], "268.24")
         self.assertEqual(projection["status"], "blocked")
 
     def test_blocks_evidence_older_than_one_hour(self) -> None:
@@ -212,6 +212,32 @@ class LifecycleSpendCapTests(unittest.TestCase):
         self.assertEqual(projection["projection_days"], 0)
         self.assertEqual(projection["reserved_cost_explorer_requests"], 2)
         self.assertEqual(projection["reserved_cost_explorer_queries_usd"], "0.02")
+
+    def test_allows_hml_on_the_november_5_cutoff_with_fresh_cost_evidence(self) -> None:
+        report = self.make_report()
+        days = [
+            (datetime(2026, 10, 1, tzinfo=timezone.utc).date() + timedelta(days=index)).isoformat()
+            for index in range(35)
+        ]
+        report["session_id"] = "hml-2026-11-05"
+        report["captured_at_utc"] = "2026-11-05T15:00:00Z"
+        billing = report["observed_billing"]
+        assert isinstance(billing, dict)
+        billing["period_end_exclusive_utc"] = "2026-11-05"
+        billing["data_through_utc"] = "2026-11-04"
+        billing["daily_totals"] = [{"date": day, "amount": "1.00"} for day in days]
+
+        projection = evaluate_spend_cap(
+            report,
+            now=datetime(2026, 11, 5, 15, 30, tzinfo=timezone.utc),
+            expected_account_id="035611741563",
+            expected_stage="hml",
+            expected_session_id="hml-2026-11-05",
+        )
+
+        self.assertEqual(projection["status"], "allowed")
+        self.assertEqual(projection["window_end_inclusive_utc"], "2026-11-05")
+        self.assertEqual(projection["projection_days"], 1)
 
 
 if __name__ == "__main__":
