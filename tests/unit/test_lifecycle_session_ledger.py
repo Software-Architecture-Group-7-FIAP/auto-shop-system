@@ -4,6 +4,7 @@ import importlib.util
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -19,6 +20,70 @@ RESOLVER_SPEC = importlib.util.spec_from_file_location("resolve_lifecycle_sessio
 assert RESOLVER_SPEC is not None and RESOLVER_SPEC.loader is not None
 RESOLVER = importlib.util.module_from_spec(RESOLVER_SPEC)
 RESOLVER_SPEC.loader.exec_module(RESOLVER)
+
+
+def test_ddb_error_reports_only_sanitized_aws_error_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LIFECYCLE_TABLE_NAME", "lifecycle-ledger")
+    monkeypatch.setattr(
+        LEDGER.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=254,
+            stderr=(
+                "An error occurred (ValidationException) when calling the UpdateItem operation: "
+                "sensitive request detail"
+            ),
+            stdout="",
+        ),
+    )
+
+    with pytest.raises(LEDGER.LedgerError) as error:
+        LEDGER._ddb("update-item", {"Key": {}})
+
+    assert "ValidationException" in str(error.value)
+    assert "sensitive request detail" not in str(error.value)
+
+
+def test_ddb_error_does_not_report_unrecognized_stderr_as_error_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LIFECYCLE_TABLE_NAME", "lifecycle-ledger")
+    monkeypatch.setattr(
+        LEDGER.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=2,
+            stderr="diagnostic includes account 123456789012 and other private data",
+            stdout="",
+        ),
+    )
+
+    with pytest.raises(LEDGER.LedgerError) as error:
+        LEDGER._ddb("update-item", {"Key": {}})
+
+    assert "123456789012" not in str(error.value)
+    assert "private data" not in str(error.value)
+
+
+def test_ddb_conditional_failure_remains_a_ledger_conflict(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LIFECYCLE_TABLE_NAME", "lifecycle-ledger")
+    monkeypatch.setattr(
+        LEDGER.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=254,
+            stderr=(
+                "An error occurred (ConditionalCheckFailedException) when calling the UpdateItem operation: "
+                "private condition details"
+            ),
+            stdout="",
+        ),
+    )
+
+    with pytest.raises(LEDGER.LedgerConflict) as error:
+        LEDGER._ddb("update-item", {"Key": {}})
+
+    assert "private condition details" not in str(error.value)
 
 
 @pytest.mark.parametrize("ref", ["main", "refs/heads/main"])
