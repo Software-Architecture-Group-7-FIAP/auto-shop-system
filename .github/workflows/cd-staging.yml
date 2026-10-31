@@ -251,7 +251,7 @@ jobs:
         run: |
           echo "Imagem publicada: ${IMAGE_REFERENCE}"
           echo "Deploy staging ignorado: defina a variável de repositório DEPLOY_STAGING_ENABLED=true."
-          echo "No Environment staging: AWS_REGION e o secret AWS_DEPLOY_ROLE_ARN; o nome do cluster vem do SSM."
+          echo "GitHub Environment hml: AWS_REGION and variable AWS_DEPLOY_ROLE_ARN_HML; cluster name comes from SSM."
           echo "Ver .github/CD.md"
 
   push-deploy-gated:

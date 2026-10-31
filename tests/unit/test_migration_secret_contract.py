@@ -40,8 +40,11 @@ def test_oidc_role_environment_subjects_match_deployment_workflows():
     production = (REPO_ROOT / ".github/workflows/cd-prod.yml").read_text(encoding="utf-8")
     oidc = (REPO_ROOT / "infra/aws/github_oidc.tf").read_text(encoding="utf-8")
 
-    assert "environment: staging" in staging
-    assert "environment: production" in production
+    assert "environment: hml" in staging
+    assert "environment: prd" in production
+    assert 'staging    = "hml"' in oidc
+    assert 'production = "prd"' in oidc
+    assert 'values   = ["${local.github_oidc_subject_prefix}:environment:${local.github_environment_name[each.key]}"]' in oidc
     assert 'toset(["staging", "production"])' in oidc
 
 

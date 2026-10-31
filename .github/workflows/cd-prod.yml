@@ -259,7 +259,7 @@ jobs:
         run: |
           echo "Imagem publicada: ${IMAGE_REFERENCE}"
           echo "Deploy produção ignorado: defina a variável de repositório DEPLOY_PRODUCTION_ENABLED=true."
-          echo "No Environment production: approval, AWS_REGION e o secret AWS_DEPLOY_ROLE_ARN; o nome do cluster vem do SSM."
+          echo "GitHub Environment prd: approval, AWS_REGION, and variable AWS_DEPLOY_ROLE_ARN_PRD; cluster name comes from SSM."
           echo "Ver .github/CD.md"
 
   push-deploy-gated:

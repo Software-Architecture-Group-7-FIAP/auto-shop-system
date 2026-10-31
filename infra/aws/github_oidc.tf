@@ -1,5 +1,5 @@
 # GitHub Actions OIDC roles for backend, frontend, and lifecycle auth preflight (issue #90).
-# Apply once per AWS account; map role ARNs to the documented GitHub Environment secrets.
+# Apply once per AWS account; map role ARNs to the documented GitHub Environment variables.
 
 variable "enable_github_oidc" {
   description = "Create GitHub OIDC provider and deploy roles."
@@ -53,6 +53,10 @@ locals {
     staging    = "hml"
     production = "prd"
   }
+  github_environment_name = {
+    staging    = "hml"
+    production = "prd"
+  }
   github_environment_branch = {
     staging    = "refs/heads/develop"
     production = "refs/heads/main"
@@ -84,7 +88,7 @@ data "aws_iam_policy_document" "github_deploy_assume" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["${local.github_oidc_subject_prefix}:environment:${each.key}"]
+      values   = ["${local.github_oidc_subject_prefix}:environment:${local.github_environment_name[each.key]}"]
     }
     condition {
       test     = "StringEquals"
@@ -265,22 +269,22 @@ resource "aws_iam_role_policy" "github_auth_preflight" {
 }
 
 output "github_deploy_role_arn_staging" {
-  description = "IAM role ARN for GitHub Environment staging (secret AWS_DEPLOY_ROLE_ARN)."
+  description = "IAM role ARN for GitHub Environment hml (variable AWS_DEPLOY_ROLE_ARN_HML)."
   value       = var.enable_github_oidc ? aws_iam_role.github_deploy["staging"].arn : null
 }
 
 output "github_deploy_role_arn_production" {
-  description = "IAM role ARN for GitHub Environment production."
+  description = "IAM role ARN for GitHub Environment prd (variable AWS_DEPLOY_ROLE_ARN_PRD)."
   value       = var.enable_github_oidc ? aws_iam_role.github_deploy["production"].arn : null
 }
 
 output "github_frontend_deploy_role_arn_staging" {
-  description = "IAM role ARN for GitHub Environment staging frontend publication."
+  description = "IAM role ARN for GitHub Environment hml frontend publication."
   value       = var.enable_github_oidc ? aws_iam_role.github_frontend_deploy["staging"].arn : null
 }
 
 output "github_frontend_deploy_role_arn_production" {
-  description = "IAM role ARN for GitHub Environment production frontend publication."
+  description = "IAM role ARN for GitHub Environment prd frontend publication."
   value       = var.enable_github_oidc ? aws_iam_role.github_frontend_deploy["production"].arn : null
 }
 

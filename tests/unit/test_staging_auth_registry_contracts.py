@@ -16,9 +16,15 @@ def test_auth_preflight_policy_matches_lambda_auth_function_names() -> None:
     assert "function:${var.auth_lambda_function_name}-prod" not in policy
 
 
-@pytest.mark.parametrize("workflow_name", ("cd-staging.yml", "cd-prod.yml"))
+@pytest.mark.parametrize(
+    ("workflow_name", "role_reference"),
+    (
+        ("cd-staging.yml", "role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN_HML }}"),
+        ("cd-prod.yml", "role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN_PRD }}"),
+    ),
+)
 def test_deploy_requires_anonymous_ghcr_pull_before_aws_credentials(
-    workflow_name: str,
+    workflow_name: str, role_reference: str,
 ) -> None:
     workflow = (ROOT / ".github/workflows" / workflow_name).read_text(
         encoding="utf-8"
@@ -31,9 +37,7 @@ def test_deploy_requires_anonymous_ghcr_pull_before_aws_credentials(
     public_pull_check = min(
         position for position in anonymous_pull_checks if position >= 0
     )
-    aws_credentials = workflow.index(
-        "role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}"
-    )
+    aws_credentials = workflow.index(role_reference)
 
     assert public_pull_check < aws_credentials
     assert "packages: read" not in workflow
