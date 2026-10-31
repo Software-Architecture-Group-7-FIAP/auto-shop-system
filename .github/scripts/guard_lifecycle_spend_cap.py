@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 CAP_WINDOW_START = date(2026, 10, 1)
 CAP_WINDOW_END = date(2026, 11, 5)
 CAP_WINDOW_END_EXCLUSIVE = CAP_WINDOW_END + timedelta(days=1)
-HML_LAST_DAY = date(2026, 10, 31)
+HML_LAST_DAY = date(2026, 11, 5)
 PRD_FIRST_DAY = date(2026, 11, 1)
 MAX_EVIDENCE_AGE = timedelta(hours=1)
 MAX_BILLING_LAG_DAYS = 3

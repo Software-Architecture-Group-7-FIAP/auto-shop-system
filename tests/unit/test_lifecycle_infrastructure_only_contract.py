@@ -46,6 +46,24 @@ def test_start_has_no_application_or_public_edge_work() -> None:
         assert excluded not in workflow
 
 
+def test_start_dispatches_the_guarded_database_bootstrap_after_hml_infrastructure() -> None:
+    workflow = (WORKFLOWS / "environment-start.yml").read_text(encoding="utf-8")
+    database_step = workflow.split("      - name: Bootstrap the HML lifecycle database", 1)[1].split(
+        "      - name: Record the infrastructure-only opening", 1
+    )[0]
+
+    assert workflow.index("Apply the exact HML namespace opening plan") < workflow.index(
+        "Bootstrap the HML lifecycle database"
+    )
+    assert '--repository "$DATABASE_INFRA_REPOSITORY" --workflow apply.yml --ref main' in database_step
+    assert "--authorization-action open" in database_step
+    assert "session_scope" in database_step
+    assert "infrastructure-only" in database_step
+    assert "phase" in database_step
+    assert "bootstrap" in database_step
+    assert "--output-name database_bootstrap" in database_step
+
+
 def test_stop_is_limited_to_infrastructure_only_hml_and_verifies_teardown() -> None:
     workflow = (WORKFLOWS / "environment-stop.yml").read_text(encoding="utf-8")
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resolve the same BRT session ID and UTC start for coordinated PRD workflows."""
+"""Resolve the same BRT session ID and UTC start for coordinated lifecycle workflows."""
 
 import argparse
 import os
@@ -12,7 +12,7 @@ BRT = ZoneInfo("America/Sao_Paulo")
 FIRST_PRD_DAY = date(2026, 11, 1)
 LAST_PRD_DAY = date(2026, 11, 5)
 UTC_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
-HML_LAST_DAY = date(2026, 10, 31)
+HML_LAST_DAY = date(2026, 11, 5)
 AUDIT_RESERVE = timedelta(minutes=15)
 TEARDOWN_MARGIN = timedelta(minutes=5)
 
@@ -88,7 +88,7 @@ def main() -> int:
     else:
         session_mode = "hml"
         if local_now.date() > HML_LAST_DAY:
-            print("::error::HML lifecycle is authorized only through 31 October 2026 BRT.", file=sys.stderr)
+            print("::error::HML lifecycle is authorized only through 5 November 2026 BRT.", file=sys.stderr)
             return 1
         if os.environ.get("GITHUB_EVENT_NAME") == "schedule":
             print("::error::HML has no scheduled lifecycle; dispatch the central workflow manually.", file=sys.stderr)
