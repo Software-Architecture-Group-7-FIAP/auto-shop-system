@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
-import os
-import json
 import argparse
+import json
+import os
 import sys
-from datetime import date, datetime, time, timezone
+from datetime import datetime, time, timezone
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -16,6 +16,84 @@ from zoneinfo import ZoneInfo
 
 BRT = ZoneInfo("America/Sao_Paulo")
 API_ROOT = "https://api.github.com"
+OPENING_JOB_NAME = "open"
+RETRYABLE_RUN_CONCLUSIONS = {"failure", "cancelled", "timed_out"}
+UNIQUE_GUARD_STEP_NAME = "Reject a second opening run for the same HML date"
+FIRST_MUTATION_STEP_NAME = "Configure the narrow lifecycle start role"
+
+
+def _github_get_json(url: str, token: str) -> object:
+    request = Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "auto-shop-lifecycle-coordinator",
+        },
+    )
+    with urlopen(request, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _is_safe_retryable_attempt(run: dict[str, object], repository: str, token: str) -> bool:
+    conclusion = run.get("conclusion")
+    if (
+        run.get("status") != "completed"
+        or not isinstance(conclusion, str)
+        or conclusion not in RETRYABLE_RUN_CONCLUSIONS
+    ):
+        return False
+    try:
+        run_id = int(run.get("id", 0))
+    except (TypeError, ValueError):
+        return False
+    if run_id <= 0:
+        return False
+
+    jobs_url = f"{API_ROOT}/repos/{repository}/actions/runs/{run_id}/jobs?per_page=100"
+    jobs_result = _github_get_json(jobs_url, token)
+    if not isinstance(jobs_result, dict) or not isinstance(jobs_result.get("jobs"), list):
+        raise ValueError("GitHub returned an invalid workflow-job listing.")
+    total_jobs = jobs_result.get("total_count")
+    if (
+        not isinstance(total_jobs, int)
+        or isinstance(total_jobs, bool)
+        or total_jobs > 100
+        or total_jobs != len(jobs_result["jobs"])
+    ):
+        raise ValueError("GitHub returned an incomplete workflow-job listing.")
+
+    jobs = jobs_result["jobs"]
+    if any(not isinstance(job, dict) for job in jobs):
+        raise ValueError("GitHub returned an invalid workflow job.")
+    opening_jobs = [job for job in jobs if job.get("name") == OPENING_JOB_NAME]
+    if len(opening_jobs) != 1:
+        return False
+    opening_job = opening_jobs[0]
+    if opening_job.get("status") != "completed":
+        return False
+    if opening_job.get("conclusion") == "skipped":
+        return True
+    if opening_job.get("conclusion") != "failure":
+        return False
+
+    steps = opening_job.get("steps")
+    if not isinstance(steps, list) or any(not isinstance(step, dict) for step in steps):
+        return False
+    guard_steps = [step for step in steps if step.get("name") == UNIQUE_GUARD_STEP_NAME]
+    mutation_steps = [step for step in steps if step.get("name") == FIRST_MUTATION_STEP_NAME]
+    if len(guard_steps) != 1 or len(mutation_steps) != 1:
+        return False
+    guard_step = guard_steps[0]
+    mutation_step = mutation_steps[0]
+    return (
+        steps.index(guard_step) < steps.index(mutation_step)
+        and guard_step.get("status") == "completed"
+        and guard_step.get("conclusion") == "failure"
+        and mutation_step.get("status") == "completed"
+        and mutation_step.get("conclusion") == "skipped"
+    )
 
 
 def main() -> int:
@@ -27,7 +105,10 @@ def main() -> int:
     current_run_id = os.environ.get("GITHUB_RUN_ID", "")
     token = os.environ.get("LIFECYCLE_CROSS_REPO_TOKEN", "").strip()
     if not repository or not current_run_id or not token:
-        print("::error::Unique-session check requires repository, run ID, and the explicit cross-repository token.", file=sys.stderr)
+        print(
+            "::error::Unique-session check requires repository, run ID, and the explicit cross-repository token.",
+            file=sys.stderr,
+        )
         return 1
 
     local_day = datetime.now(timezone.utc).astimezone(BRT).date()
@@ -36,18 +117,11 @@ def main() -> int:
         "created": ">=" + day_start_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "per_page": "100",
     })
-    request = Request(
-        f"{API_ROOT}/repos/{repository}/actions/workflows/environment-start.yml/runs?{query}",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "auto-shop-prd-lifecycle-coordinator",
-        },
-    )
     try:
-        with urlopen(request, timeout=30) as response:
-            result = json.loads(response.read().decode("utf-8"))
+        result = _github_get_json(
+            f"{API_ROOT}/repos/{repository}/actions/workflows/environment-start.yml/runs?{query}",
+            token,
+        )
     except (HTTPError, URLError, OSError, json.JSONDecodeError):
         print("::error::Could not verify whether an HML session was already started today.", file=sys.stderr)
         return 1
@@ -72,14 +146,30 @@ def main() -> int:
         if created_at.astimezone(BRT).date() == local_day:
             matching_runs.append(run)
 
-    if any(str(run.get("id")) != current_run_id for run in matching_runs):
-        print(f"::error::Only one {arguments.stage.upper()} opening run is allowed per BRT day; rerun the original run for recovery.", file=sys.stderr)
-        return 1
-    if len(matching_runs) > 1:
-        print("::error::Multiple HML starts were found for today; refusing to continue.", file=sys.stderr)
+    prior_runs = [run for run in matching_runs if str(run.get("id")) != current_run_id]
+    try:
+        if any(not _is_safe_retryable_attempt(run, repository, token) for run in prior_runs):
+            print(
+                f"::error::An earlier {arguments.stage.upper()} opening is active or may have started "
+                "AWS changes; refusing to retry.",
+                file=sys.stderr,
+            )
+            return 1
+    except (HTTPError, URLError, OSError, json.JSONDecodeError, ValueError):
+        print(
+            "::error::Could not verify whether a previous opening started AWS changes; refusing to continue.",
+            file=sys.stderr,
+        )
         return 1
 
-    print(f"No earlier {arguments.stage.upper()} lifecycle opening was found for {local_day.isoformat()} BRT.")
+    if prior_runs:
+        print(
+            f"Found {len(prior_runs)} completed {arguments.stage.upper()} attempt(s) that stopped before "
+            "AWS mutations; allowing this guarded retry."
+        )
+    else:
+        print(f"No earlier {arguments.stage.upper()} lifecycle opening was found for {local_day.isoformat()} BRT.")
+
     return 0
 
 
