@@ -77,6 +77,27 @@ class EnvironmentWorkflowContractTests(unittest.TestCase):
         self.assertNotIn("/database/secrets/owner-arn", staging)
         self.assertNotIn("/database/secrets/owner-arn", production)
 
+    def test_deploy_workflows_use_environment_scoped_oidc_roles_and_branches(self) -> None:
+        staging = (WORKFLOWS / "cd-staging.yml").read_text(encoding="utf-8")
+        production = (WORKFLOWS / "cd-prod.yml").read_text(encoding="utf-8")
+        frontend = self.read("reusable-frontend-deploy.yml")
+
+        self.assertIn("environment: hml", staging)
+        self.assertIn('SOURCE_REF" == "refs/heads/develop"', staging)
+        self.assertIn("vars.AWS_DEPLOY_ROLE_ARN_HML", staging)
+        self.assertNotIn("secrets.AWS_DEPLOY_ROLE_ARN", staging)
+
+        self.assertIn("environment: prd", production)
+        self.assertIn('SOURCE_REF" == "refs/heads/main"', production)
+        self.assertIn("vars.AWS_DEPLOY_ROLE_ARN_PRD", production)
+        self.assertNotIn("secrets.AWS_DEPLOY_ROLE_ARN", production)
+
+        self.assertIn("AWS_FRONTEND_DEPLOY_ROLE_ARN_HML", frontend)
+        self.assertIn("AWS_FRONTEND_DEPLOY_ROLE_ARN_PRD", frontend)
+        self.assertNotIn("secrets.AWS_FRONTEND_DEPLOY_ROLE_ARN", frontend)
+        self.assertIn('hml) expected_ref="refs/heads/develop"', frontend)
+        self.assertIn('prd) expected_ref="refs/heads/main"', frontend)
+
 
 if __name__ == "__main__":
     unittest.main()

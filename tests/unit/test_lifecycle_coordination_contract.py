@@ -133,9 +133,17 @@ def test_upstream_ssm_prefix_matches_the_auth_preflight_contract() -> None:
 
 
 def test_public_ghcr_images_are_verified_anonymously_before_eks_deploy() -> None:
-    for workflow_name, deploy_command in (
-        ("cd-staging.yml", "./k8s/scripts/deploy.sh staging"),
-        ("cd-prod.yml", "./k8s/scripts/deploy.sh production"),
+    for workflow_name, deploy_command, role_reference in (
+        (
+            "cd-staging.yml",
+            "./k8s/scripts/deploy.sh staging",
+            "role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN_HML }}",
+        ),
+        (
+            "cd-prod.yml",
+            "./k8s/scripts/deploy.sh production",
+            "role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN_PRD }}",
+        ),
     ):
         workflow = (ROOT / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
         anonymous_pull = min(
@@ -146,9 +154,7 @@ def test_public_ghcr_images_are_verified_anonymously_before_eks_deploy() -> None
             )
             if position >= 0
         )
-        aws_credentials = workflow.index(
-            "role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}"
-        )
+        aws_credentials = workflow.index(role_reference)
         deploy = workflow.index(deploy_command)
 
         assert anonymous_pull < aws_credentials < deploy

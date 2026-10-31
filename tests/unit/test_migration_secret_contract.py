@@ -28,7 +28,7 @@ def test_deployment_role_can_read_only_the_secret_arn_for_its_stage():
     oidc = (REPO_ROOT / "infra/aws/github_oidc.tf").read_text(encoding="utf-8")
 
     assert "data.aws_ssm_parameter.migration_secret_arn[local.github_environment_api_stage[each.key]].arn" in oidc
-    assert 'values   = ["${local.github_oidc_subject_prefix}:environment:${each.key}"]' in oidc
+    assert 'values   = ["${local.github_oidc_subject_prefix}:environment:${local.github_environment_name[each.key]}"]' in oidc
     assert 'default     = "279547328"' in oidc
     assert 'default     = "1221936756"' in oidc
     assert "repo:${var.github_repository}:environment:" not in oidc
@@ -39,10 +39,19 @@ def test_oidc_role_environment_subjects_match_deployment_workflows():
     staging = (REPO_ROOT / ".github/workflows/cd-staging.yml").read_text(encoding="utf-8")
     production = (REPO_ROOT / ".github/workflows/cd-prod.yml").read_text(encoding="utf-8")
     oidc = (REPO_ROOT / "infra/aws/github_oidc.tf").read_text(encoding="utf-8")
+    infra_readme = (REPO_ROOT / "infra/aws/README.md").read_text(encoding="utf-8")
+    deployment_readme = (REPO_ROOT / "docs/deployment.md").read_text(encoding="utf-8")
 
-    assert "environment: staging" in staging
-    assert "environment: production" in production
+    assert "environment: hml" in staging
+    assert "environment: prd" in production
+    assert 'staging    = "hml"' in oidc
+    assert 'production = "prd"' in oidc
+    assert 'values   = ["${local.github_oidc_subject_prefix}:environment:${local.github_environment_name[each.key]}"]' in oidc
     assert 'toset(["staging", "production"])' in oidc
+    assert "| `hml` | `hml` |" in infra_readme
+    assert "| `prd` | `prd` |" in infra_readme
+    assert "| `workflow_dispatch` em `develop` | `hml` |" in deployment_readme
+    assert "| `workflow_dispatch` em `main` | `prd` |" in deployment_readme
 
 
 def test_alembic_preserves_percent_encoded_passwords_and_deploy_logs_redact_driver_urls():

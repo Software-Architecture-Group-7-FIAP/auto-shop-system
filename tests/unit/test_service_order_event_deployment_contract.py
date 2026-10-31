@@ -116,4 +116,5 @@ def test_backend_and_frontend_github_deploy_roles_have_separate_permissions():
     assert '"s3:PutObject"' in frontend_policy
     assert '"s3:DeleteObject"' in frontend_policy
     assert '"cloudfront:CreateInvalidation"' in frontend_policy
-    assert "secrets.AWS_FRONTEND_DEPLOY_ROLE_ARN" in frontend_workflow
+    assert "vars.AWS_FRONTEND_DEPLOY_ROLE_ARN_HML" in frontend_workflow
+    assert "vars.AWS_FRONTEND_DEPLOY_ROLE_ARN_PRD" in frontend_workflow

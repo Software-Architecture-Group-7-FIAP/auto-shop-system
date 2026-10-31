@@ -39,8 +39,19 @@ jobs:
   lifecycle-authorization:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    environment: staging
+    environment: hml
     steps:
+      - name: Require develop as the HML source branch
+        env:
+          SOURCE_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_REF" == "refs/heads/develop" ]] || {
+            echo "::error::HML deployments must run from develop."
+            exit 1
+          }
+
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -94,9 +105,9 @@ jobs:
 
   deploy-staging:
     needs: [build-push, lifecycle-authorization]
-    if: github.event_name == 'workflow_dispatch' && vars.DEPLOY_STAGING_ENABLED == 'true'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop' && vars.DEPLOY_STAGING_ENABLED == 'true'
     runs-on: ubuntu-latest
-    environment: staging
+    environment: hml
     timeout-minutes: 30
     permissions:
       contents: read
@@ -124,10 +135,21 @@ jobs:
       - name: Verify image is pullable without credentials
         run: docker pull "${IMAGE_REFERENCE}"
 
+      - name: Validate the Terraform-managed HML deploy role ARN
+        env:
+          DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN_HML || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_ROLE_ARN" == "arn:aws:iam::035611741563:role/auto-shop-staging-github-staging" ]] || {
+            echo "::error::Set AWS_DEPLOY_ROLE_ARN_HML to Terraform output github_deploy_role_arn_staging before HML deployment."
+            exit 1
+          }
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN_HML }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - uses: azure/setup-kubectl@v4
@@ -202,7 +224,7 @@ jobs:
       id-token: write
     uses: ./.github/workflows/reusable-frontend-deploy.yml
     with:
-      github_environment: staging
+      github_environment: hml
       api_stage: hml
       session_id: ${{ inputs.session_id }}
       started_at: ${{ inputs.started_at }}
@@ -229,7 +251,7 @@ jobs:
         run: |
           echo "Imagem publicada: ${IMAGE_REFERENCE}"
           echo "Deploy staging ignorado: defina a variável de repositório DEPLOY_STAGING_ENABLED=true."
-          echo "No Environment staging: AWS_REGION e o secret AWS_DEPLOY_ROLE_ARN; o nome do cluster vem do SSM."
+          echo "GitHub Environment hml: AWS_REGION and variable AWS_DEPLOY_ROLE_ARN_HML; cluster name comes from SSM."
           echo "Ver .github/CD.md"
 
   push-deploy-gated:

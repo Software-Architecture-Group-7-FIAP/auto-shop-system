@@ -22,8 +22,8 @@ Este repositório contém a definição da infraestrutura. Isso não significa q
 
 | GitHub Environment | Stage da API | Namespace Kubernetes | Host do frontend |
 |---|---|---|---|
-| `staging` | `hml` | `auto-shop-hml` | `app-hml.oficina-workshop.com.br` |
-| `production` | `prd` | `auto-shop-prd` | `app.oficina-workshop.com.br` |
+| `hml` | `hml` | `auto-shop-hml` | `app-hml.oficina-workshop.com.br` |
+| `prd` | `prd` | `auto-shop-prd` | `app.oficina-workshop.com.br` |
 
 A stack upstream precisa exportar os parâmetros abaixo sob o prefixo fixo `/auto-shop/staging`, compartilhado com o preflight read-only da Lambda:
 
@@ -44,7 +44,7 @@ Esta lista reúne apenas os parâmetros consumidos por esta stack. Para o banco,
 
 As roles de migration e as associacoes Pod Identity por ambiente pertencem a este repositorio. Elas leem somente os ARNs `migrations-hml` ou `migrations-prd` e a policy correspondente publicados por `database-infra`. A identidade `owner` fica exclusiva do Job de bootstrap, cuja role e ServiceAccount sao mantidas por `database-infra` em `auto-shop-ops`; `k8s-infra` fornece o cluster, o namespace e as politicas de rede. Os fluxos de sessao do EKS e do banco sao pre-requisitos separados para a issue #87 e precisam ser coordenados com os repositorios responsaveis.
 
-Quando `enable_github_oidc = true`, esta stack também cria a role estável `auto-shop-staging-github-auth-preflight` e publica seu ARN no output `github_auth_preflight_role_arn`. O workflow de abertura constrói o ARN a partir da variável `AWS_ACCOUNT_ID`; não é necessário copiar um ARN para um secret. A trust policy exige o OIDC audience `sts.amazonaws.com` e o subject imutável deste repositório (`org ID 279547328` e `repository ID 1221936756`) no environment `operations`. As roles de deploy confiam somente nos environments `staging` e `production` usados pelos workflows. A policy read-only permite somente `ssm:GetParameters` nos cinco contratos SSM de auth/rede usados pelo preflight e `lambda:GetFunctionConfiguration` nas funções `lambda-auth-hml` e `lambda-auth-prd` (sufixos do nome-base configurável `auth_lambda_function_name`). A role não lê Secrets Manager, não altera recursos e não autoriza deploy.
+Quando `enable_github_oidc = true`, esta stack também cria a role estável `auto-shop-staging-github-auth-preflight` e publica seu ARN no output `github_auth_preflight_role_arn`. O workflow de abertura constrói o ARN a partir da variável `AWS_ACCOUNT_ID`; não é necessário copiar um ARN para um secret. A trust policy exige o OIDC audience `sts.amazonaws.com` e o subject imutável deste repositório (`org ID 279547328` e `repository ID 1221936756`) no environment `operations`. As roles de deploy confiam somente nos GitHub Environments `hml` e `prd`, com `develop` e `main`, respectivamente. As chaves Terraform `staging` e `production` e os nomes dos outputs são mantidos por compatibilidade; elas não são nomes dos GitHub Environments. A policy read-only permite somente `ssm:GetParameters` nos cinco contratos SSM de auth/rede usados pelo preflight e `lambda:GetFunctionConfiguration` nas funções `lambda-auth-hml` e `lambda-auth-prd` (sufixos do nome-base configurável `auth_lambda_function_name`). A role não lê Secrets Manager, não altera recursos e não autoriza deploy.
 
 O Terraform do repositório `lambda-auth` pode publicar um ARN por stage em `/auth/customer-token/function-arn/hml` e `/auth/customer-token/function-arn/prd`, usando `function_arn_ssm_parameter_name`. A publicação fica desativada por padrão; configure o caminho correspondente ao stage e use state separado para cada função. O API Gateway invoca a Lambda correspondente ao stage; o valor do ARN não é segredo.
 

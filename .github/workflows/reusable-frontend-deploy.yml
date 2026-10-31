@@ -47,6 +47,23 @@ jobs:
       run:
         working-directory: frontend
     steps:
+      - name: Require the matching HML or PRD source branch
+        env:
+          SOURCE_REF: ${{ github.ref }}
+          GITHUB_ENVIRONMENT: ${{ inputs.github_environment }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$GITHUB_ENVIRONMENT" in
+            hml) expected_ref="refs/heads/develop" ;;
+            prd) expected_ref="refs/heads/main" ;;
+            *) echo "::error::The frontend deploy Environment must be hml or prd."; exit 1 ;;
+          esac
+          [[ "$SOURCE_REF" == "$expected_ref" ]] || {
+            echo "::error::The frontend deployment source branch does not match its Environment."
+            exit 1
+          }
+
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -95,10 +112,35 @@ jobs:
       - name: Build Angular production bundle
         run: npm run build -- --configuration production
 
+      - name: Validate the Terraform-managed frontend deploy role ARN
+        env:
+          GITHUB_ENVIRONMENT: ${{ inputs.github_environment }}
+          DEPLOY_ROLE_ARN: ${{ inputs.github_environment == 'hml' && vars.AWS_FRONTEND_DEPLOY_ROLE_ARN_HML || (inputs.github_environment == 'prd' && vars.AWS_FRONTEND_DEPLOY_ROLE_ARN_PRD || '') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$GITHUB_ENVIRONMENT" in
+            hml)
+              expected_role_arn="arn:aws:iam::035611741563:role/auto-shop-staging-github-staging-frontend"
+              output_name="github_frontend_deploy_role_arn_staging"
+              variable_name="AWS_FRONTEND_DEPLOY_ROLE_ARN_HML"
+              ;;
+            prd)
+              expected_role_arn="arn:aws:iam::035611741563:role/auto-shop-staging-github-production-frontend"
+              output_name="github_frontend_deploy_role_arn_production"
+              variable_name="AWS_FRONTEND_DEPLOY_ROLE_ARN_PRD"
+              ;;
+            *) echo "::error::The frontend deploy Environment must be hml or prd."; exit 1 ;;
+          esac
+          [[ "$DEPLOY_ROLE_ARN" == "$expected_role_arn" ]] || {
+            echo "::error::Set $variable_name to Terraform output $output_name before frontend deployment."
+            exit 1
+          }
+
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_FRONTEND_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ inputs.github_environment == 'hml' && vars.AWS_FRONTEND_DEPLOY_ROLE_ARN_HML || vars.AWS_FRONTEND_DEPLOY_ROLE_ARN_PRD }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Resolve stage deployment targets
