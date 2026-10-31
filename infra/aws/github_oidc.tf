@@ -48,7 +48,8 @@ variable "github_oidc_thumbprint" {
 }
 
 locals {
-  github_oidc_subject_prefix = "repo:${split("/", var.github_repository)[0]}@${var.github_repository_owner_id}/${split("/", var.github_repository)[1]}@${var.github_repository_id}"
+  github_oidc_subject_prefix             = "repo:${split("/", var.github_repository)[0]}@${var.github_repository_owner_id}/${split("/", var.github_repository)[1]}@${var.github_repository_id}"
+  github_deploy_permissions_boundary_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/auto-shop/auto-shop-boundary"
   github_environment_api_stage = {
     staging    = "hml"
     production = "prd"
@@ -60,6 +61,14 @@ locals {
   github_environment_branch = {
     staging    = "refs/heads/develop"
     production = "refs/heads/main"
+  }
+  github_deploy_parameter_arns = {
+    for environment, stage in local.github_environment_api_stage :
+    environment => [
+      "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${trimsuffix(var.upstream_ssm_prefix, "/")}/database/secrets/migrations-${stage}-arn",
+      "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.service_order_bus_parameter_names[stage]}",
+      "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.service_order_publisher_role_parameter_names[stage]}",
+    ]
   }
 }
 
@@ -105,15 +114,17 @@ data "aws_iam_policy_document" "github_deploy_assume" {
 resource "aws_iam_role" "github_deploy" {
   for_each = var.enable_github_oidc ? toset(["staging", "production"]) : toset([])
 
-  name               = "${local.name_prefix}-github-${each.key}"
-  assume_role_policy = data.aws_iam_policy_document.github_deploy_assume[each.key].json
+  name                 = "${local.name_prefix}-github-${each.key}"
+  assume_role_policy   = data.aws_iam_policy_document.github_deploy_assume[each.key].json
+  permissions_boundary = local.github_deploy_permissions_boundary_arn
 }
 
 resource "aws_iam_role" "github_frontend_deploy" {
   for_each = var.enable_github_oidc ? toset(["staging", "production"]) : toset([])
 
-  name               = "${local.name_prefix}-github-${each.key}-frontend"
-  assume_role_policy = data.aws_iam_policy_document.github_deploy_assume[each.key].json
+  name                 = "${local.name_prefix}-github-${each.key}-frontend"
+  assume_role_policy   = data.aws_iam_policy_document.github_deploy_assume[each.key].json
+  permissions_boundary = local.github_deploy_permissions_boundary_arn
 }
 
 data "aws_iam_policy_document" "github_deploy_eks" {
@@ -139,12 +150,10 @@ data "aws_iam_policy_document" "github_deploy_eks" {
     actions = [
       "ssm:GetParameter",
     ]
-    resources = [
-      data.aws_ssm_parameter.upstream["eks_cluster_name"].arn,
-      data.aws_ssm_parameter.migration_secret_arn[local.github_environment_api_stage[each.key]].arn,
-      aws_ssm_parameter.service_order_bus_name[local.github_environment_api_stage[each.key]].arn,
-      aws_ssm_parameter.service_order_publisher_role_arn[local.github_environment_api_stage[each.key]].arn,
-    ]
+    resources = concat(
+      [data.aws_ssm_parameter.upstream["eks_cluster_name"].arn],
+      local.github_deploy_parameter_arns[each.key],
+    )
   }
 }
 
@@ -261,6 +270,7 @@ resource "aws_iam_role" "github_auth_preflight" {
   description          = "Read-only preflight for persistent customer-auth Lambdas before staging session resources open."
   max_session_duration = 3600
   assume_role_policy   = data.aws_iam_policy_document.github_auth_preflight_assume[0].json
+  permissions_boundary = local.github_deploy_permissions_boundary_arn
   tags                 = local.common_tags
 }
 

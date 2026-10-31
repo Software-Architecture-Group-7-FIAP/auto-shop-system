@@ -27,7 +27,9 @@ def test_application_migration_identity_attaches_environment_specific_read_polic
 def test_deployment_role_can_read_only_the_secret_arn_for_its_stage():
     oidc = (REPO_ROOT / "infra/aws/github_oidc.tf").read_text(encoding="utf-8")
 
-    assert "data.aws_ssm_parameter.migration_secret_arn[local.github_environment_api_stage[each.key]].arn" in oidc
+    assert "local.github_deploy_parameter_arns[each.key]" in oidc
+    assert "database/secrets/migrations-" in oidc
+    assert "data.aws_ssm_parameter.migration_secret_arn" not in oidc
     assert 'values   = ["${local.github_oidc_subject_prefix}:environment:${local.github_environment_name[each.key]}"]' in oidc
     assert 'default     = "279547328"' in oidc
     assert 'default     = "1221936756"' in oidc
