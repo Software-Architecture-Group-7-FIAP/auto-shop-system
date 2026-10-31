@@ -36,6 +36,16 @@ class CloudFrontSecurityContractTests(unittest.TestCase):
         self.assertIn("strict_transport_security", self.content)
         self.assertGreaterEqual(self.content.count("response_headers_policy_id"), 2)
 
+    def test_health_endpoints_are_not_routed_through_public_edges(self) -> None:
+        api_gateway = (
+            Path(__file__).resolve().parents[2] / "infra" / "aws" / "api_gateway.tf"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn('resource "aws_api_gateway_resource" "health"', api_gateway)
+        self.assertNotIn('resource "aws_api_gateway_integration" "health_http"', api_gateway)
+        self.assertNotIn("/health/", api_gateway)
+        self.assertNotIn('"health/*"', self.content)
+
 
 if __name__ == "__main__":
     unittest.main()
