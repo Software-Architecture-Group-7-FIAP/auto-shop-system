@@ -24,6 +24,10 @@ SESSION_PATTERN = re.compile(r"^(hml|prd)-(\d{4}-\d{2}-\d{2})$")
 DISPATCH_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 RUN_ID_PATTERN = re.compile(r"^[1-9][0-9]{0,19}$")
 ACTOR_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,39}(?:\[bot\])?$")
+AWS_CLI_ERROR_PATTERN = re.compile(
+    r"(?:^|\n)An error occurred \(([A-Za-z][A-Za-z0-9]{0,63})\) "
+    r"when calling the ([A-Za-z][A-Za-z0-9]{0,63}) operation:"
+)
 MAX_SESSION = timedelta(hours=5)
 AUTH_TTL_SECONDS = 15 * 60
 AUDIT_RETENTION_SECONDS = 30 * 24 * 60 * 60
@@ -86,8 +90,15 @@ def _ddb(operation: str, request: dict[str, Any], *, paginate: bool = True) -> d
         except (OSError, subprocess.TimeoutExpired) as error:
             raise LedgerError(f"DynamoDB {operation} did not complete; lifecycle authorization fails closed.") from error
     if result.returncode != 0:
-        if "ConditionalCheckFailedException" in result.stderr:
+        aws_error = AWS_CLI_ERROR_PATTERN.search(result.stderr)
+        error_code = aws_error.group(1) if aws_error else ""
+        if error_code == "ConditionalCheckFailedException":
             raise LedgerConflict(f"DynamoDB {operation} condition did not match.")
+        if error_code:
+            raise LedgerError(
+                f"DynamoDB {operation} failed with AWS error code {error_code}; "
+                "lifecycle authorization fails closed."
+            )
         raise LedgerError(f"DynamoDB {operation} was denied or failed; lifecycle authorization fails closed.")
     try:
         decoded = json.loads(result.stdout or "{}")
