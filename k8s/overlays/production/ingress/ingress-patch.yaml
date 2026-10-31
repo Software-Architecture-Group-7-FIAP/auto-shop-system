@@ -1,15 +1,22 @@
-- op: replace
-  path: /spec/tls/0
-  value:
-    hosts:
-      - prd.api.internal
-    secretName: auto-shop-tls
-- op: replace
-  path: /spec/rules/0/host
-  value: prd.api.internal
-- op: replace
-  path: /metadata/annotations/nginx.ingress.kubernetes.io~1ssl-redirect
-  value: "false"
-- op: replace
-  path: /metadata/annotations/nginx.ingress.kubernetes.io~1force-ssl-redirect
-  value: "false"
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: auto-shop-api
+  namespace: auto-shop
+spec:
+  ingressClassName: alb
+  rules:
+    - host: api.autoshop.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: auto-shop-backend
+                port:
+                  number: 8000
+  tls:
+    - hosts:
+        - api.autoshop.com
+      secretName: auto-shop-tls-cert

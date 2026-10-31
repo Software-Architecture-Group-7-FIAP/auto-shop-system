@@ -3,5 +3,4 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - configmap.yaml
-  - backend-service-account.yaml
-  - migration-service-account.yaml
+  - ../network
