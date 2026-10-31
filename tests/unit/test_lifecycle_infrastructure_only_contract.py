@@ -46,24 +46,38 @@ def test_start_has_no_application_or_public_edge_work() -> None:
         assert excluded not in workflow
 
 
-def test_start_dispatches_the_guarded_database_bootstrap_after_hml_infrastructure() -> None:
+def test_start_provisions_database_before_hml_identity_then_bootstraps_credentials() -> None:
     workflow = (WORKFLOWS / "environment-start.yml").read_text(encoding="utf-8")
-    database_step = workflow.split("      - name: Bootstrap the HML lifecycle database", 1)[1].split(
+    provision_step = workflow.split("      - name: Provision the HML database role and SSM contract", 1)[1].split(
+        "      - name: Plan the isolated HML namespace opening", 1
+    )[0]
+    bootstrap_step = workflow.split("      - name: Bootstrap the HML lifecycle database", 1)[1].split(
         "      - name: Record the infrastructure-only opening", 1
     )[0]
 
+    assert workflow.index("Apply the exact K8s platform opening plan") < workflow.index(
+        "Provision the HML database role and SSM contract"
+    )
+    assert workflow.index("Provision the HML database role and SSM contract") < workflow.index(
+        "Plan the isolated HML namespace opening"
+    )
     assert workflow.index("Apply the exact HML namespace opening plan") < workflow.index(
         "Bootstrap the HML lifecycle database"
     )
-    assert '--repository "$DATABASE_INFRA_REPOSITORY" --workflow apply.yml --ref main' in database_step
-    assert "--authorization-action open" in database_step
-    assert "session_scope" not in database_step
-    dispatch_input_line = next(line for line in database_step.splitlines() if "--inputs " in line)
-    serialized_inputs = dispatch_input_line.split("--inputs ", 1)[1].strip()
-    dispatch_inputs = json.loads(json.loads(serialized_inputs))
-    assert set(dispatch_inputs) == {"session_id", "started_at", "session_mode", "phase"}
-    assert dispatch_inputs["phase"] == "bootstrap"
-    assert "--output-name database_bootstrap" in database_step
+
+    for step, phase, output in (
+        (provision_step, "provision", "database_provision"),
+        (bootstrap_step, "bootstrap", "database_bootstrap"),
+    ):
+        assert '--repository "$DATABASE_INFRA_REPOSITORY" --workflow apply.yml --ref main' in step
+        assert "--authorization-action open" in step
+        assert "session_scope" not in step
+        dispatch_input_line = next(line for line in step.splitlines() if "--inputs " in line)
+        serialized_inputs = dispatch_input_line.split("--inputs ", 1)[1].strip()
+        dispatch_inputs = json.loads(json.loads(serialized_inputs))
+        assert set(dispatch_inputs) == {"session_id", "started_at", "session_mode", "phase"}
+        assert dispatch_inputs["phase"] == phase
+        assert f"--output-name {output}" in step
     assert "--session-scope infrastructure-only" in workflow
 
 
@@ -71,7 +85,7 @@ def test_start_child_dispatches_match_declared_workflow_input_contracts() -> Non
     workflow = (WORKFLOWS / "environment-start.yml").read_text(encoding="utf-8")
     dispatch_lines = [line for line in workflow.splitlines() if "--inputs " in line]
 
-    assert len(dispatch_lines) == 7
+    assert len(dispatch_lines) == 8
     assert all("session_scope" not in line for line in dispatch_lines)
 
 
@@ -83,6 +97,12 @@ def test_stop_is_limited_to_infrastructure_only_hml_and_verifies_teardown() -> N
     assert "orphan-audit.yml" in workflow
     assert "lifecycle_session_ledger.py finalize-close" in workflow
     assert "capture_lifecycle_cost.py" in workflow
+    assert workflow.index("Apply the reviewed HML namespace teardown plan") < workflow.index(
+        "Destroy the ephemeral HML database"
+    )
+    assert workflow.index("Destroy the ephemeral HML database") < workflow.index(
+        "Plan the full K8s platform teardown"
+    )
     dispatch_lines = [line for line in workflow.splitlines() if "--inputs " in line]
     assert dispatch_lines
     assert all("session_scope" not in line for line in dispatch_lines)
