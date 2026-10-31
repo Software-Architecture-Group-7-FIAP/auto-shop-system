@@ -193,6 +193,7 @@ jobs:
           role-duration-seconds: 900
 
       - name: Validate persistent customer auth Lambdas before opening session resources
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
         env:
           EXPECTED_AWS_ACCOUNT_ID: ${{ env.EXPECTED_AWS_ACCOUNT_ID }}
         run: python3 .github/scripts/validate_auth_lambda_preflight.py
