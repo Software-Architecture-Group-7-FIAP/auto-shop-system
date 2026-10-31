@@ -198,7 +198,7 @@ wait_migration() {
   if ! kubectl wait --for=condition=complete "job/${MIGRATION_JOB}" \
     --namespace "${NAMESPACE}" --timeout=300s; then
     kubectl logs "job/${MIGRATION_JOB}" --namespace "${NAMESPACE}" --tail=100 2>&1 \
-      | sed -E 's#(postgres(ql)?://)[^[:space:]]+#\1[REDACTED]#Ig' || true
+      | sed -E 's#(postgres(ql)?(\+[^:/?#[:space:]]+)?://)[^[:space:]]+#\1[REDACTED]#Ig' || true
     exit 1
   fi
 }
@@ -207,7 +207,7 @@ wait_seed() {
   if ! kubectl wait --for=condition=complete "job/${SEED_JOB}" \
     --namespace "${NAMESPACE}" --timeout=300s; then
     kubectl logs "job/${SEED_JOB}" --namespace "${NAMESPACE}" --tail=100 2>&1 \
-      | sed -E 's#(postgres(ql)?://)[^[:space:]]+#\1[REDACTED]#Ig' || true
+      | sed -E 's#(postgres(ql)?(\+[^:/?#[:space:]]+)?://)[^[:space:]]+#\1[REDACTED]#Ig' || true
     exit 1
   fi
 }

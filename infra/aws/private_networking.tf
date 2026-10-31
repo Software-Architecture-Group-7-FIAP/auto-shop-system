@@ -37,13 +37,13 @@ data "aws_ssm_parameter" "customer_auth_lambda_arn" {
 }
 
 data "aws_ssm_parameter" "migration_secret_arn" {
-  for_each = local.api_stages
+  for_each = toset(values(local.migration_database_stages))
 
   name = "${trimsuffix(var.upstream_ssm_prefix, "/")}/database/secrets/migrations-${each.key}-arn"
 }
 
 data "aws_ssm_parameter" "migration_secret_read_policy_arn" {
-  for_each = local.api_stages
+  for_each = toset(values(local.migration_database_stages))
 
   name = "${trimsuffix(var.upstream_ssm_prefix, "/")}/database/iam/migrations-${each.key}-read-policy-arn"
 }
