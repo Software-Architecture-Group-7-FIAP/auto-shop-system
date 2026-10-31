@@ -295,41 +295,6 @@ jobs:
           --github-output "$GITHUB_OUTPUT" --output-name database_destroy --timeout-seconds 3600
           --deadline-utc "$TEARDOWN_END"
 
-      - name: Plan NAT shutdown
-        if: steps.close_decision.outputs.close_needed == 'true'
-        id: nat_plan
-        env:
-          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
-          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
-          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
-          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
-        run: >-
-          python3 .github/scripts/cross_repo_lifecycle.py
-          --repository "$K8S_INFRA_REPOSITORY" --workflow ci.yml --ref main
-          --expected-title "$SESSION_ID-foundation-nat-disable"
-          --authorization-action close
-          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"foundation\",\"operation\":\"nat-disable\",\"enable_nat_gateway\":\"false\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name nat_plan --timeout-seconds 3600
-          --deadline-utc "$TEARDOWN_END"
-
-      - name: Apply the reviewed NAT shutdown plan
-        if: steps.close_decision.outputs.close_needed == 'true'
-        id: nat_apply
-        env:
-          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
-          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
-          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
-          PLAN_ID: ${{ steps.nat_plan.outputs.nat_plan_plan_id }}
-          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
-        run: >-
-          python3 .github/scripts/cross_repo_lifecycle.py
-          --repository "$K8S_INFRA_REPOSITORY" --workflow apply.yml --ref main
-          --expected-title "$SESSION_ID-foundation-nat-disable-apply"
-          --authorization-action close
-          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"foundation\",\"operation\":\"nat-disable\",\"enable_nat_gateway\":\"false\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name nat_apply --timeout-seconds 3600
-          --deadline-utc "$TEARDOWN_END"
-
       - name: Plan the isolated HML namespace teardown
         if: steps.close_decision.outputs.close_needed == 'true'
         id: hml_destroy_plan
@@ -340,7 +305,7 @@ jobs:
           TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
         run: >-
           python3 .github/scripts/cross_repo_lifecycle.py
-          --repository "$K8S_INFRA_REPOSITORY" --workflow destroy.yml --ref main
+          --repository "$K8S_INFRA_REPOSITORY" --workflow cluster-destroy.yml --ref main
           --expected-title "$SESSION_ID-hml-all-plan"
           --authorization-action close
           --inputs "{\"operation\":\"plan\",\"stack\":\"hml\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"\",\"confirm\":\"\"}"
@@ -358,7 +323,7 @@ jobs:
           TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
         run: >-
           python3 .github/scripts/cross_repo_lifecycle.py
-          --repository "$K8S_INFRA_REPOSITORY" --workflow destroy.yml --ref main
+          --repository "$K8S_INFRA_REPOSITORY" --workflow cluster-destroy.yml --ref main
           --expected-title "$SESSION_ID-hml-all-destroy"
           --authorization-action close
           --inputs "{\"operation\":\"destroy\",\"stack\":\"hml\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"destroy\"}"
@@ -375,7 +340,7 @@ jobs:
           TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
         run: >-
           python3 .github/scripts/cross_repo_lifecycle.py
-          --repository "$K8S_INFRA_REPOSITORY" --workflow destroy.yml --ref main
+          --repository "$K8S_INFRA_REPOSITORY" --workflow cluster-destroy.yml --ref main
           --expected-title "$SESSION_ID-platform-all-plan"
           --authorization-action close
           --inputs "{\"operation\":\"plan\",\"stack\":\"platform\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"\",\"confirm\":\"\"}"
@@ -393,7 +358,7 @@ jobs:
           TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
         run: >-
           python3 .github/scripts/cross_repo_lifecycle.py
-          --repository "$K8S_INFRA_REPOSITORY" --workflow destroy.yml --ref main
+          --repository "$K8S_INFRA_REPOSITORY" --workflow cluster-destroy.yml --ref main
           --expected-title "$SESSION_ID-platform-all-destroy"
           --authorization-action close
           --inputs "{\"operation\":\"destroy\",\"stack\":\"platform\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"destroy\"}"
@@ -433,6 +398,41 @@ jobs:
           --authorization-action close
           --inputs "{\"operation\":\"destroy\",\"stack\":\"foundation\",\"scope\":\"compute\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"destroy\"}"
           --github-output "$GITHUB_OUTPUT" --output-name foundation_destroy_apply --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Plan NAT shutdown
+        if: steps.close_decision.outputs.close_needed == 'true'
+        id: nat_plan
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow ci.yml --ref main
+          --expected-title "$SESSION_ID-foundation-nat-disable"
+          --authorization-action close
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"foundation\",\"operation\":\"nat-disable\",\"enable_nat_gateway\":\"false\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name nat_plan --timeout-seconds 3600
+          --deadline-utc "$TEARDOWN_END"
+
+      - name: Apply the reviewed NAT shutdown plan
+        if: steps.close_decision.outputs.close_needed == 'true'
+        id: nat_apply
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          PLAN_ID: ${{ steps.nat_plan.outputs.nat_plan_plan_id }}
+          TEARDOWN_END: ${{ needs.resolve_session.outputs.teardown_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow apply.yml --ref main
+          --expected-title "$SESSION_ID-foundation-nat-disable-apply"
+          --authorization-action close
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"foundation\",\"operation\":\"nat-disable\",\"enable_nat_gateway\":\"false\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name nat_apply --timeout-seconds 3600
           --deadline-utc "$TEARDOWN_END"
 
   audit:
