@@ -25,8 +25,7 @@ DISPATCH_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 RUN_ID_PATTERN = re.compile(r"^[1-9][0-9]{0,19}$")
 ACTOR_PATTERN = re.compile(r"^[A-Za-z0-9-]{1,39}(?:\[bot\])?$")
 AWS_CLI_ERROR_PATTERN = re.compile(
-    r"(?:^|\n)An error occurred \(([A-Za-z][A-Za-z0-9]{0,63})\) "
-    r"when calling the ([A-Za-z][A-Za-z0-9]{0,63}) operation:"
+    r"An error occurred\s+\(([A-Za-z][A-Za-z0-9]{0,63})\)"
 )
 MAX_SESSION = timedelta(hours=5)
 AUTH_TTL_SECONDS = 15 * 60
