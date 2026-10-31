@@ -151,6 +151,7 @@ jobs:
       - name: Validate all credentials, repositories, deploy gates, alerting, and cost evidence inputs
         env:
           STAGE: ${{ steps.window.outputs.stage }}
+          SESSION_PROFILE: ${{ steps.window.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE || 'full' }}
           AWS_COST_READER_ROLE_ARN: ${{ secrets.AWS_COST_READER_ROLE_ARN }}
           AWS_EDGE_LIFECYCLE_ROLE_ARN: ${{ secrets.AWS_EDGE_LIFECYCLE_ROLE_ARN }}
           LIFECYCLE_ALERT_ROLE_ARN: ${{ secrets.LIFECYCLE_ALERT_ROLE_ARN }}
@@ -163,18 +164,25 @@ jobs:
           [[ "$K8S_INFRA_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$K8S_INFRA_REF" == "main" ]] || { echo "::error::Set K8S_INFRA_REPOSITORY and K8S_INFRA_REF=main."; exit 1; }
           [[ "$DATABASE_INFRA_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$DATABASE_INFRA_REF" == "main" ]] || { echo "::error::Set DATABASE_INFRA_REPOSITORY and DATABASE_INFRA_REF=main."; exit 1; }
           [[ "$AWS_COST_READER_ROLE_ARN" =~ ^arn:aws:iam::${EXPECTED_AWS_ACCOUNT_ID}:role/.+$ ]] || { echo "::error::AWS_COST_READER_ROLE_ARN is required in the expected account."; exit 1; }
-          [[ "$AWS_EDGE_LIFECYCLE_ROLE_ARN" =~ ^arn:aws:iam::${EXPECTED_AWS_ACCOUNT_ID}:role/.+$ ]] || { echo "::error::AWS_EDGE_LIFECYCLE_ROLE_ARN is required in the expected account."; exit 1; }
           [[ "$LIFECYCLE_ALERT_ROLE_ARN" =~ ^arn:aws:iam::${EXPECTED_AWS_ACCOUNT_ID}:role/.+$ ]] || { echo "::error::LIFECYCLE_ALERT_ROLE_ARN is required in the expected account."; exit 1; }
           [[ "$ALERT_TOPIC_ARN" =~ ^arn:aws:sns:us-east-1:${EXPECTED_AWS_ACCOUNT_ID}:[A-Za-z0-9_-]+$ ]] || { echo "::error::LIFECYCLE_ALERT_TOPIC_ARN must be a valid SNS topic in the expected account."; exit 1; }
-          [[ "$EDGE_JWT_SECRET_ARN" =~ ^arn:aws:secretsmanager:us-east-1:${EXPECTED_AWS_ACCOUNT_ID}:secret:.+$ ]] || { echo "::error::EDGE_JWT_SECRET_ARN must be a non-secret ARN reference in the expected account."; exit 1; }
-          [[ "$EDGE_ENABLE_CUSTOM_DOMAINS" == "true" || "$EDGE_ENABLE_CUSTOM_DOMAINS" == "false" ]] || { echo "::error::Set EDGE_ENABLE_CUSTOM_DOMAINS explicitly to true or false."; exit 1; }
-          [[ "$EDGE_DISABLE_EXECUTE_API_ENDPOINT" == "true" || "$EDGE_DISABLE_EXECUTE_API_ENDPOINT" == "false" ]] || { echo "::error::Set EDGE_DISABLE_EXECUTE_API_ENDPOINT explicitly to true or false."; exit 1; }
+          [[ "$SESSION_PROFILE" == "full" || "$SESSION_PROFILE" == "infra-only" ]] || { echo "::error::STAGING_SESSION_PROFILE must be full or infra-only."; exit 1; }
           if [[ "$STAGE" == "prd" ]]; then
+            [[ "$SESSION_PROFILE" == "full" ]] || { echo "::error::PRD only permits the full lifecycle profile."; exit 1; }
             [[ "$DEPLOY_PRODUCTION_ENABLED" == "true" && "$ALLOW_SYNTHETIC_SEED_IN_PRD" == "true" ]] || { echo "::error::Production deploy and synthetic seed must both be explicitly enabled."; exit 1; }
             [[ "$PRD_DAILY_COST_FLOOR_USD" =~ ^[0-9]+([.][0-9]+)?$ ]] || { echo "::error::Set PRD_DAILY_COST_FLOOR_USD to the reviewed estimate."; exit 1; }
           else
-            [[ "$DEPLOY_STAGING_ENABLED" == "true" && "$DEPLOY_STAGING_FRONTEND_ENABLED" == "true" ]] || { echo "::error::HML backend and frontend deploy gates must both be explicitly enabled."; exit 1; }
             [[ "$HML_DAILY_COST_FLOOR_USD" =~ ^[0-9]+([.][0-9]+)?$ ]] || { echo "::error::Set HML_DAILY_COST_FLOOR_USD to the reviewed estimate."; exit 1; }
+            if [[ "$SESSION_PROFILE" == "full" ]]; then
+              [[ "$DEPLOY_STAGING_ENABLED" == "true" && "$DEPLOY_STAGING_FRONTEND_ENABLED" == "true" ]] || { echo "::error::HML backend and frontend deploy gates must both be explicitly enabled for a full session."; exit 1; }
+              [[ "$AWS_EDGE_LIFECYCLE_ROLE_ARN" =~ ^arn:aws:iam::${EXPECTED_AWS_ACCOUNT_ID}:role/.+$ ]] || { echo "::error::AWS_EDGE_LIFECYCLE_ROLE_ARN is required for a full session."; exit 1; }
+              [[ "$EDGE_JWT_SECRET_ARN" =~ ^arn:aws:secretsmanager:us-east-1:${EXPECTED_AWS_ACCOUNT_ID}:secret:.+$ ]] || { echo "::error::EDGE_JWT_SECRET_ARN must be a non-secret ARN reference in the expected account."; exit 1; }
+              [[ "$EDGE_ENABLE_CUSTOM_DOMAINS" == "true" || "$EDGE_ENABLE_CUSTOM_DOMAINS" == "false" ]] || { echo "::error::Set EDGE_ENABLE_CUSTOM_DOMAINS explicitly to true or false."; exit 1; }
+              [[ "$EDGE_DISABLE_EXECUTE_API_ENDPOINT" == "true" || "$EDGE_DISABLE_EXECUTE_API_ENDPOINT" == "false" ]] || { echo "::error::Set EDGE_DISABLE_EXECUTE_API_ENDPOINT explicitly to true or false."; exit 1; }
+            else
+              [[ "$DEPLOY_STAGING_ENABLED" != "true" && "$DEPLOY_STAGING_FRONTEND_ENABLED" != "true" ]] || { echo "::error::Infra-only HML sessions require both application deploy gates to remain false."; exit 1; }
+              echo "HML infrastructure-only profile selected; application release and public-edge steps will be skipped."
+            fi
           fi
 
       - name: Configure the read-only persistent auth preflight role
@@ -311,6 +319,7 @@ jobs:
           --github-output "$GITHUB_OUTPUT" --output-name database_bootstrap --timeout-seconds 1200 --deadline-utc "$WORK_DEADLINE"
 
       - name: Deploy the application and recreate its synthetic seed
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
         env:
           STAGE: ${{ steps.window.outputs.stage }}
           SESSION_ID: ${{ steps.window.outputs.session_id }}
@@ -328,6 +337,7 @@ jobs:
           --github-output "$GITHUB_OUTPUT" --output-name app_deploy --timeout-seconds 1500 --deadline-utc "$WORK_DEADLINE"
 
       - name: Apply the database grants after application migrations
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
         env:
           SESSION_ID: ${{ steps.window.outputs.session_id }}
           STARTED_AT: ${{ steps.window.outputs.started_at }}
@@ -341,12 +351,14 @@ jobs:
           --github-output "$GITHUB_OUTPUT" --output-name database_grants --timeout-seconds 900 --deadline-utc "$WORK_DEADLINE"
 
       - name: Configure the narrow public-edge lifecycle role
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_EDGE_LIFECYCLE_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Reconcile the public API edge against the current ALB while preserving its URL
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
         env:
           EDGE_RECONCILIATION_MODE: active
           TF_VAR_jwt_secret_arn: ${{ vars.EDGE_JWT_SECRET_ARN }}
@@ -374,6 +386,7 @@ jobs:
           fi
 
       - name: Dispatch and wait for public endpoint health
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
         env:
           STAGE: ${{ steps.window.outputs.stage }}
           SESSION_ID: ${{ steps.window.outputs.session_id }}
@@ -392,12 +405,14 @@ jobs:
       - name: Record the successful opening boundary
         env:
           STAGE: ${{ steps.window.outputs.stage }}
+          SESSION_PROFILE: ${{ steps.window.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE || 'full' }}
           SESSION_ID: ${{ steps.window.outputs.session_id }}
           STARTED_AT: ${{ steps.window.outputs.started_at }}
           SESSION_END: ${{ steps.window.outputs.session_end_utc }}
         run: |
           {
             echo "### Environment opened"
+            echo "- Session profile: $SESSION_PROFILE"
             echo "- Stage: $STAGE"
             echo "- Session: $SESSION_ID"
             echo "- Session start (UTC): $STARTED_AT"

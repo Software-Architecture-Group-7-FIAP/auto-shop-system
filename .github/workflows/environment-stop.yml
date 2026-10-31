@@ -217,6 +217,7 @@ jobs:
         timeout-minutes: 2
         env:
           STAGE: ${{ needs.resolve_session.outputs.stage }}
+          SESSION_PROFILE: ${{ needs.resolve_session.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE || 'full' }}
           AWS_EDGE_LIFECYCLE_ROLE_ARN: ${{ secrets.AWS_EDGE_LIFECYCLE_ROLE_ARN }}
         shell: bash
         run: |
@@ -226,10 +227,17 @@ jobs:
           [[ -n "$LIFECYCLE_CROSS_REPO_TOKEN" ]] || { echo "::error::LIFECYCLE_CROSS_REPO_TOKEN is required; there is no GITHUB_TOKEN fallback."; exit 1; }
           [[ "$K8S_INFRA_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$K8S_INFRA_REF" == "main" ]] || { echo "::error::Set K8S_INFRA_REPOSITORY and K8S_INFRA_REF=main."; exit 1; }
           [[ "$DATABASE_INFRA_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ && "$DATABASE_INFRA_REF" == "main" ]] || { echo "::error::Set DATABASE_INFRA_REPOSITORY and DATABASE_INFRA_REF=main."; exit 1; }
-          [[ "$AWS_EDGE_LIFECYCLE_ROLE_ARN" =~ ^arn:aws:iam::${EXPECTED_AWS_ACCOUNT_ID}:role/.+$ ]] || { echo "::error::AWS_EDGE_LIFECYCLE_ROLE_ARN is required in the expected account."; exit 1; }
-          [[ "$EDGE_JWT_SECRET_ARN" =~ ^arn:aws:secretsmanager:us-east-1:${EXPECTED_AWS_ACCOUNT_ID}:secret:.+$ ]] || { echo "::error::EDGE_JWT_SECRET_ARN must be a non-secret ARN reference in the expected account."; exit 1; }
-          [[ "$EDGE_ENABLE_CUSTOM_DOMAINS" == "true" || "$EDGE_ENABLE_CUSTOM_DOMAINS" == "false" ]] || { echo "::error::Set EDGE_ENABLE_CUSTOM_DOMAINS explicitly to true or false."; exit 1; }
-          [[ "$EDGE_DISABLE_EXECUTE_API_ENDPOINT" == "true" || "$EDGE_DISABLE_EXECUTE_API_ENDPOINT" == "false" ]] || { echo "::error::Set EDGE_DISABLE_EXECUTE_API_ENDPOINT explicitly to true or false."; exit 1; }
+          [[ "$SESSION_PROFILE" == "full" || "$SESSION_PROFILE" == "infra-only" ]] || { echo "::error::STAGING_SESSION_PROFILE must be full or infra-only."; exit 1; }
+          if [[ "$STAGE" == "prd" ]]; then
+            [[ "$SESSION_PROFILE" == "full" ]] || { echo "::error::PRD only permits the full lifecycle profile."; exit 1; }
+          elif [[ "$SESSION_PROFILE" == "full" ]]; then
+            [[ "$AWS_EDGE_LIFECYCLE_ROLE_ARN" =~ ^arn:aws:iam::${EXPECTED_AWS_ACCOUNT_ID}:role/.+$ ]] || { echo "::error::AWS_EDGE_LIFECYCLE_ROLE_ARN is required for a full session."; exit 1; }
+            [[ "$EDGE_JWT_SECRET_ARN" =~ ^arn:aws:secretsmanager:us-east-1:${EXPECTED_AWS_ACCOUNT_ID}:secret:.+$ ]] || { echo "::error::EDGE_JWT_SECRET_ARN must be a non-secret ARN reference in the expected account."; exit 1; }
+            [[ "$EDGE_ENABLE_CUSTOM_DOMAINS" == "true" || "$EDGE_ENABLE_CUSTOM_DOMAINS" == "false" ]] || { echo "::error::Set EDGE_ENABLE_CUSTOM_DOMAINS explicitly to true or false."; exit 1; }
+            [[ "$EDGE_DISABLE_EXECUTE_API_ENDPOINT" == "true" || "$EDGE_DISABLE_EXECUTE_API_ENDPOINT" == "false" ]] || { echo "::error::Set EDGE_DISABLE_EXECUTE_API_ENDPOINT explicitly to true or false."; exit 1; }
+          else
+            echo "HML infrastructure-only close selected; public-edge and app release steps will be skipped."
+          fi
 
       - name: Cancel and wait for this session's app deployment
         if: steps.close_decision.outputs.close_needed == 'true'
@@ -244,7 +252,7 @@ jobs:
           --deadline-utc "$TEARDOWN_END"
 
       - name: Configure the narrow public-edge lifecycle role
-        if: steps.close_decision.outputs.close_needed == 'true'
+        if: steps.close_decision.outputs.close_needed == 'true' && (needs.resolve_session.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only')
         timeout-minutes: 3
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -252,7 +260,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Verify the edge role is in the expected account
-        if: steps.close_decision.outputs.close_needed == 'true'
+        if: steps.close_decision.outputs.close_needed == 'true' && (needs.resolve_session.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only')
         timeout-minutes: 2
         shell: bash
         run: |
@@ -261,7 +269,7 @@ jobs:
           [[ "$actual_account" == "$EXPECTED_AWS_ACCOUNT_ID" ]] || { echo "::error::Unexpected AWS account for edge reconciliation."; exit 1; }
 
       - name: Reconcile the public edge into maintenance while preserving its URL
-        if: steps.close_decision.outputs.close_needed == 'true'
+        if: steps.close_decision.outputs.close_needed == 'true' && (needs.resolve_session.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only')
         timeout-minutes: 43
         env:
           EDGE_RECONCILIATION_MODE: maintenance
@@ -271,7 +279,7 @@ jobs:
           TF_VAR_disable_execute_api_endpoint: ${{ vars.EDGE_DISABLE_EXECUTE_API_ENDPOINT }}
         run: bash .github/scripts/reconcile_public_edge.sh
 
-      - name: Destroy the ephemeral database after edge maintenance
+      - name: Destroy the ephemeral database after optional edge maintenance
         if: steps.close_decision.outputs.close_needed == 'true'
         timeout-minutes: 40
         env:
