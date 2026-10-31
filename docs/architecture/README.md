@@ -8,8 +8,11 @@ Documentação de arquitetura da Fase 2 (Kubernetes local) e Fase 3 (operacional
 | --- | --- | --- |
 | Fase 2 — app no cluster local | [fase2-architecture.mmd](./fase2-architecture.mmd) | [PNG](./fase2-architecture.png), [SVG](./fase2-architecture.svg) |
 | Fase 3 — operacional ponta a ponta | [fase-operacional.mmd](./fase-operacional.mmd) | Exportar PNG/SVG localmente com `@mermaid-js/mermaid-cli` (fatia 2 da #95) |
+| Fase 3 — componentes (nuvem, APIs, banco, monitoramento) | [diagrams/componentes-fase-3.mmd](./diagrams/componentes-fase-3.mmd) | [PNG](./diagrams/componentes-fase-3.png), [SVG](./diagrams/componentes-fase-3.svg) |
+| Sequência — autenticação do cliente (CPF → JWT → API) | [diagrams/autenticacao-cliente.mmd](./diagrams/autenticacao-cliente.mmd) | [PNG](./diagrams/autenticacao-cliente.png), [SVG](./diagrams/autenticacao-cliente.svg) |
+| Sequência — abertura de OS | [diagrams/abertura-os.mmd](./diagrams/abertura-os.mmd) | [PNG](./diagrams/abertura-os.png), [SVG](./diagrams/abertura-os.svg) |
 
-Modelo de dados: [`docs/database/database-schema.mermaid`](../database/database-schema.mermaid).
+Modelo de dados: [`docs/database/database-schema.mermaid`](../database/database-schema.mermaid), exportado em [database-er.png](./diagrams/database-er.png) / [database-er.svg](./diagrams/database-er.svg). UML por domínio: [identidade e cadastro](./diagrams/database-uml-identidade-cadastro.mmd), [catálogo e orçamentos](./diagrams/database-uml-catalogo-orcamentos.mmd), [ordens de serviço](./diagrams/database-uml-ordens-servico.mmd), [estoque e compras](./diagrams/database-uml-estoque-compras.mmd) (PNG/SVG homônimos na mesma pasta).
 
 ## ADRs (`decisions/`)
 
@@ -21,12 +24,16 @@ Modelo de dados: [`docs/database/database-schema.mermaid`](../database/database-
 | [ADR-0072](./decisions/ADR-0072-matriz-jwt-audiencias.md) | Matriz JWT web / gateway / customer |
 | [ADR-0073](./decisions/ADR-0073-api-gateway-borda-publica.md) | API Gateway + WAF (#88) |
 | [ADR-0074](./decisions/ADR-0074-estrategia-branches-e-ci.md) | Branches, CI, proteção (#89/#91) |
+| [ADR-0075](./decisions/ADR-0075-hpa-sem-cluster-autoscaler.md) | HPA sem Cluster Autoscaler |
+| [ADR-0076](./decisions/ADR-0076-comunicacao-sincrona-e-evento-falha.md) | Comunicação síncrona + evento de falha de OS |
+| [ADR-0077](./decisions/ADR-0077-hml-prd-por-namespace.md) | HML e PRD por namespace (infraestrutura única) |
+| [ADR-0078](./decisions/ADR-0078-observabilidade-new-relic.md) | Observabilidade — New Relic |
 
 ADRs aceitos são imutáveis; novas decisões geram novo número.
 
 ## RFCs
 
-Rascunhos e propostas operacionais: [`docs/rfc/`](../rfc/README.md) (fatia 2 da #95).
+Propostas técnicas aceitas e implementadas: [`docs/rfc/`](../rfc/README.md).
 
 ## Repositórios relacionados
 
