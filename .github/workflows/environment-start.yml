@@ -228,13 +228,14 @@ jobs:
           PY
 
       - name: Configure read-only Cost Explorer identity
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_COST_READER_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Verify the account and record observed pre-cycle billing
-        if: always()
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
         env:
           STAGE: ${{ steps.window.outputs.stage }}
           SESSION_ID: ${{ steps.window.outputs.session_id }}
