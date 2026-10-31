@@ -7,10 +7,12 @@ from pathlib import Path
 import boto3
 import psycopg2
 from botocore.exceptions import BotoCoreError, ClientError
-from sqlalchemy.engine import URL
+from sqlalchemy.exc import ArgumentError
+from sqlalchemy.engine import URL, make_url
 
 
 MIGRATION_LOCK_KEY = 7_349_841
+ALLOWED_PG_QUERY_PARAMETERS = frozenset({"sslmode", "sslrootcert"})
 RDS_CA_BUNDLE = (
     Path(__file__).resolve().parents[1]
     / "infrastructure"
@@ -41,7 +43,27 @@ def _load_migration_database_url() -> str:
     password = secret.get("password")
     host = secret.get("host")
     port = secret.get("port")
-    if not all((username, password, host, port)):
+    if not all(
+        isinstance(value, str) and value
+        for value in (username, password, host, port)
+    ):
+        raise RuntimeError("Migration database credentials are invalid")
+
+    expected_environment = {
+        "autoshop_hml": "hml",
+        "autoshop_prd": "prd",
+    }.get(database_name)
+    if (
+        expected_environment is None
+        or username != f"autoshop_migrations_{expected_environment}"
+    ):
+        raise RuntimeError("Migration database credentials are invalid")
+
+    try:
+        port_number = int(port)
+    except ValueError:
+        raise RuntimeError("Migration database credentials are invalid") from None
+    if not 1 <= port_number <= 65535:
         raise RuntimeError("Migration database credentials are invalid")
 
     return URL.create(
@@ -49,7 +71,7 @@ def _load_migration_database_url() -> str:
         username=username,
         password=password,
         host=host,
-        port=int(port),
+        port=port_number,
         database=database_name,
         query={
             "sslmode": "verify-full",
@@ -62,9 +84,33 @@ def _migration_config() -> tuple[str, int, bool]:
     if os.environ.get("MIGRATION_DATABASE_SECRET_ARN"):
         return _load_migration_database_url(), 2, True
 
+    if os.environ.get("APP_ENV", "").lower() in {"staging", "production", "prod"}:
+        raise RuntimeError("Migration database configuration is incomplete")
+
     from src.config import settings
 
     return settings.database_url, settings.database_health_check_timeout_seconds, False
+
+
+def _psycopg2_connection_arguments(database_url: str) -> dict[str, object]:
+    url = make_url(database_url)
+    if url.drivername not in {"postgresql", "postgresql+psycopg2"} or not url.database:
+        raise RuntimeError("Migration database configuration is invalid")
+    if set(url.query) - ALLOWED_PG_QUERY_PARAMETERS:
+        raise RuntimeError("Migration database configuration is invalid")
+
+    arguments: dict[str, object] = {
+        "dbname": url.database,
+        "host": url.host,
+        "user": url.username,
+        "password": url.password,
+        "port": url.port,
+    }
+    for key, value in url.query.items():
+        if not isinstance(value, str) or not value:
+            raise RuntimeError("Migration database configuration is invalid")
+        arguments[key] = value
+    return {key: value for key, value in arguments.items() if value is not None}
 
 
 def run_migrations() -> int:
@@ -72,10 +118,10 @@ def run_migrations() -> int:
 
     try:
         connection = psycopg2.connect(
-            database_url,
+            **_psycopg2_connection_arguments(database_url),
             connect_timeout=connect_timeout,
         )
-    except (psycopg2.Error, OSError):
+    except (ArgumentError, OSError, RuntimeError, psycopg2.Error):
         return 10
 
     try:

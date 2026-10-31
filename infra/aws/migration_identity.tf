@@ -1,7 +1,11 @@
 locals {
+  migration_database_stages = {
+    staging    = "hml"
+    production = "prd"
+  }
   migration_namespaces = {
-    staging    = "auto-shop-hml"
-    production = "auto-shop-prd"
+    for stage, database_stage in local.migration_database_stages :
+    stage => "auto-shop-${database_stage}"
   }
 
   cluster_arn = format(
@@ -60,7 +64,7 @@ resource "aws_iam_role_policy_attachment" "migration_secret_read" {
   for_each = local.migration_namespaces
 
   role       = aws_iam_role.migration[each.key].name
-  policy_arn = data.aws_ssm_parameter.migration_secret_read_policy_arn[local.github_environment_api_stage[each.key]].value
+  policy_arn = data.aws_ssm_parameter.migration_secret_read_policy_arn[local.migration_database_stages[each.key]].value
 }
 
 resource "aws_eks_pod_identity_association" "migration" {
@@ -74,4 +78,36 @@ resource "aws_eks_pod_identity_association" "migration" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-${each.key}-migration"
   })
+
+  depends_on = [aws_iam_role_policy_attachment.migration_secret_read]
+}
+
+moved {
+  from = aws_iam_role.migration_owner["staging"]
+  to   = aws_iam_role.migration["staging"]
+}
+
+moved {
+  from = aws_iam_role.migration_owner["production"]
+  to   = aws_iam_role.migration["production"]
+}
+
+moved {
+  from = aws_iam_role_policy_attachment.migration_owner_secret_read["staging"]
+  to   = aws_iam_role_policy_attachment.migration_secret_read["staging"]
+}
+
+moved {
+  from = aws_iam_role_policy_attachment.migration_owner_secret_read["production"]
+  to   = aws_iam_role_policy_attachment.migration_secret_read["production"]
+}
+
+moved {
+  from = aws_eks_pod_identity_association.migration_owner["staging"]
+  to   = aws_eks_pod_identity_association.migration["staging"]
+}
+
+moved {
+  from = aws_eks_pod_identity_association.migration_owner["production"]
+  to   = aws_eks_pod_identity_association.migration["production"]
 }
