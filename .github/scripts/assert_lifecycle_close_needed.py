@@ -101,7 +101,16 @@ def _opening_mutation_started(repository: str, run_id: object, token: str) -> bo
     ]
     if len(markers) != 1:
         raise ValueError("The expected first-mutation marker is missing or ambiguous; refusing teardown")
-    return bool(markers[0].get("started_at"))
+    marker = markers[0]
+    conclusion = marker.get("conclusion")
+    if conclusion == "skipped":
+        # GitHub may populate started_at for skipped steps; the conclusion is authoritative.
+        return False
+    if conclusion is not None or marker.get("started_at"):
+        return True
+    raise ValueError(
+        "The first-mutation marker has no conclusive execution state; refusing teardown"
+    )
 
 
 def _opening_close_decision(
