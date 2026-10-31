@@ -278,7 +278,10 @@ def test_safe_retry_handoff_transfers_only_the_matching_active_hml_owner(
 
     assert len(updates) == 1
     assert updates[0]["ExpressionAttributeNames"]["#operator"] == "operator"
-    assert "start_run_id = :source_run" in str(updates[0]["ConditionExpression"])
+    assert "#start_run_id = :source_run" in str(updates[0]["ConditionExpression"])
+    assert "#start_run_attempt = :source_attempt" in str(updates[0]["ConditionExpression"])
+    assert "#expires_at = :expires AND #expires_at > :now" in str(updates[0]["ConditionExpression"])
+    assert "#start_run_id = :new_run" in str(updates[0]["UpdateExpression"])
     assert updates[0]["ExpressionAttributeValues"][":new_run"] == {"S": "456"}
     assert updates[0]["ExpressionAttributeValues"][":source_run"] == {"S": "123"}
     assert updates[0]["ExpressionAttributeValues"][":source_attempt"] == {"N": "2"}
@@ -331,9 +334,13 @@ def test_safe_retry_handoff_reopens_only_a_matching_unclaimed_closed_hml_owner(
     )
 
     assert len(updates) == 1
-    assert "REMOVE closed_at" in str(updates[0]["UpdateExpression"])
+    assert "REMOVE #closed_at" in str(updates[0]["UpdateExpression"])
     assert "#status = :closed" in str(updates[0]["ConditionExpression"])
-    assert "attribute_not_exists(close_run_id)" in str(updates[0]["ConditionExpression"])
+    assert "#closed_at = :closed_at" in str(updates[0]["ConditionExpression"])
+    assert "attribute_not_exists(#close_run_id)" in str(updates[0]["ConditionExpression"])
+    assert "attribute_not_exists(close_run_id)" not in str(updates[0]["ConditionExpression"])
+    assert updates[0]["ExpressionAttributeNames"]["#closed_at"] == "closed_at"
+    assert updates[0]["ExpressionAttributeNames"]["#close_run_id"] == "close_run_id"
     assert updates[0]["ExpressionAttributeValues"][":closed_at"] == {"N": str(now - 30)}
 
 
