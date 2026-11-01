@@ -30,10 +30,19 @@ def _capture_business_logs():
             payloads.append(json.loads(formatter.format(record)))
 
     logger = logging.getLogger("src.observability.business")
+    previous_level = logger.level
+    previous_disabled = logger.disabled
     logger.setLevel(logging.INFO)
+    logger.disabled = False
     handler = _Capture()
     logger.addHandler(handler)
-    return logger, handler, payloads
+    return logger, handler, payloads, previous_level, previous_disabled
+
+
+def _restore_business_logs(logger, handler, previous_level, previous_disabled):
+    logger.removeHandler(handler)
+    logger.setLevel(previous_level)
+    logger.disabled = previous_disabled
 
 
 def _persist_order(db_session) -> ServiceOrderModel:
@@ -91,13 +100,13 @@ def test_status_duration_is_emitted_only_after_commit_without_personal_data(db_s
             occurred_at=occurred_at,
         )
     )
-    logger, handler, payloads = _capture_business_logs()
+    logger, handler, payloads, previous_level, previous_disabled = _capture_business_logs()
     try:
         repository.save(service_order)
         assert payloads == []
         SqlAlchemyUnitOfWork(db_session).commit()
     finally:
-        logger.removeHandler(handler)
+        _restore_business_logs(logger, handler, previous_level, previous_disabled)
 
     assert len(payloads) == 1
     assert payloads[0]["duration_ms"] == int(timedelta(minutes=45).total_seconds() * 1000)
@@ -120,13 +129,13 @@ def test_rollback_discards_pending_status_duration(db_session):
             transition_type="budget_submitted",
         )
     )
-    logger, handler, payloads = _capture_business_logs()
+    logger, handler, payloads, previous_level, previous_disabled = _capture_business_logs()
     try:
         repository.save(service_order)
         db_session.rollback()
         SqlAlchemyUnitOfWork(db_session).commit()
     finally:
-        logger.removeHandler(handler)
+        _restore_business_logs(logger, handler, previous_level, previous_disabled)
 
     assert payloads == []
 
@@ -144,7 +153,7 @@ def test_commit_failure_rolls_back_and_drops_pending_event(db_session, monkeypat
             status=ServiceOrderStatus.RECEBIDA,
         ),
     )
-    logger, handler, payloads = _capture_business_logs()
+    logger, handler, payloads, previous_level, previous_disabled = _capture_business_logs()
 
     def _fail_commit():
         raise RuntimeError("commit failed")
@@ -154,7 +163,7 @@ def test_commit_failure_rolls_back_and_drops_pending_event(db_session, monkeypat
         with pytest.raises(RuntimeError, match="commit failed"):
             SqlAlchemyUnitOfWork(db_session).commit()
     finally:
-        logger.removeHandler(handler)
+        _restore_business_logs(logger, handler, previous_level, previous_disabled)
 
     assert payloads == []
     assert "service_order_business_telemetry" not in db_session.info
@@ -189,7 +198,7 @@ def test_created_volume_event_is_post_commit_and_idempotent(db_session):
         vehicle_id=vehicle.id,
     )
     creator = SqlAlchemyApprovedBudgetServiceOrderCreator(db_session)
-    logger, handler, payloads = _capture_business_logs()
+    logger, handler, payloads, previous_level, previous_disabled = _capture_business_logs()
     try:
         created = creator.create_from_budget(budget)
         assert payloads == []
@@ -197,7 +206,7 @@ def test_created_volume_event_is_post_commit_and_idempotent(db_session):
         duplicate = creator.create_from_budget(budget)
         SqlAlchemyUnitOfWork(db_session).commit()
     finally:
-        logger.removeHandler(handler)
+        _restore_business_logs(logger, handler, previous_level, previous_disabled)
 
     assert created.id == duplicate.id
     assert [payload["event"] for payload in payloads] == ["ServiceOrderCreated"]

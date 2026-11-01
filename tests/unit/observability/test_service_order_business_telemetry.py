@@ -33,15 +33,24 @@ def _capture_business_logs():
             payloads.append(json.loads(formatter.format(record)))
 
     logger = logging.getLogger("src.observability.business")
+    previous_level = logger.level
+    previous_disabled = logger.disabled
     logger.setLevel(logging.INFO)
+    logger.disabled = False
     handler = _Capture()
     logger.addHandler(handler)
-    return logger, handler, payloads
+    return logger, handler, payloads, previous_level, previous_disabled
+
+
+def _restore_business_logs(logger, handler, previous_level, previous_disabled):
+    logger.removeHandler(handler)
+    logger.setLevel(previous_level)
+    logger.disabled = previous_disabled
 
 
 def test_success_events_are_emitted_only_after_flush_and_rollback_discards_them():
     session = _Session()
-    logger, handler, payloads = _capture_business_logs()
+    logger, handler, payloads, previous_level, previous_disabled = _capture_business_logs()
     event = ServiceOrderCreatedEvent(
         occurred_at=datetime(2026, 11, 1, tzinfo=timezone.utc),
         status=ServiceOrderStatus.AGUARDANDO_INICIO,
@@ -57,14 +66,14 @@ def test_success_events_are_emitted_only_after_flush_and_rollback_discards_them(
         queue_business_event(session, event)
         flush_pending_business_events(session)
     finally:
-        logger.removeHandler(handler)
+        _restore_business_logs(logger, handler, previous_level, previous_disabled)
 
     assert len(payloads) == 1
     assert payloads[0]["event"] == "ServiceOrderCreated"
 
 
 def test_status_duration_event_has_bounded_allowlisted_payload():
-    logger, handler, payloads = _capture_business_logs()
+    logger, handler, payloads, previous_level, previous_disabled = _capture_business_logs()
     started = datetime(2026, 11, 1, 10, 0, tzinfo=timezone.utc)
     event = ServiceOrderStatusDurationEvent.from_interval(
         status=ServiceOrderStatus.EM_DIAGNOSTICO,
@@ -77,7 +86,7 @@ def test_status_duration_event_has_bounded_allowlisted_payload():
         queue_business_event(_session := _Session(), event)
         flush_pending_business_events(_session)
     finally:
-        logger.removeHandler(handler)
+        _restore_business_logs(logger, handler, previous_level, previous_disabled)
 
     payload = payloads[0]
     assert payload["event"] == "ServiceOrderStatusDuration"
@@ -91,7 +100,7 @@ def test_status_duration_event_has_bounded_allowlisted_payload():
 
 
 def test_failure_event_uses_closed_taxonomy_and_only_approved_identifier():
-    logger, handler, payloads = _capture_business_logs()
+    logger, handler, payloads, previous_level, previous_disabled = _capture_business_logs()
     try:
         emit_service_order_failure(
             ServiceOrderFailureEvent(
@@ -101,7 +110,7 @@ def test_failure_event_uses_closed_taxonomy_and_only_approved_identifier():
             )
         )
     finally:
-        logger.removeHandler(handler)
+        _restore_business_logs(logger, handler, previous_level, previous_disabled)
 
     payload = payloads[0]
     assert payload["event"] == "ServiceOrderProcessingFailure"
@@ -114,7 +123,7 @@ def test_failure_event_uses_closed_taxonomy_and_only_approved_identifier():
 
 
 def test_business_event_contract_suppresses_hostile_ambient_context():
-    logger, handler, payloads = _capture_business_logs()
+    logger, handler, payloads, previous_level, previous_disabled = _capture_business_logs()
     correlation = correlation_id_var.set("CPF 529.982.247-25 customer@example.com")
     order = service_order_id_var.set(999_999)
     try:
@@ -128,7 +137,7 @@ def test_business_event_contract_suppresses_hostile_ambient_context():
     finally:
         correlation_id_var.reset(correlation)
         service_order_id_var.reset(order)
-        logger.removeHandler(handler)
+        _restore_business_logs(logger, handler, previous_level, previous_disabled)
 
     serialized = json.dumps(payloads, ensure_ascii=False)
     assert "529.982.247-25" not in serialized

@@ -127,14 +127,11 @@ def test_missing_service_order_log_carries_correlation_and_order_id(client, auth
 
 
 def test_access_log_uses_route_template_instead_of_path_parameters(client, auth_headers):
-    logger, handler, records = _capture_src_logs()
-    try:
+    with _capture_logs("src.http") as records:
         response = client.get(
             "/api/v1/admin/service-orders/404",
             headers={**auth_headers, "X-Correlation-ID": "route-template"},
         )
-    finally:
-        logger.removeHandler(handler)
 
     assert response.status_code == 404
     payloads = [json.loads(line) for line in records]
