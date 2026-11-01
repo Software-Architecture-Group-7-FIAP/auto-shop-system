@@ -1,0 +1,52 @@
+# Issue 3 direction: use the official, pinned nri-bundle with only the
+# infrastructure and state-metrics components required by the acceptance criteria.
+global:
+  cluster: "auto-shop-hml"
+  provider: "aws"
+  lowDataMode: true
+  customSecretName: "auto-shop-new-relic"
+  customSecretLicenseKey: "NEW_RELIC_LICENSE_KEY"
+  customAttributes:
+    environment: "hml"
+
+newrelic-infrastructure:
+  enabled: true
+  privileged: false
+  controlPlane:
+    enabled: false
+
+kube-state-metrics:
+  enabled: true
+  prometheusScrape: false
+  metricLabelsAllowlist: []
+  metricAnnotationsAllowList: []
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+nri-prometheus:
+  enabled: false
+nri-metadata-injection:
+  enabled: false
+nri-kube-events:
+  enabled: false
+newrelic-logging:
+  enabled: false
+newrelic-pixie:
+  enabled: false
+nr-ebpf-agent:
+  enabled: false
+k8s-agents-operator:
+  enabled: false
+pixie-chart:
+  enabled: false
+newrelic-infra-operator:
+  enabled: false
+newrelic-prometheus-agent:
+  enabled: false
+newrelic-k8s-metrics-adapter:
+  enabled: false

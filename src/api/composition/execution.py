@@ -16,6 +16,9 @@ from src.infrastructure.persistence.service_order_repository import (
     SqlAlchemyServiceOrderRepository,
 )
 from src.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from src.infrastructure.observability.business_telemetry import (
+    StructuredServiceOrderBusinessTelemetry,
+)
 from src.config import settings
 
 
@@ -30,6 +33,7 @@ def compose_execution_service(db: Session) -> ExecutionService:
         emails=SmtpExecutionEmailSender(),
         uow=SqlAlchemyUnitOfWork(db),
         event_publisher=_compose_event_publisher(),
+        business_telemetry=StructuredServiceOrderBusinessTelemetry(),
     )
 
 

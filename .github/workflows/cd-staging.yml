@@ -67,6 +67,7 @@ jobs:
           LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
           STAGING_ACTIVE: ${{ vars.STAGING_ACTIVE || 'false' }}
           STAGING_SESSION_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
+          STAGING_SESSION_ALLOW_ANY_TIME: ${{ vars.STAGING_SESSION_ALLOW_ANY_TIME || 'false' }}
           AUTHORIZED_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
           DEPLOY_STAGING_ENABLED: ${{ vars.DEPLOY_STAGING_ENABLED || 'false' }}
         shell: bash
@@ -130,6 +131,7 @@ jobs:
           SESSION_MODE: ${{ inputs.session_mode }}
           LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
           LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+          STAGING_SESSION_ALLOW_ANY_TIME: ${{ vars.STAGING_SESSION_ALLOW_ANY_TIME || 'false' }}
         shell: bash
         run: python3 .github/scripts/validate_environment_window.py --action operate
 
@@ -253,9 +255,15 @@ jobs:
           EKS_CLUSTER_NAME: ${{ steps.eks.outputs.cluster_name }}
         run: aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
 
+      - name: Install the pinned Helm client
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.19.0
+
       - name: Deploy to staging
         env:
           IMAGE_REFERENCE: ${{ steps.ecr_image.outputs.image_reference }}
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
           MIGRATION_DATABASE_SECRET_ARN: ${{ steps.eks.outputs.migration_secret_arn }}
           SERVICE_ORDER_EVENT_BUS_NAME: ${{ steps.eks.outputs.service_order_event_bus_name }}
           SERVICE_ORDER_PUBLISHER_ROLE_ARN: ${{ steps.eks.outputs.service_order_publisher_role_arn }}

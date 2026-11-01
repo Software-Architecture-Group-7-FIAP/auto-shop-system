@@ -124,3 +124,17 @@ def test_missing_service_order_log_carries_correlation_and_order_id(client, auth
     assert domain["service_order_id"] == 404
     assert domain["error_code"] == "not_found"
     assert domain["service"] == "auto-shop-api"
+
+
+def test_access_log_uses_route_template_instead_of_path_parameters(client, auth_headers):
+    with _capture_logs("src.http") as records:
+        response = client.get(
+            "/api/v1/admin/service-orders/404",
+            headers={**auth_headers, "X-Correlation-ID": "route-template"},
+        )
+
+    assert response.status_code == 404
+    payloads = [json.loads(line) for line in records]
+    access = next(item for item in payloads if item.get("event") == "http_request")
+    assert access["path"] == "/api/v1/admin/service-orders/{service_order_id}"
+    assert "404" not in access["path"]

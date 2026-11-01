@@ -1,0 +1,159 @@
+name: New Relic HML technical dashboard and alerts
+run-name: new-relic:hml-technical:${{ inputs.action }}:${{ inputs.session_id }}:${{ github.run_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Validate locally, plan against New Relic, apply, or disable HML alert conditions
+        required: true
+        type: choice
+        options: [validate, plan, apply, disable]
+        default: validate
+      region:
+        description: New Relic control-plane region
+        required: true
+        type: choice
+        options: [us, eu]
+        default: us
+      session_id:
+        description: Coordinator-provided HML session ID
+        required: true
+        type: string
+      started_at:
+        description: Coordinator-provided UTC session start, YYYY-MM-DDTHH:MM:SSZ
+        required: true
+        type: string
+      session_mode:
+        description: Authorized HML window
+        required: true
+        type: choice
+        options: [hml]
+      session_token:
+        description: Signed coordinator session capability
+        required: false
+        type: string
+      confirm_apply:
+        description: Confirm that apply or disable may mutate only owned New Relic resources
+        required: true
+        type: boolean
+        default: false
+      confirm_aws_schema:
+        description: Confirm checked-in Gateway and Lambda attribute mapping has live schema evidence
+        required: true
+        type: boolean
+        default: false
+      confirm_notification_route:
+        description: Confirm the separately managed HML SRE notification route and recipients are approved
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: new-relic-hml-technical
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment: hml
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Validate requested action and confirmations
+        env:
+          ACTION: ${{ inputs.action }}
+          CONFIRM_APPLY: ${{ inputs.confirm_apply }}
+          CONFIRM_AWS_SCHEMA: ${{ inputs.confirm_aws_schema }}
+          CONFIRM_NOTIFICATION_ROUTE: ${{ inputs.confirm_notification_route }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$ACTION" == "apply" || "$ACTION" == "disable" ]]; then
+            [[ "$CONFIRM_APPLY" == "true" ]]
+          fi
+          if [[ "$ACTION" == "apply" ]]; then
+            [[ "$CONFIRM_AWS_SCHEMA" == "true" ]]
+            [[ "$CONFIRM_NOTIFICATION_ROUTE" == "true" ]]
+          fi
+
+      - name: Validate coordinator inputs and HML session gates
+        env:
+          SOURCE_REF: ${{ github.ref }}
+          SESSION_ID: ${{ inputs.session_id }}
+          STARTED_AT: ${{ inputs.started_at }}
+          SESSION_MODE: ${{ inputs.session_mode }}
+          LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+          STAGING_ACTIVE: ${{ vars.STAGING_ACTIVE || 'false' }}
+          STAGING_SESSION_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
+          STAGING_SESSION_ALLOW_ANY_TIME: ${{ vars.STAGING_SESSION_ALLOW_ANY_TIME || 'false' }}
+          AUTHORIZED_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
+          REQUESTED_ACTION: ${{ inputs.action }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_REF" == "refs/heads/develop" ]]
+          [[ "$STAGING_ACTIVE" == "true" && "$STAGING_SESSION_AUTHORIZED" == "true" ]]
+          [[ "$AUTHORIZED_SESSION_MODE" == "hml" && "$SESSION_MODE" == "hml" ]]
+          validator_action=operate
+          if [[ "$REQUESTED_ACTION" == "disable" ]]; then
+            validator_action=teardown
+          fi
+          ENVIRONMENT_ACTIVE="$STAGING_ACTIVE" \
+            ENVIRONMENT_WINDOW_AUTHORIZED="$STAGING_SESSION_AUTHORIZED" \
+            ENVIRONMENT_SESSION_ID="$SESSION_ID" \
+            ENVIRONMENT_WINDOW_STARTED_AT="$STARTED_AT" \
+            ENVIRONMENT_STAGE=hml \
+            SESSION_MODE="$SESSION_MODE" \
+            python3 .github/scripts/validate_environment_window.py --action "$validator_action"
+
+      - name: Validate checked-in dashboard and alert contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/observability/provision_technical_observability.py validate \
+            --dashboard observability/new-relic/technical-dashboard.json \
+            --alerts observability/new-relic/technical-alerts.json \
+            --region "${{ inputs.region }}"
+
+      - name: Plan or reconcile owned New Relic resources
+        if: inputs.action != 'validate'
+        env:
+          ACTION: ${{ inputs.action }}
+          CONFIRM_AWS_SCHEMA: ${{ inputs.confirm_aws_schema }}
+          NEW_RELIC_ACCOUNT_ID: ${{ vars.NEW_RELIC_ACCOUNT_ID }}
+          NEW_RELIC_USER_API_KEY: ${{ secrets.NEW_RELIC_USER_API_KEY }}
+          NEW_RELIC_REGION: ${{ inputs.region }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          arguments=(
+            "$ACTION"
+            --dashboard observability/new-relic/technical-dashboard.json
+            --alerts observability/new-relic/technical-alerts.json
+            --region "$NEW_RELIC_REGION"
+          )
+          if [[ "$CONFIRM_AWS_SCHEMA" == "true" ]]; then
+            arguments+=(--confirm-aws-schema)
+          fi
+          result="$(python3 scripts/observability/provision_technical_observability.py "${arguments[@]}")"
+          unset NEW_RELIC_USER_API_KEY
+          {
+            echo "### New Relic HML technical reconciliation"
+            echo '```json'
+            printf '%s\n' "$result"
+            echo '```'
+            echo "Notification destinations are managed separately and are never stored in this repository."
+          } >> "$GITHUB_STEP_SUMMARY"

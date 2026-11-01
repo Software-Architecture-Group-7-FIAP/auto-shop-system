@@ -17,6 +17,11 @@ SERVICE_ORDER_EVENT_BUS_NAME="${SERVICE_ORDER_EVENT_BUS_NAME:-}"
 SERVICE_ORDER_PUBLISHER_ROLE_ARN="${SERVICE_ORDER_PUBLISHER_ROLE_ARN:-}"
 LIFECYCLE_SESSION_ID="${LIFECYCLE_SESSION_ID:-${GITHUB_RUN_ID:-local-$(date -u +%Y%m%dT%H%M%SZ)}}"
 ALLOW_SYNTHETIC_SEED_IN_PRD="${ALLOW_SYNTHETIC_SEED_IN_PRD:-false}"
+NEW_RELIC_LICENSE_KEY="${NEW_RELIC_LICENSE_KEY:-}"
+NEW_RELIC_K8S_CHART="newrelic/nri-bundle"
+NEW_RELIC_K8S_CHART_VERSION="8.0.39"
+NEW_RELIC_K8S_CHART_SHA256="96eb019f7c78e1e746e0ba170b7e656e437ae3f7bfe7203f812e750511db108f"
+NEW_RELIC_K8S_RELEASE="auto-shop-new-relic"
 
 case "${ENVIRONMENT}" in
   staging) NAMESPACE="auto-shop-hml" ;;
@@ -117,6 +122,7 @@ render_phase() {
   rendered="${rendered//__MIGRATION_DATABASE_SECRET_ARN__/${MIGRATION_DATABASE_SECRET_ARN}}"
   rendered="${rendered//__SERVICE_ORDER_EVENT_BUS_NAME__/${SERVICE_ORDER_EVENT_BUS_NAME}}"
   rendered="${rendered//__SERVICE_ORDER_PUBLISHER_ROLE_ARN__/${SERVICE_ORDER_PUBLISHER_ROLE_ARN}}"
+  rendered="${rendered//__APP_VERSION__/${IMAGE_REFERENCE}}"
   if [[ "${phase}" == "migration" ]]; then
     rendered="${rendered//name: auto-shop-migrate/name: ${MIGRATION_JOB}}"
   fi
@@ -124,7 +130,7 @@ render_phase() {
     rendered="${rendered//name: auto-shop-seed/name: ${SEED_JOB}}"
     rendered="${rendered//__ALLOW_SYNTHETIC_SEED_IN_PRD__/${ALLOW_SYNTHETIC_SEED_IN_PRD}}"
   fi
-  if grep -Eq '__IMAGE_TAG__|__MIGRATION_DATABASE_SECRET_ARN__|__SERVICE_ORDER_EVENT_BUS_NAME__|__SERVICE_ORDER_PUBLISHER_ROLE_ARN__|__ALLOW_SYNTHETIC_SEED_IN_PRD__' <<< "${rendered}"; then
+  if grep -Eq '__IMAGE_TAG__|__APP_VERSION__|__MIGRATION_DATABASE_SECRET_ARN__|__SERVICE_ORDER_EVENT_BUS_NAME__|__SERVICE_ORDER_PUBLISHER_ROLE_ARN__|__ALLOW_SYNTHETIC_SEED_IN_PRD__' <<< "${rendered}"; then
     echo "Unresolved deployment placeholder in ${ENVIRONMENT}/${phase}"
     exit 1
   fi
@@ -194,6 +200,47 @@ ensure_redis_credentials() {
   unset redis_password redis_url
 }
 
+ensure_new_relic_secret() {
+  [[ "${ENVIRONMENT}" == "staging" ]] || return 0
+  if [[ -z "${NEW_RELIC_LICENSE_KEY}" ]]; then
+    echo "The HML New Relic license key is required."
+    exit 1
+  fi
+
+  local license_file
+  license_file="$(mktemp)"
+  TEMP_FILES+=("${license_file}")
+  printf '%s' "${NEW_RELIC_LICENSE_KEY}" > "${license_file}"
+  kubectl create secret generic auto-shop-new-relic \
+    --namespace "${NAMESPACE}" \
+    --from-file="NEW_RELIC_LICENSE_KEY=${license_file}" \
+    --dry-run=client --output=yaml | kubectl apply --filename=-
+  unset NEW_RELIC_LICENSE_KEY
+}
+
+install_new_relic_kubernetes() {
+  [[ "${ENVIRONMENT}" == "staging" ]] || return 0
+  command -v helm >/dev/null
+
+  local values_file="${REPO_ROOT}/k8s/observability/new-relic/values-staging.yaml"
+  local chart_file
+  chart_file="$(mktemp --suffix=.tgz)"
+  TEMP_FILES+=("${chart_file}")
+  kubectl get secret auto-shop-new-relic --namespace "${NAMESPACE}" \
+    --output='jsonpath={.data.NEW_RELIC_LICENSE_KEY}' | grep -q .
+
+  curl --fail --location --silent --show-error \
+    --output "${chart_file}" \
+    "https://github.com/newrelic/helm-charts/releases/download/nri-bundle-${NEW_RELIC_K8S_CHART_VERSION}/nri-bundle-${NEW_RELIC_K8S_CHART_VERSION}.tgz"
+  printf '%s  %s\n' "${NEW_RELIC_K8S_CHART_SHA256}" "${chart_file}" | sha256sum --check --status
+  helm upgrade --install "${NEW_RELIC_K8S_RELEASE}" "${chart_file}" \
+    --namespace "${NAMESPACE}" \
+    --values "${values_file}" \
+    --atomic \
+    --wait \
+    --timeout 10m
+}
+
 wait_migration() {
   bash "${REPO_ROOT}/k8s/scripts/wait-for-job.sh" "${MIGRATION_JOB}" "${NAMESPACE}" 300
 }
@@ -227,6 +274,7 @@ kubectl create namespace "${NAMESPACE}" --dry-run=client --output=yaml | kubectl
 ensure_secret
 ensure_redis_credentials
 apply_phase foundation
+ensure_new_relic_secret
 apply_phase migration
 wait_migration
 apply_phase seed
@@ -234,5 +282,6 @@ wait_seed
 apply_phase app
 kubectl rollout status deployment/auto-shop-redis --namespace "${NAMESPACE}" --timeout=180s
 kubectl rollout status deployment/auto-shop-backend --namespace "${NAMESPACE}" --timeout=300s
+install_new_relic_kubernetes
 smoke_test
 echo "Auto Shop ${ENVIRONMENT} deployment completed successfully."

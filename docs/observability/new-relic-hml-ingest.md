@@ -1,5 +1,9 @@
 # New Relic HML ingestion canary
 
+FastAPI APM, correlated JSON logs, safe SQLAlchemy spans, and the bounded HML
+verification procedure are documented in
+[`new-relic-fastapi-apm.md`](new-relic-fastapi-apm.md).
+
 ## Current state
 
 The project selected New Relic in [ADR-0078](../architecture/decisions/ADR-0078-observabilidade-new-relic.md). On 2026-10-31, the account owner confirmed the Free plan and United States data region. The official [Free tier page](https://newrelic.com/pricing/free-tier) lists 100 GB of ingest per month, one Full Platform user, unlimited Basic users, at least 8 days of default retention, and 500 synthetic checks. These are the published plan allowances; check actual account usage before sending telemetry, and do not treat the monthly allowance as a per-canary cost cap.

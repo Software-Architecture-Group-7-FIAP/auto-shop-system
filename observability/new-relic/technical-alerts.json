@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "ownership": "auto-shop-owned-hml-technical-v1",
+  "policy": {
+    "name": "auto-shop-owned::HML Technical Alerts",
+    "incident_preference": "PER_CONDITION_AND_TARGET"
+  },
+  "notification_route": {
+    "logical_name": "hml-sre-approved-workflow",
+    "attach_by_default": false,
+    "owner": "HML SRE on-call",
+    "runtime_secret": "NEW_RELIC_NOTIFICATION_DESTINATION_ID"
+  },
+  "conditions": [
+    {
+      "id": "api-availability",
+      "name": "auto-shop-owned::HML API availability",
+      "category": "api_availability",
+      "source": "Transaction",
+      "nrql": "FROM Transaction SELECT percentage(count(*), WHERE error IS false) WHERE appName = 'auto-shop-api' AND label.environment = 'hml'",
+      "signal": {"aggregation_window_seconds": 300, "aggregation_method": "EVENT_FLOW", "aggregation_delay_seconds": 120, "fill_option": "NONE"},
+      "terms": [{"priority": "CRITICAL", "operator": "BELOW", "threshold": 95, "threshold_duration_seconds": 600, "threshold_occurrences": "ALL"}],
+      "loss_of_signal": {"enabled": false},
+      "enabled_during_hml_only": true,
+      "runbook_url": "https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/observability/new-relic-technical-dashboard-alerts.md#api-availability"
+    },
+    {
+      "id": "api-latency",
+      "name": "auto-shop-owned::HML API p95 latency",
+      "category": "api_latency",
+      "source": "Transaction",
+      "nrql": "FROM Transaction SELECT percentile(duration, 95) WHERE appName = 'auto-shop-api' AND label.environment = 'hml'",
+      "signal": {"aggregation_window_seconds": 300, "aggregation_method": "EVENT_FLOW", "aggregation_delay_seconds": 120, "fill_option": "NONE"},
+      "terms": [{"priority": "WARNING", "operator": "ABOVE", "threshold": 1, "threshold_duration_seconds": 900, "threshold_occurrences": "ALL"}, {"priority": "CRITICAL", "operator": "ABOVE", "threshold": 2, "threshold_duration_seconds": 600, "threshold_occurrences": "ALL"}],
+      "loss_of_signal": {"enabled": false},
+      "enabled_during_hml_only": true,
+      "runbook_url": "https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/observability/new-relic-technical-dashboard-alerts.md#api-latency-and-errors"
+    },
+    {
+      "id": "api-error-rate",
+      "name": "auto-shop-owned::HML API error rate",
+      "category": "api_error_rate",
+      "source": "Transaction",
+      "nrql": "FROM Transaction SELECT percentage(count(*), WHERE error IS true) WHERE appName = 'auto-shop-api' AND label.environment = 'hml'",
+      "signal": {"aggregation_window_seconds": 300, "aggregation_method": "EVENT_FLOW", "aggregation_delay_seconds": 120, "fill_option": "NONE"},
+      "terms": [{"priority": "WARNING", "operator": "ABOVE", "threshold": 5, "threshold_duration_seconds": 900, "threshold_occurrences": "ALL"}, {"priority": "CRITICAL", "operator": "ABOVE", "threshold": 10, "threshold_duration_seconds": 600, "threshold_occurrences": "ALL"}],
+      "loss_of_signal": {"enabled": false},
+      "enabled_during_hml_only": true,
+      "runbook_url": "https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/observability/new-relic-technical-dashboard-alerts.md#api-latency-and-errors"
+    },
+    {
+      "id": "k8s-readiness",
+      "name": "auto-shop-owned::HML Kubernetes pod not ready",
+      "category": "k8s_readiness",
+      "source": "K8sPodSample",
+      "nrql": "FROM K8sPodSample SELECT filter(uniqueCount(podName), WHERE isReady = false) WHERE clusterName = 'auto-shop-hml' AND namespaceName = 'auto-shop-hml'",
+      "signal": {"aggregation_window_seconds": 60, "aggregation_method": "EVENT_FLOW", "aggregation_delay_seconds": 120, "fill_option": "NONE"},
+      "terms": [{"priority": "CRITICAL", "operator": "ABOVE_OR_EQUALS", "threshold": 1, "threshold_duration_seconds": 300, "threshold_occurrences": "ALL"}],
+      "loss_of_signal": {"enabled": false},
+      "enabled_during_hml_only": true,
+      "runbook_url": "https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/observability/new-relic-technical-dashboard-alerts.md#kubernetes-health"
+    },
+    {
+      "id": "k8s-restarts",
+      "name": "auto-shop-owned::HML Kubernetes restart increase",
+      "category": "k8s_restarts",
+      "source": "K8sContainerSample",
+      "nrql": "FROM K8sContainerSample SELECT max(restartCount) - min(restartCount) WHERE clusterName = 'auto-shop-hml' AND namespaceName = 'auto-shop-hml' FACET podName, containerName",
+      "signal": {"aggregation_window_seconds": 300, "aggregation_method": "EVENT_FLOW", "aggregation_delay_seconds": 120, "fill_option": "NONE"},
+      "terms": [{"priority": "WARNING", "operator": "ABOVE_OR_EQUALS", "threshold": 3, "threshold_duration_seconds": 600, "threshold_occurrences": "AT_LEAST_ONCE"}],
+      "loss_of_signal": {"enabled": false},
+      "enabled_during_hml_only": true,
+      "runbook_url": "https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/observability/new-relic-technical-dashboard-alerts.md#kubernetes-health"
+    },
+    {
+      "id": "k8s-cpu",
+      "name": "auto-shop-owned::HML Kubernetes pod CPU pressure",
+      "category": "k8s_cpu",
+      "source": "K8sPodSample",
+      "nrql": "FROM K8sPodSample SELECT max(cpuUsedCores) WHERE clusterName = 'auto-shop-hml' AND namespaceName = 'auto-shop-hml'",
+      "signal": {"aggregation_window_seconds": 300, "aggregation_method": "EVENT_FLOW", "aggregation_delay_seconds": 120, "fill_option": "NONE"},
+      "terms": [{"priority": "WARNING", "operator": "ABOVE", "threshold": 0.85, "threshold_duration_seconds": 900, "threshold_occurrences": "ALL"}],
+      "loss_of_signal": {"enabled": false},
+      "enabled_during_hml_only": true,
+      "runbook_url": "https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/observability/new-relic-technical-dashboard-alerts.md#kubernetes-health"
+    },
+    {
+      "id": "k8s-memory",
+      "name": "auto-shop-owned::HML Kubernetes pod memory pressure",
+      "category": "k8s_memory",
+      "source": "K8sPodSample",
+      "nrql": "FROM K8sPodSample SELECT max(memoryWorkingSetBytes) WHERE clusterName = 'auto-shop-hml' AND namespaceName = 'auto-shop-hml'",
+      "signal": {"aggregation_window_seconds": 300, "aggregation_method": "EVENT_FLOW", "aggregation_delay_seconds": 120, "fill_option": "NONE"},
+      "terms": [{"priority": "WARNING", "operator": "ABOVE", "threshold": 805306368, "threshold_duration_seconds": 900, "threshold_occurrences": "ALL"}],
+      "loss_of_signal": {"enabled": false},
+      "enabled_during_hml_only": true,
+      "runbook_url": "https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/observability/new-relic-technical-dashboard-alerts.md#kubernetes-health"
+    }
+  ]
+}
