@@ -18,7 +18,7 @@ EMERGENCY_HML_LAST_DAY = date(2026, 10, 31)
 PRD_FIRST_DAY = date(2026, 11, 1)
 PRD_LAST_DAY = date(2026, 11, 5)
 STARTED_AT_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
-SUPPORTED_ACTIONS = frozenset({"start", "health", "operate", "teardown"})
+SUPPORTED_ACTIONS = frozenset({"start", "health", "operate", "deploy", "teardown"})
 SUPPORTED_STAGES = frozenset({"hml", "prd"})
 
 
@@ -112,7 +112,7 @@ def validate_environment_window(
         raise EnvironmentWindowError("ENVIRONMENT_STAGE must be hml or prd.")
     if action not in SUPPORTED_ACTIONS:
         raise EnvironmentWindowError(
-            "The action must be start, health, operate, or teardown."
+            "The action must be start, health, operate, deploy, or teardown."
         )
     if now.tzinfo is None or now.utcoffset() != timedelta(0):
         raise EnvironmentWindowError("The current time must be UTC-aware.")
@@ -133,6 +133,9 @@ def validate_environment_window(
         raise EnvironmentWindowError(
             f"ENVIRONMENT_SESSION_ID must match the coordinator's {stage} BRT session date."
         )
+    if action == "deploy":
+        return None
+
     elapsed = now - start
     if elapsed < timedelta(0):
         raise EnvironmentWindowError("ENVIRONMENT_WINDOW_STARTED_AT is in the future.")
@@ -254,7 +257,11 @@ def main() -> int:
         print(f"::error::{error}", file=sys.stderr)
         return 1
 
-    message = f"Environment window accepted for {stage}/{arguments.action}."
+    message = (
+        f"Environment deployment authorization accepted for {stage}."
+        if arguments.action == "deploy"
+        else f"Environment window accepted for {stage}/{arguments.action}."
+    )
     if remaining is not None:
         message += f" {int(remaining.total_seconds())} HML seconds remain."
     print(message)

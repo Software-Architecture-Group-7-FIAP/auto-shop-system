@@ -52,8 +52,8 @@ def test_oidc_role_environment_subjects_match_deployment_workflows():
     assert 'toset(["staging", "production"])' in oidc
     assert "| `hml` | `hml` |" in infra_readme
     assert "| `prd` | `prd` |" in infra_readme
-    assert "| `workflow_dispatch` em `develop` | `hml` |" in deployment_readme
-    assert "| `workflow_dispatch` em `main` | `prd` |" in deployment_readme
+    assert "| push ou `workflow_dispatch` em `develop` | `hml` |" in deployment_readme
+    assert "| push ou `workflow_dispatch` em `main` | `prd` |" in deployment_readme
 
 
 def test_alembic_preserves_percent_encoded_passwords_and_deploy_logs_redact_driver_urls():

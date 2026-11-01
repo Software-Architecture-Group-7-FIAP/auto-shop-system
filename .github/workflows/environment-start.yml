@@ -582,7 +582,7 @@ jobs:
 
   hml-auto-stop-wait:
     needs: open
-    if: always() && needs.open.outputs.stage == 'hml' && needs.open.outputs.session_id != ''
+    if: needs.open.result == 'success' && needs.open.outputs.stage == 'hml' && needs.open.outputs.session_id != ''
     runs-on: ubuntu-latest
     timeout-minutes: 360
     environment: operations
