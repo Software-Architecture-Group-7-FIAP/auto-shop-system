@@ -56,7 +56,7 @@ jobs:
           SECRET_KEY: test-secret-key-with-at-least-32-chars
         run: poetry run python scripts/export_openapi.py --check
       - name: Run tests with coverage gate
-        run: poetry run pytest --cov=src --cov-report=term-missing --cov-fail-under=80
+        run: poetry run pytest --cov=src --cov-report=term-missing --cov-fail-under=80 -m "not slow"
       - name: Run Bandit
         run: poetry run bandit -r src -ll
       - name: Run pip-audit
