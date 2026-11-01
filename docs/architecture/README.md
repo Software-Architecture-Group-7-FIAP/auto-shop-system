@@ -28,6 +28,7 @@ Modelo de dados: [`docs/database/database-schema.mermaid`](../database/database-
 | [ADR-0076](./decisions/ADR-0076-comunicacao-sincrona-e-evento-falha.md) | Comunicação síncrona + evento de falha de OS |
 | [ADR-0077](./decisions/ADR-0077-hml-prd-por-namespace.md) | HML e PRD por namespace (infraestrutura única) |
 | [ADR-0078](./decisions/ADR-0078-observabilidade-new-relic.md) | Observabilidade — New Relic |
+| [ADR-0079](./decisions/ADR-0079-registry-privado-ecr.md) | Espelhamento de imagens privadas GHCR para ECR |
 
 ADRs aceitos são imutáveis; novas decisões geram novo número.
 

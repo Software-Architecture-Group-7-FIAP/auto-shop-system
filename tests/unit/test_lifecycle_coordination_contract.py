@@ -174,7 +174,7 @@ def test_automatic_hml_close_dispatch_binds_the_session_mode_for_ledger_authoriz
 
 
 
-def test_public_ghcr_images_are_verified_anonymously_before_eks_deploy() -> None:
+def test_authenticated_ghcr_images_are_mirrored_to_ecr_before_eks_deploy() -> None:
     for workflow_name, deploy_command, role_reference in (
         (
             "cd-staging.yml",
@@ -188,19 +188,16 @@ def test_public_ghcr_images_are_verified_anonymously_before_eks_deploy() -> None
         ),
     ):
         workflow = (ROOT / ".github" / "workflows" / workflow_name).read_text(encoding="utf-8")
-        anonymous_pull = min(
-            position
-            for position in (
-                workflow.find('docker manifest inspect "$IMAGE_REFERENCE"'),
-                workflow.find('docker pull "${IMAGE_REFERENCE}"'),
-            )
-            if position >= 0
+        source_image = workflow.index(
+            "SOURCE_IMAGE: ${{ needs.build-push.outputs.ghcr_image_reference }}"
         )
         aws_credentials = workflow.index(role_reference)
+        mirror = workflow.index("Mirror authenticated GHCR image to private ECR")
         deploy = workflow.index(deploy_command)
 
-        assert anonymous_pull < aws_credentials < deploy
-        assert "packages: read" not in workflow
-        assert "GITHUB_TOKEN: ${{ github.token }}" not in workflow
-        assert "scripts/mirror_ghcr_image_to_ecr.py" not in workflow
-        assert "steps.ecr_image" not in workflow
+        assert source_image < aws_credentials < mirror < deploy
+        assert "packages: read" in workflow
+        assert "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}" in workflow
+        assert 'python3 scripts/mirror_ghcr_image_to_ecr.py "${SOURCE_IMAGE}"' in workflow
+        assert "IMAGE_REFERENCE: ${{ steps.ecr_image.outputs.image_reference }}" in workflow
+        assert 'docker pull "${IMAGE_REFERENCE}"' not in workflow

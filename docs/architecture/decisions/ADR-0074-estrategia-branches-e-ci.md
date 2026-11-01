@@ -52,6 +52,10 @@ Falha em um repositório não cancela pipelines dos outros.
 - Deploy K8s: OIDC → role AWS por Environment (`staging` / `production`).
 - Gate: `DEPLOY_STAGING_ENABLED` / `DEPLOY_PRODUCTION_ENABLED` até cluster staging (#87) existir.
 
+### Atualização de distribuição de imagens (2026-11-01)
+
+A estratégia de registry desta ADR foi supersedida pela [ADR-0079](ADR-0079-registry-privado-ecr.md): o GHCR autenticado permanece como origem de build, e os deploy jobs autorizados espelham a imagem imutável para o ECR privado antes de atualizar o EKS. A role OIDC do deploy precisa de permissões ECR limitadas ao repositório esperado, e os nós EKS precisam de permissões de pull.
+
 ## Consequências
 
 - ADRs e RFCs referenciam `develop` como base de PR.

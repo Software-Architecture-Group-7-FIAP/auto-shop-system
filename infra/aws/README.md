@@ -65,6 +65,10 @@ terraform -chdir=infra/aws plan -var-file=terraform.tfvars
 
 Forneca `jwt_secret_arn` com o ARN de um segredo do Secrets Manager. O valor armazenado como SecretString deve ser igual ao `ACCESS_TOKEN_SECRET` usado pelo backend. O Terraform passa somente o ARN; a role exclusiva do authorizer le o valor em runtime. Nunca passe o segredo por tfvars, variaveis Terraform com valor, plano, log ou state. A chave do state eh `auto-shop-system/infra/aws/staging/terraform.tfstate`. Mantenha o arquivo do plano local e revise as mudancas antes de qualquer apply. O plano e as mudancas AWS seguem o processo de aprovacao da ADR-0071.
 
+## Roles de deploy e imagens ECR
+
+As roles OIDC de deploy também espelham as imagens autenticadas do GHCR para o repositório privado ECR `auto-shop-system`. A policy Terraform restringe as operações de leitura e escrita ao ARN desse repositório; `ecr:GetAuthorizationToken` exige `Resource: "*"`. A permissions boundary `auto-shop/auto-shop-boundary` é gerenciada externamente e precisa permitir essas ações. Antes de habilitar deploy, confirme que o repositório ECR existe na conta e região configuradas com tags imutáveis e que a role dos nós EKS (ou a role de execução do Fargate) pode puxar imagens do ECR.
+
 ## Ativação dos domínios próprios
 
 O padrão é `enable_custom_domains = false`, para permitir solicitar o certificado ACM antes da publicação dos registros DNS.

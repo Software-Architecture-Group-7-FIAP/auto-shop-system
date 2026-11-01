@@ -153,7 +153,7 @@ def test_deploy_script_requires_complete_arn_values():
     assert "assert_pod_identity_agent_ready\nkubectl create namespace" in deploy_script
 
 
-def test_cd_workflows_check_anonymous_image_access_before_aws_authentication():
+def test_cd_workflows_mirror_authenticated_ghcr_images_into_deployable_ecr_tags():
     workflows = (
         ROOT / ".github/workflows/cd-staging.yml",
         ROOT / ".github/workflows/cd-prod.yml",
@@ -161,10 +161,21 @@ def test_cd_workflows_check_anonymous_image_access_before_aws_authentication():
 
     for workflow_path in workflows:
         workflow = workflow_path.read_text(encoding="utf-8")
-        assert "run: docker pull \"${IMAGE_REFERENCE}\"" in workflow
-        pull_check_index = workflow.index("Verify image is pullable without credentials")
+        source_image_index = workflow.index(
+            "SOURCE_IMAGE: ${{ needs.build-push.outputs.ghcr_image_reference }}"
+        )
         aws_auth_index = workflow.index("Configure AWS credentials (OIDC)")
-        assert pull_check_index < aws_auth_index
+        mirror_index = workflow.index("Mirror authenticated GHCR image to private ECR")
+        deploy_index = workflow.index("./k8s/scripts/deploy.sh")
+
+        assert source_image_index < aws_auth_index < mirror_index < deploy_index
+        assert "packages: read" in workflow
+        assert "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}" in workflow
+        assert 'python3 scripts/mirror_ghcr_image_to_ecr.py "${SOURCE_IMAGE}"' in workflow
+        assert "IMAGE_REFERENCE: ${{ steps.ecr_image.outputs.image_reference }}" in workflow
+
+    deploy_script = (ROOT / "k8s/scripts/deploy.sh").read_text(encoding="utf-8")
+    assert '[[ "${ref}" =~ :sha-[0-9a-fA-F]{7,40}$ ]]' in deploy_script
 
 
 def test_ci_and_cd_kubernetes_tools_match_the_staging_baseline():

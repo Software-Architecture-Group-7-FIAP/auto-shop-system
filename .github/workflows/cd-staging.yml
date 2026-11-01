@@ -73,7 +73,7 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$DEPLOY_STAGING_ENABLED" == "true" ]] || {
-            echo "::error::DEPLOY_STAGING_ENABLED is not true."
+            echo "::error::HML backend deploy gate is not enabled."
             exit 1
           }
           [[ "$STAGING_ACTIVE" == "true" && "$STAGING_SESSION_AUTHORIZED" == "true" && "$AUTHORIZED_SESSION_MODE" == "hml" ]] || {
@@ -87,7 +87,7 @@ jobs:
             ENVIRONMENT_WINDOW_STARTED_AT="$REQUESTED_STARTED_AT" \
             SESSION_MODE="$REQUESTED_SESSION_MODE" \
             ENVIRONMENT_STAGE=hml \
-            python3 .github/scripts/validate_environment_window.py --action deploy
+            python3 .github/scripts/validate_environment_window.py --action operate
 
   build-push:
     needs: lifecycle-authorization
@@ -101,54 +101,37 @@ jobs:
   deploy-staging:
     needs: [build-push, lifecycle-authorization]
     if: >-
-      always() && needs.build-push.result == 'success' &&
-      (github.event_name == 'push' || needs.lifecycle-authorization.result == 'success') &&
-      github.ref == 'refs/heads/develop' && vars.DEPLOY_STAGING_ENABLED == 'true'
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/develop' &&
+      vars.DEPLOY_STAGING_ENABLED == 'true' &&
+      needs.build-push.result == 'success' &&
+      needs.lifecycle-authorization.result == 'success'
     runs-on: ubuntu-latest
     environment: hml
     timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
+      packages: read
     env:
-      IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
+      SOURCE_IMAGE: ${{ needs.build-push.outputs.ghcr_image_reference }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Require HML deployment authorization
+      - name: Require the authorized HML operating window
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          DEPLOY_STAGING_ENABLED: ${{ vars.DEPLOY_STAGING_ENABLED || 'false' }}
-          STAGING_ACTIVE: ${{ vars.STAGING_ACTIVE || 'false' }}
-          STAGING_SESSION_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
-          AUTHORIZED_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
+          ENVIRONMENT_ACTIVE: ${{ vars.STAGING_ACTIVE }}
+          ENVIRONMENT_WINDOW_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED }}
           ENVIRONMENT_SESSION_ID: ${{ inputs.session_id }}
           ENVIRONMENT_WINDOW_STARTED_AT: ${{ inputs.started_at }}
+          ENVIRONMENT_STAGE: hml
           SESSION_MODE: ${{ inputs.session_mode }}
           LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
           LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
         shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$DEPLOY_STAGING_ENABLED" == "true" ]] || { echo "::error::DEPLOY_STAGING_ENABLED is not true."; exit 1; }
-          [[ "$STAGING_ACTIVE" == "true" && "$STAGING_SESSION_AUTHORIZED" == "true" && "$AUTHORIZED_SESSION_MODE" == "hml" ]] || {
-            echo "::error::HML static authorization gates are not enabled."
-            exit 1
-          }
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            [[ "$SESSION_MODE" == "hml" ]] || { echo "::error::session_mode must be hml."; exit 1; }
-            ENVIRONMENT_ACTIVE="$STAGING_ACTIVE" \
-              ENVIRONMENT_WINDOW_AUTHORIZED="$STAGING_SESSION_AUTHORIZED" \
-              ENVIRONMENT_SESSION_ID="$ENVIRONMENT_SESSION_ID" \
-              ENVIRONMENT_WINDOW_STARTED_AT="$ENVIRONMENT_WINDOW_STARTED_AT" \
-              ENVIRONMENT_STAGE=hml \
-              python3 .github/scripts/validate_environment_window.py --action deploy
-          fi
-
-      - name: Verify image is pullable without credentials
-        run: docker pull "${IMAGE_REFERENCE}"
+        run: python3 .github/scripts/validate_environment_window.py --action operate
 
       - name: Validate the Terraform-managed HML deploy role ARN
         env:
@@ -166,6 +149,18 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN_HML }}
           aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Mirror authenticated GHCR image to private ECR
+        id: ecr_image
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_reference="$(python3 scripts/mirror_ghcr_image_to_ecr.py "${SOURCE_IMAGE}")"
+          echo "image_reference=${image_reference}" >> "${GITHUB_OUTPUT}"
 
       - uses: azure/setup-kubectl@v4
         with:
@@ -260,7 +255,7 @@ jobs:
 
       - name: Deploy to staging
         env:
-          IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
+          IMAGE_REFERENCE: ${{ steps.ecr_image.outputs.image_reference }}
           MIGRATION_DATABASE_SECRET_ARN: ${{ steps.eks.outputs.migration_secret_arn }}
           SERVICE_ORDER_EVENT_BUS_NAME: ${{ steps.eks.outputs.service_order_event_bus_name }}
           SERVICE_ORDER_PUBLISHER_ROLE_ARN: ${{ steps.eks.outputs.service_order_publisher_role_arn }}
@@ -268,7 +263,7 @@ jobs:
 
   deploy-staging-frontend:
     needs: deploy-staging
-    if: needs.deploy-staging.result == 'success' && vars.DEPLOY_STAGING_FRONTEND_ENABLED == 'true'
+    if: needs.deploy-staging.result == 'success' && vars.DEPLOY_STAGING_FRONTEND_ENABLED == 'true' && github.event_name == 'workflow_dispatch' && vars.DEPLOY_STAGING_ENABLED == 'true'
     permissions:
       contents: read
       id-token: write
@@ -297,10 +292,18 @@ jobs:
     steps:
       - name: Deploy gated until staging infra (#87)
         env:
-          IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
+          IMAGE_REFERENCE: ${{ needs.build-push.outputs.ghcr_image_reference }}
         run: |
           echo "Imagem publicada: ${IMAGE_REFERENCE}"
           echo "Deploy staging ignorado: defina a variável de repositório DEPLOY_STAGING_ENABLED=true."
           echo "GitHub Environment hml: AWS_REGION and variable AWS_DEPLOY_ROLE_ARN_HML; cluster name comes from SSM."
           echo "Ver .github/CD.md"
+
+  push-deploy-gated:
+    needs: [build-push, lifecycle-authorization]
+    if: always() && github.event_name == 'push' && vars.DEPLOY_STAGING_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep HML changes behind the lifecycle coordinator
+        run: echo "Push build completed; HML deploy requires workflow_dispatch with a validated session_id, started_at, and session_mode."
 
