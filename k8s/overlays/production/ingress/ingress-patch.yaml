@@ -3,6 +3,9 @@ kind: Ingress
 metadata:
   name: auto-shop-ingress
   namespace: auto-shop
+  annotations:
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
 spec:
   ingressClassName: alb
   rules:
@@ -13,9 +16,9 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: auto-shop-backend
+                name: auto-shop-backend-service
                 port:
-                  number: 8000
+                  number: 80
   tls:
     - hosts:
         - api.autoshop.com
