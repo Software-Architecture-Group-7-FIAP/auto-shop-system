@@ -79,10 +79,11 @@ echo "::notice::Configuring HPA for scale test: max 3 replicas, CPU target 1%...
 kubectl patch hpa "$hpa" --namespace "$namespace" --type=json \
   -p='[{"op":"replace","path":"/spec/maxReplicas","value":3},{"op":"replace","path":"/spec/metrics/0/resource/target/averageUtilization","value":1},{"op":"replace","path":"/spec/behavior/scaleDown/stabilizationWindowSeconds","value":0}]'
 
-echo "::notice::Starting CPU load generation (4 workers)..."
-# Generate sustained CPU load using yes (outputs lines continuously, stresses CPU)
+echo "::notice::Starting HTTP load generation (10 concurrent workers)..."
+# Generate HTTP load: 10 parallel wget workers making requests to backend service
+# This causes CPU load on backend pods, triggering HPA scaling
 kubectl run "$load_pod" --namespace "$namespace" --restart=Never --image=busybox:1.36 -- \
-  sh -c 'yes >/dev/null & yes >/dev/null & yes >/dev/null & yes >/dev/null & wait'
+  sh -c 'for i in $(seq 1 10); do (while true; do wget -q -O /dev/null http://auto-shop-backend-service/health/live || true; done) & done; wait'
 
 echo "Waiting for HPA to scale up to three replicas (triggered by CPU load)..."
 wait_for "HPA scale up to three ready replicas" 240 has_ready_replicas 3
