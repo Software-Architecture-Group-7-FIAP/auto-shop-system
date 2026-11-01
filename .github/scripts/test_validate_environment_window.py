@@ -186,8 +186,42 @@ class ValidateEnvironmentWindowTests(unittest.TestCase):
                 started_at="2026-10-30T10:00:01Z",
             )
 
+    def test_deploy_is_not_limited_by_either_stage_time_window(self) -> None:
+        cases = (
+            (
+                "hml",
+                "2026-10-30T10:00:00Z",
+                datetime(2026, 11, 6, 9, 0, tzinfo=timezone.utc),
+            ),
+            (
+                "prd",
+                "2026-11-01T09:00:00Z",
+                datetime(2026, 11, 6, 9, 0, tzinfo=timezone.utc),
+            ),
+        )
+        for stage, started_at, now in cases:
+            with self.subTest(stage=stage):
+                self.validate(
+                    stage=stage,
+                    action="deploy",
+                    now=now,
+                    started_at=started_at,
+                )
+
+    def test_deploy_still_requires_explicit_environment_authorization(self) -> None:
+        with self.assertRaisesRegex(EnvironmentWindowError, "authorized"):
+            validate_environment_window(
+                active="true",
+                authorized="false",
+                session_id="hml-2026-10-30",
+                stage="hml",
+                action="deploy",
+                started_at="2026-10-30T10:00:00Z",
+                now=datetime(2026, 11, 6, 9, 0, tzinfo=timezone.utc),
+            )
+
     def test_rejects_unknown_stage_and_action(self) -> None:
-        for stage, action in (("production", "operate"), ("prd", "deploy")):
+        for stage, action in (("production", "operate"), ("prd", "unknown")):
             with self.subTest(stage=stage, action=action):
                 with self.assertRaises(EnvironmentWindowError):
                     self.validate(
