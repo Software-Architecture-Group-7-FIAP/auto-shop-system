@@ -80,8 +80,9 @@ kubectl patch hpa "$hpa" --namespace "$namespace" --type=json \
   -p='[{"op":"replace","path":"/spec/maxReplicas","value":3},{"op":"replace","path":"/spec/metrics/0/resource/target/averageUtilization","value":1},{"op":"replace","path":"/spec/behavior/scaleDown/stabilizationWindowSeconds","value":0}]'
 
 echo "::notice::Starting CPU load generation (4 workers)..."
-kubectl run "$load_pod" --namespace "$namespace" --restart=Never --image=alpine:latest --limits=cpu=500m,memory=256Mi -- \
-  sh -c 'for i in 1 2 3 4; do (while true; do echo $((i*i*i)) >/dev/null; done) & done; wait'
+# Generate intensive CPU load: 4 parallel workers doing arithmetic
+kubectl run "$load_pod" --namespace "$namespace" --restart=Never --image=busybox:1.36 -- \
+  sh -c 'for i in 1 2 3 4; do (while true; do x=$((i*i*i*i*i*i)); done) & done; wait'
 
 echo "Waiting for HPA to scale up to three replicas (triggered by CPU load)..."
 wait_for "HPA scale up to three ready replicas" 240 has_ready_replicas 3
