@@ -139,6 +139,276 @@ def test_authorization_records_the_configured_cross_repo_dispatch_actor(
     assert writes[0]["Item"]["source_actor"] == {"S": "trusted-operator"}
     assert writes[0]["Item"]["dispatch_actor"] == {"S": "dispatch-bot[bot]"}
     assert writes[0]["Item"]["target_ref"] == {"S": "refs/heads/main"}
+    assert writes[0]["Item"]["emergency_capability_verified"] == {"S": "false"}
+
+
+def test_emergency_develop_close_authorization_records_the_verified_capability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
+    state = {
+        "status": "closing",
+        "stage": "hml",
+        "session_mode": "hml",
+        "started_at": "2026-10-30T12:00:00Z",
+        "operator": "trusted-operator",
+        "close_actor": "trusted-operator",
+        "close_run_id": "123",
+        "close_run_attempt": 1,
+        "ttl_epoch_seconds": now + 86400,
+    }
+    writes: list[dict[str, object]] = []
+    monkeypatch.setattr(LEDGER.time, "time", lambda: now)
+    monkeypatch.setattr(LEDGER, "_get_item", lambda _session_id, _record_key: state)
+    monkeypatch.setattr(LEDGER, "_ddb", lambda _operation, request: writes.append(request) or {})
+    for key, value in {
+        "GITHUB_ACTOR": "trusted-operator",
+        "LIFECYCLE_TRIGGERING_ACTOR": "trusted-operator",
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "GITHUB_REF": "refs/heads/develop",
+        "GITHUB_RUN_ID": "123",
+        "GITHUB_RUN_ATTEMPT": "1",
+        "GITHUB_WORKFLOW": LEDGER.STOP_WORKFLOW_NAME,
+        "LIFECYCLE_EMERGENCY_CAPABILITY_VERIFIED": "true",
+        "CLOSE_REQUEST_ID": "emergency-42",
+        "LIFECYCLE_TRUSTED_OPERATORS": "trusted-operator,dispatch-bot[bot]",
+        "LIFECYCLE_CROSS_REPO_ACTOR": "dispatch-bot[bot]",
+    }.items():
+        monkeypatch.setenv(key, value)
+
+    LEDGER.issue_dispatch_authorization(
+        session_id="hml-2026-10-30",
+        dispatch_id="b" * 32,
+        action="close",
+        repository="owner/infra",
+        workflow="apply.yml",
+        ref="main",
+        inputs={
+            "session_id": "hml-2026-10-30",
+            "started_at": "2026-10-30T12:00:00Z",
+            "session_mode": "hml",
+            "lifecycle_dispatch_id": "b" * 32,
+        },
+    )
+
+    assert writes[0]["Item"]["source_ref"] == {"S": "refs/heads/develop"}
+    assert writes[0]["Item"]["source_workflow"] == {"S": LEDGER.STOP_WORKFLOW_NAME}
+    assert writes[0]["Item"]["emergency_capability_verified"] == {"S": "true"}
+
+
+def test_emergency_develop_audit_authorization_records_the_verified_capability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
+    state = {
+        "status": "closing",
+        "stage": "hml",
+        "session_mode": "hml",
+        "started_at": "2026-10-30T12:00:00Z",
+        "operator": "trusted-operator",
+        "close_actor": "trusted-operator",
+        "close_run_id": "123",
+        "close_run_attempt": 1,
+        "ttl_epoch_seconds": now + 86400,
+    }
+    writes: list[dict[str, object]] = []
+    monkeypatch.setattr(LEDGER.time, "time", lambda: now)
+    monkeypatch.setattr(LEDGER, "_get_item", lambda _session_id, _record_key: state)
+    monkeypatch.setattr(LEDGER, "_ddb", lambda _operation, request: writes.append(request) or {})
+    for key, value in {
+        "GITHUB_ACTOR": "trusted-operator",
+        "LIFECYCLE_TRIGGERING_ACTOR": "trusted-operator",
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "GITHUB_REF": "refs/heads/develop",
+        "GITHUB_RUN_ID": "123",
+        "GITHUB_RUN_ATTEMPT": "1",
+        "GITHUB_WORKFLOW": LEDGER.STOP_WORKFLOW_NAME,
+        "LIFECYCLE_EMERGENCY_CAPABILITY_VERIFIED": "true",
+        "CLOSE_REQUEST_ID": "emergency-42",
+        "LIFECYCLE_TRUSTED_OPERATORS": "trusted-operator,dispatch-bot[bot]",
+        "LIFECYCLE_CROSS_REPO_ACTOR": "dispatch-bot[bot]",
+    }.items():
+        monkeypatch.setenv(key, value)
+
+    LEDGER.issue_dispatch_authorization(
+        session_id="hml-2026-10-30",
+        dispatch_id="7" * 32,
+        action="audit",
+        repository="owner/infra",
+        workflow="audit.yml",
+        ref="main",
+        inputs={
+            "session_id": "hml-2026-10-30",
+            "started_at": "2026-10-30T12:00:00Z",
+            "session_mode": "hml",
+            "lifecycle_dispatch_id": "7" * 32,
+        },
+    )
+
+    assert writes[0]["Item"]["action"] == {"S": "audit"}
+    assert writes[0]["Item"]["emergency_capability_verified"] == {"S": "true"}
+
+
+def test_normal_develop_close_authorization_records_its_consumed_source_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
+    session_id = "hml-2026-10-30"
+    incoming_dispatch_id = "8" * 32
+    state = {
+        "status": "closing",
+        "stage": "hml",
+        "session_mode": "hml",
+        "started_at": "2026-10-30T12:00:00Z",
+        "operator": "trusted-operator",
+        "close_actor": "trusted-operator",
+        "close_run_id": "456",
+        "close_run_attempt": 1,
+        "ttl_epoch_seconds": now + 86400,
+    }
+    source_authorization = {
+        "action": "close",
+        "status": "consumed",
+        "source_actor": "trusted-operator",
+        "source_workflow": "Coordinated environment start",
+        "source_ref": "refs/heads/main",
+        "dispatch_actor": "dispatch-bot[bot]",
+        "consumer_actor": "dispatch-bot[bot]",
+        "consumer_run_id": "456",
+        "consumer_run_attempt": 1,
+        "target_repository": "owner/auto-shop-system",
+        "target_workflow": LEDGER.STOP_WORKFLOW_NAME,
+        "target_ref": "refs/heads/develop",
+    }
+    writes: list[dict[str, object]] = []
+    monkeypatch.setattr(LEDGER.time, "time", lambda: now)
+    monkeypatch.setattr(LEDGER, "_inputs_from_event", lambda: {
+        "session_id": session_id,
+        "started_at": state["started_at"],
+        "session_mode": "hml",
+        "lifecycle_dispatch_id": incoming_dispatch_id,
+    })
+    monkeypatch.setattr(
+        LEDGER,
+        "_get_item",
+        lambda _session_id, key, **_kwargs: state if key == "STATE" else source_authorization,
+    )
+    monkeypatch.setattr(LEDGER, "_ddb", lambda _operation, request: writes.append(request) or {})
+    for key, value in {
+        "GITHUB_ACTOR": "dispatch-bot[bot]",
+        "LIFECYCLE_TRIGGERING_ACTOR": "dispatch-bot[bot]",
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "GITHUB_REPOSITORY": "owner/auto-shop-system",
+        "GITHUB_REF": "refs/heads/develop",
+        "GITHUB_RUN_ID": "456",
+        "GITHUB_RUN_ATTEMPT": "1",
+        "GITHUB_WORKFLOW": LEDGER.STOP_WORKFLOW_NAME,
+        "LIFECYCLE_TRUSTED_OPERATORS": "trusted-operator,dispatch-bot[bot]",
+        "LIFECYCLE_CROSS_REPO_ACTOR": "dispatch-bot[bot]",
+    }.items():
+        monkeypatch.setenv(key, value)
+
+    LEDGER.issue_dispatch_authorization(
+        session_id=session_id,
+        dispatch_id="9" * 32,
+        action="close",
+        repository="owner/infra",
+        workflow="apply.yml",
+        ref="main",
+        inputs={
+            "session_id": session_id,
+            "started_at": state["started_at"],
+            "session_mode": "hml",
+            "lifecycle_dispatch_id": "9" * 32,
+        },
+    )
+
+    assert writes[0]["Item"]["emergency_capability_verified"] == {"S": "false"}
+    assert writes[0]["Item"]["source_close_dispatch_id"] == {"S": incoming_dispatch_id}
+    assert writes[0]["Item"]["source_close_authorization_verified"] == {"S": "true"}
+    assert writes[0]["Item"]["source_repository"] == {"S": "owner/auto-shop-system"}
+
+
+@pytest.mark.parametrize(
+    ("action", "verified", "error"),
+    [
+        ("open", "true", "allowed only from main or a verified emergency close/audit"),
+        ("close", "false", "consumed normal close or verified emergency capability"),
+        ("audit", "false", "consumed normal close or verified emergency capability"),
+    ],
+)
+def test_develop_source_rejects_non_emergency_or_non_close_authorization(
+    monkeypatch: pytest.MonkeyPatch, action: str, verified: str, error: str
+) -> None:
+    for key, value in {
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "GITHUB_REF": "refs/heads/develop",
+        "GITHUB_WORKFLOW": LEDGER.STOP_WORKFLOW_NAME,
+        "LIFECYCLE_EMERGENCY_CAPABILITY_VERIFIED": verified,
+        "CLOSE_REQUEST_ID": "emergency-42",
+    }.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setattr(LEDGER, "_inputs_from_event", lambda: {})
+
+    with pytest.raises(LEDGER.LedgerError, match=error):
+        LEDGER.issue_dispatch_authorization(
+            session_id="hml-2026-10-30",
+            dispatch_id="c" * 32,
+            action=action,
+            repository="owner/infra",
+            workflow="apply.yml",
+            ref="main",
+            inputs={},
+        )
+
+
+def test_issue_dispatch_cli_parses_and_forwards_exact_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issued: list[dict[str, object]] = []
+    monkeypatch.setattr(LEDGER, "issue_dispatch_authorization", lambda **kwargs: issued.append(kwargs))
+    monkeypatch.setattr(
+        LEDGER.sys,
+        "argv",
+        [
+            "lifecycle_session_ledger.py",
+            "issue-dispatch",
+            "--session-id",
+            "hml-2026-10-30",
+            "--dispatch-id",
+            "d" * 32,
+            "--action",
+            "close",
+            "--repository",
+            "owner/infra",
+            "--workflow",
+            "apply.yml",
+            "--ref",
+            "main",
+            "--inputs",
+            '{"session_id":"hml-2026-10-30","started_at":"2026-10-30T12:00:00Z","session_mode":"hml","lifecycle_dispatch_id":"'
+            + "d" * 32
+            + '"}',
+        ],
+    )
+
+    assert LEDGER.main() == 0
+    assert issued == [
+        {
+            "session_id": "hml-2026-10-30",
+            "dispatch_id": "d" * 32,
+            "action": "close",
+            "repository": "owner/infra",
+            "workflow": "apply.yml",
+            "ref": "main",
+            "inputs": {
+                "session_id": "hml-2026-10-30",
+                "started_at": "2026-10-30T12:00:00Z",
+                "session_mode": "hml",
+                "lifecycle_dispatch_id": "d" * 32,
+            },
+        }
+    ]
 
 
 @pytest.mark.parametrize(
@@ -265,7 +535,7 @@ def test_safe_retry_handoff_transfers_only_the_matching_active_hml_owner(
     monkeypatch.setattr(LEDGER, "_get_item", lambda *_args, **_kwargs: stored)
     monkeypatch.setattr(LEDGER, "_ddb", lambda _operation, request: updates.append(request) or {})
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
-    monkeypatch.setenv("GITHUB_WORKFLOW", "HML infrastructure-only start")
+    monkeypatch.setenv("GITHUB_WORKFLOW", "Coordinated environment start")
 
     LEDGER.authorize_open(
         "hml-2026-10-30",
@@ -322,7 +592,7 @@ def test_safe_retry_handoff_reopens_only_a_matching_unclaimed_closed_hml_owner(
     monkeypatch.setattr(LEDGER, "_get_item", lambda *_args, **_kwargs: stored)
     monkeypatch.setattr(LEDGER, "_ddb", lambda _operation, request: updates.append(request) or {})
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
-    monkeypatch.setenv("GITHUB_WORKFLOW", "HML infrastructure-only start")
+    monkeypatch.setenv("GITHUB_WORKFLOW", "Coordinated environment start")
 
     LEDGER.authorize_open(
         "hml-2026-10-30",
@@ -381,7 +651,7 @@ def test_safe_retry_handoff_does_not_reopen_a_coordinator_closed_session(
     monkeypatch.setattr(LEDGER, "_get_item", lambda *_args, **_kwargs: stored)
     monkeypatch.setattr(LEDGER, "_ddb", lambda _operation, request: writes.append(request) or {})
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
-    monkeypatch.setenv("GITHUB_WORKFLOW", "HML infrastructure-only start")
+    monkeypatch.setenv("GITHUB_WORKFLOW", "Coordinated environment start")
 
     with pytest.raises(LEDGER.LedgerError, match="does not match the verified failed opening run"):
         LEDGER.authorize_open(
@@ -415,7 +685,7 @@ def test_safe_retry_handoff_is_restricted_to_the_exact_start_workflow(
     )
     monkeypatch.setattr(LEDGER.time, "time", lambda: now)
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
-    monkeypatch.setenv("GITHUB_WORKFLOW", "Coordinated environment start")
+    monkeypatch.setenv("GITHUB_WORKFLOW", "Other lifecycle start")
 
     with pytest.raises(LEDGER.LedgerError, match="limited to the guarded HML infrastructure-only start"):
         LEDGER.authorize_open(
@@ -461,7 +731,7 @@ def test_safe_retry_handoff_rejects_a_ledger_owned_by_a_different_failed_run(
     monkeypatch.setattr(LEDGER, "_get_item", lambda *_args, **_kwargs: stored)
     monkeypatch.setattr(LEDGER, "_ddb", lambda _operation, request: writes.append(request) or {})
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
-    monkeypatch.setenv("GITHUB_WORKFLOW", "HML infrastructure-only start")
+    monkeypatch.setenv("GITHUB_WORKFLOW", "Coordinated environment start")
 
     with pytest.raises(LEDGER.LedgerError, match="does not match the verified failed opening run"):
         LEDGER.authorize_open(
@@ -517,7 +787,7 @@ def test_safe_retry_rerun_keeps_the_current_run_as_owner(
     monkeypatch.setattr(LEDGER, "_ddb", capture_update)
     monkeypatch.setattr(LEDGER, "_get_item", lambda *_args, **_kwargs: stored)
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
-    monkeypatch.setenv("GITHUB_WORKFLOW", "HML infrastructure-only start")
+    monkeypatch.setenv("GITHUB_WORKFLOW", "Coordinated environment start")
 
     LEDGER.authorize_open(
         "hml-2026-10-30",
@@ -588,6 +858,157 @@ def test_old_child_authorization_cannot_be_used_after_safe_retry_handoff(
                 "started_at": "2026-10-30T12:00:00Z",
                 "session_mode": "hml",
                 "lifecycle_dispatch_id": "a" * 32,
+            },
+            expected_action="open",
+        )
+
+    assert writes == []
+
+
+@pytest.mark.parametrize(("action", "expected_action"), [("close", "stop"), ("audit", "audit")])
+def test_consumer_accepts_verified_develop_close_proof_for_close_or_audit(
+    monkeypatch: pytest.MonkeyPatch, action: str, expected_action: str
+) -> None:
+    now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
+    source_close_dispatch_id = "8" * 32
+    state = {
+        "status": "closing",
+        "stage": "hml",
+        "session_mode": "hml",
+        "session_scope": "infrastructure-only",
+        "started_at": "2026-10-30T12:00:00Z",
+        "operator": "trusted-operator",
+        "close_actor": "trusted-operator",
+        "close_run_id": "123",
+        "close_run_attempt": 1,
+    }
+    authorization = {
+        "action": action,
+        "record_type": "authorization",
+        "stage": "hml",
+        "source_actor": "trusted-operator",
+        "dispatch_actor": "dispatch-bot[bot]",
+        "source_ref": "refs/heads/develop",
+        "source_workflow": LEDGER.STOP_WORKFLOW_NAME,
+        "source_run_id": "123",
+        "source_run_attempt": 1,
+        "source_repository": "owner/auto-shop-system",
+        "emergency_capability_verified": "false",
+        "source_close_dispatch_id": source_close_dispatch_id,
+        "source_close_authorization_verified": "true",
+    }
+    source_close_authorization = {
+        "action": "close",
+        "status": "consumed",
+        "source_actor": "trusted-operator",
+        "source_workflow": "Coordinated environment start",
+        "source_ref": "refs/heads/main",
+        "dispatch_actor": "dispatch-bot[bot]",
+        "consumer_actor": "dispatch-bot[bot]",
+        "consumer_run_id": "123",
+        "consumer_run_attempt": 1,
+        "target_repository": "owner/auto-shop-system",
+        "target_workflow": LEDGER.STOP_WORKFLOW_NAME,
+        "target_ref": "refs/heads/develop",
+    }
+    writes: list[dict[str, object]] = []
+    monkeypatch.setattr(LEDGER, "_run_identity", lambda: ("456", 1))
+    monkeypatch.setattr(LEDGER.time, "time", lambda: now)
+    monkeypatch.setattr(
+        LEDGER,
+        "_get_item",
+        lambda _session_id, key, **_kwargs: (
+            source_close_authorization
+            if key == f"AUTH#DISPATCH#{source_close_dispatch_id}"
+            else authorization
+            if key.startswith("AUTH#")
+            else state
+        ),
+    )
+    monkeypatch.setattr(LEDGER, "_validate_dispatch_actor", lambda *_args: "dispatch-bot[bot]")
+    monkeypatch.setattr(LEDGER, "_ddb", lambda _operation, request: writes.append(request) or {})
+    for key, value in {
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "GITHUB_REPOSITORY": "owner/infra",
+        "GITHUB_WORKFLOW": "CI",
+        "GITHUB_REF": "refs/heads/main",
+    }.items():
+        monkeypatch.setenv(key, value)
+
+    session_scope = LEDGER.consume_dispatch_authorization(
+        session_id="hml-2026-10-30",
+        dispatch_id="e" * 32,
+        repository="owner/infra",
+        workflow="CI",
+        ref="refs/heads/main",
+        inputs={
+            "session_id": "hml-2026-10-30",
+            "started_at": "2026-10-30T12:00:00Z",
+            "session_mode": "hml",
+            "lifecycle_dispatch_id": "e" * 32,
+        },
+        expected_action=expected_action,
+    )
+
+    assert session_scope == "infrastructure-only"
+    assert writes[0]["ExpressionAttributeValues"][":consumed"] == {"S": "consumed"}
+
+
+def test_consumer_rejects_develop_emergency_proof_for_non_close_action(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
+    state = {
+        "status": "active",
+        "stage": "hml",
+        "session_mode": "hml",
+        "started_at": "2026-10-30T12:00:00Z",
+        "operator": "trusted-operator",
+    }
+    authorization = {
+        "action": "open",
+        "record_type": "authorization",
+        "stage": "hml",
+        "source_actor": "trusted-operator",
+        "source_ref": "refs/heads/develop",
+        "source_workflow": LEDGER.STOP_WORKFLOW_NAME,
+        "source_run_id": "123",
+        "source_run_attempt": 1,
+        "emergency_capability_verified": "true",
+    }
+    writes: list[dict[str, object]] = []
+    monkeypatch.setattr(LEDGER, "_run_identity", lambda: ("456", 1))
+    monkeypatch.setattr(LEDGER.time, "time", lambda: now)
+    monkeypatch.setattr(
+        LEDGER,
+        "_get_item",
+        lambda _session_id, key, **_kwargs: authorization if key.startswith("AUTH#") else state,
+    )
+    monkeypatch.setattr(LEDGER, "_validate_dispatch_actor", lambda *_args: "dispatch-bot[bot]")
+    monkeypatch.setattr(LEDGER, "_ddb", lambda _operation, request: writes.append(request) or {})
+    for key, value in {
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "GITHUB_REPOSITORY": "owner/infra",
+        "GITHUB_WORKFLOW": "CI",
+        "GITHUB_REF": "refs/heads/main",
+    }.items():
+        monkeypatch.setenv(key, value)
+
+    with pytest.raises(
+        LEDGER.LedgerError,
+        match="valid only for a develop-branch close or audit authorization",
+    ):
+        LEDGER.consume_dispatch_authorization(
+            session_id="hml-2026-10-30",
+            dispatch_id="f" * 32,
+            repository="owner/infra",
+            workflow="CI",
+            ref="refs/heads/main",
+            inputs={
+                "session_id": "hml-2026-10-30",
+                "started_at": "2026-10-30T12:00:00Z",
+                "session_mode": "hml",
+                "lifecycle_dispatch_id": "f" * 32,
             },
             expected_action="open",
         )
@@ -673,7 +1094,7 @@ def test_session_scope_is_resolved_from_ledger_state(
     }
     if stored_scope is not None:
         state["session_scope"] = stored_scope
-    monkeypatch.setattr(LEDGER, "_require_main_branch", lambda: None)
+    monkeypatch.setattr(LEDGER, "_require_stop_coordinator_branch", lambda **_kwargs: None)
     monkeypatch.setattr(LEDGER, "_run_identity", lambda: ("456", 1))
     monkeypatch.setattr(LEDGER, "_get_item", lambda *_args, **_kwargs: state)
     monkeypatch.setattr(LEDGER, "_operator", lambda **_kwargs: "trusted-operator")
@@ -691,7 +1112,7 @@ def test_session_scope_resolution_fails_closed_for_unknown_stored_scope(monkeypa
         "operator": "trusted-operator",
         "session_scope": "other",
     }
-    monkeypatch.setattr(LEDGER, "_require_main_branch", lambda: None)
+    monkeypatch.setattr(LEDGER, "_require_stop_coordinator_branch", lambda **_kwargs: None)
     monkeypatch.setattr(LEDGER, "_run_identity", lambda: ("456", 1))
     monkeypatch.setattr(LEDGER, "_get_item", lambda *_args, **_kwargs: state)
     monkeypatch.setattr(LEDGER, "_operator", lambda **_kwargs: "trusted-operator")
@@ -806,7 +1227,7 @@ def test_only_the_opening_or_closing_operator_can_resolve_scope_manually(
         "operator": "trusted-operator",
         "session_scope": "infrastructure-only",
     }
-    monkeypatch.setattr(LEDGER, "_require_main_branch", lambda: None)
+    monkeypatch.setattr(LEDGER, "_require_stop_coordinator_branch", lambda **_kwargs: None)
     monkeypatch.setattr(LEDGER, "_run_identity", lambda: ("456", 1))
     monkeypatch.setattr(LEDGER, "_get_item", lambda *_args, **_kwargs: state)
     monkeypatch.setattr(LEDGER, "_operator", lambda **_kwargs: "another-operator")
@@ -860,6 +1281,116 @@ def test_operator_rejects_a_rerun_started_by_another_actor(monkeypatch: pytest.M
 
     with pytest.raises(LEDGER.LedgerError, match="triggering actor does not match the original workflow actor"):
         LEDGER._operator()
+
+
+def _set_verified_emergency_stop_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key, value in {
+        "GITHUB_ACTOR": "emergency-operator",
+        "LIFECYCLE_TRIGGERING_ACTOR": "emergency-operator",
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "GITHUB_WORKFLOW": LEDGER.STOP_WORKFLOW_NAME,
+        "GITHUB_REF": "refs/heads/develop",
+        "GITHUB_RUN_ID": "456",
+        "GITHUB_RUN_ATTEMPT": "1",
+        "LIFECYCLE_EMERGENCY_CAPABILITY_VERIFIED": "true",
+        "CLOSE_REQUEST_ID": "emergency-42",
+    }.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("LIFECYCLE_TRUSTED_OPERATORS", raising=False)
+
+
+def test_emergency_capability_allows_scope_resolution_without_operator_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {
+        "status": "active",
+        "stage": "hml",
+        "started_at": "2026-10-30T12:00:00Z",
+        "operator": "opening-operator",
+        "close_actor": "opening-operator",
+        "session_scope": "infrastructure-only",
+    }
+    monkeypatch.setattr(LEDGER, "_run_identity", lambda: ("456", 1))
+    monkeypatch.setattr(LEDGER, "_get_item", lambda *_args, **_kwargs: state)
+    monkeypatch.setattr(
+        LEDGER,
+        "_session_values",
+        lambda *_args: (
+            datetime(2026, 10, 30, 12, 0, tzinfo=timezone.utc),
+            datetime(2026, 10, 30, 14, 0, tzinfo=timezone.utc),
+            0,
+            0,
+        ),
+    )
+    _set_verified_emergency_stop_context(monkeypatch)
+
+    assert LEDGER.resolve_session_scope(
+        "hml-2026-10-30", "hml", "2026-10-30T12:00:00Z"
+    ) == "infrastructure-only"
+
+
+def test_emergency_capability_allows_begin_close_without_operator_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
+    state = {
+        "status": "active",
+        "stage": "hml",
+        "started_at": "2026-10-30T12:00:00Z",
+        "operator": "opening-operator",
+        "close_actor": "opening-operator",
+        "session_scope": "infrastructure-only",
+        "cleanup_deadline_at": now - 1,
+    }
+    writes: list[dict[str, object]] = []
+    monkeypatch.setattr(LEDGER, "_run_identity", lambda: ("456", 1))
+    monkeypatch.setattr(
+        LEDGER,
+        "_session_values",
+        lambda *_args: (
+            datetime(2026, 10, 30, 12, 0, tzinfo=timezone.utc),
+            datetime(2026, 10, 30, 14, 0, tzinfo=timezone.utc),
+            now + 60,
+            now + 86400,
+        ),
+    )
+    monkeypatch.setattr(LEDGER.time, "time", lambda: now)
+    monkeypatch.setattr(LEDGER, "_get_item", lambda *_args, **_kwargs: state)
+    monkeypatch.setattr(LEDGER, "_ddb", lambda _operation, request: writes.append(request) or {})
+    _set_verified_emergency_stop_context(monkeypatch)
+
+    LEDGER.begin_close(
+        "hml-2026-10-30", "hml", "2026-10-30T12:00:00Z", dispatch_id=""
+    )
+
+    assert writes[0]["ExpressionAttributeValues"][":actor"] == {"S": "opening-operator"}
+    assert writes[0]["ExpressionAttributeValues"][":lease"]["N"] == str(now + LEDGER.CLOSE_LEASE_SECONDS)
+
+
+def test_emergency_capability_allows_close_bookkeeping_without_operator_allowlist(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    writes: list[dict[str, object]] = []
+    monkeypatch.setattr(LEDGER, "_run_identity", lambda: ("456", 1))
+    monkeypatch.setattr(LEDGER.time, "time", lambda: 1_798_000_000)
+    monkeypatch.setattr(LEDGER, "_ddb", lambda _operation, request: writes.append(request) or {})
+    _set_verified_emergency_stop_context(monkeypatch)
+
+    LEDGER.finalize_close("hml-2026-10-30")
+    LEDGER.record_close_step("hml-2026-10-30", "database", "success", "destroyed")
+
+    assert len(writes) == 2
+
+
+def test_emergency_operator_bypass_requires_the_exact_verified_stop_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_verified_emergency_stop_context(monkeypatch)
+    monkeypatch.setenv("GITHUB_WORKFLOW", "Unrelated workflow")
+
+    with pytest.raises(LEDGER.LedgerError, match="LIFECYCLE_TRUSTED_OPERATORS is required"):
+        LEDGER._operator(allow_emergency_stop=True)
+
 
 
 def test_prd_session_expiry_is_five_hours_and_cleanup_reserves_teardown_and_audit(

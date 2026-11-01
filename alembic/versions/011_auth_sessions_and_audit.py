@@ -25,9 +25,9 @@ SERVICE_ORDER_STATUSES = (
 def _existing_service_order_status_enum(bind) -> sa.types.TypeEngine:
     """Reference the serviceorderstatus type without trying to create it.
 
-    ``create_type`` only exists on ``postgresql.ENUM``; ``sa.Enum`` silently
-    discards it and the adapted native type emits a ``CREATE TYPE`` for a type
-    that already exists.
+    The generic ``sa.Enum`` uses native PostgreSQL enum creation by default.
+    Here the migration must reference a type that was already created earlier,
+    so the PostgreSQL-specific type disables creation.
 
     This only breaks on the path that matters. Upgrading an existing database
     (already at 010) runs this migration in a process where 001 never ran, so

@@ -27,7 +27,7 @@ INFRASTRUCTURE_APPLY_STEP_NAMES = (
     "Apply the exact K8s foundation opening plan",
     "Apply the exact K8s platform opening plan",
     "Apply the exact HML namespace opening plan",
-    "Bootstrap the HML lifecycle database",
+    "Bootstrap the synthetic lifecycle database",
 )
 
 
@@ -91,6 +91,7 @@ def _recovery_steps(*, record_conclusion: str, plan_conclusion: str) -> list[dic
 def _set_github_context(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
     monkeypatch.setenv("GITHUB_RUN_ID", CURRENT_RUN_ID)
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
     monkeypatch.setenv("LIFECYCLE_CROSS_REPO_TOKEN", "unit-test-token")
     monkeypatch.setattr("sys.argv", [str(MODULE_PATH), "--stage", "hml"])
 
@@ -121,6 +122,53 @@ def test_first_opening_run_is_allowed_without_prior_attempts(monkeypatch: pytest
 
     assert GUARD.main() == 0
     assert len(requested_urls) == 1
+
+
+def test_rerun_after_an_unmutated_preflight_failure_is_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+    current_run = _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="", run_attempt=2)
+    steps = _recovery_steps(record_conclusion="failure", plan_conclusion="skipped")
+    requested_urls = _stub_api(
+        monkeypatch,
+        [_listing(current_run), _jobs_payload(open_conclusion="failure", steps=steps)],
+    )
+
+    assert GUARD.main() == 0
+    assert requested_urls[1].endswith(f"/actions/runs/{CURRENT_RUN_ID}/attempts/1/jobs?per_page=100")
+
+
+def test_rerun_after_an_infrastructure_apply_blocks_duplicate_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+    current_run = _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="", run_attempt=2)
+    steps = _recovery_steps(record_conclusion="success", plan_conclusion="failure")
+    steps[2] = {"name": INFRASTRUCTURE_APPLY_STEP_NAMES[0], "status": "completed", "conclusion": "success"}
+    _stub_api(
+        monkeypatch,
+        [_listing(current_run), _jobs_payload(open_conclusion="failure", steps=steps)],
+    )
+
+    assert GUARD.main() == 1
+
+
+def test_rerun_with_an_existing_ledger_owner_requires_a_new_run_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+    current_run = _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="", run_attempt=2)
+    steps = _recovery_steps(record_conclusion="success", plan_conclusion="failure")
+    _stub_api(
+        monkeypatch,
+        [_listing(current_run), _jobs_payload(open_conclusion="failure", steps=steps)],
+    )
+
+    assert GUARD.main() == 1
 
 
 def test_preflight_failure_is_retryable_when_open_job_was_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
