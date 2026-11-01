@@ -2,14 +2,25 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[2]
 NETWORK_POLICIES = ROOT / "k8s" / "base" / "network" / "network-policy-strict.yaml"
 
 
-def test_database_policies_allow_backend_and_migration_clients() -> None:
+def test_database_policies_allow_backend_migration_and_seed_clients() -> None:
     policies = yaml.safe_load_all(NETWORK_POLICIES.read_text(encoding="utf-8"))
     policies_by_name = {policy["metadata"]["name"]: policy for policy in policies}
+    dns_egress = policies_by_name["allow-dns"]["spec"]["egress"][0]
+    assert dns_egress["to"] == [
+        {
+            "namespaceSelector": {
+                "matchLabels": {"kubernetes.io/metadata.name": "kube-system"}
+            }
+        }
+    ]
+    assert dns_egress["ports"] == [
+        {"protocol": "UDP", "port": 53},
+        {"protocol": "TCP", "port": 53},
+    ]
     postgres_egress = policies_by_name["allow-rds-egress"]
 
     assert postgres_egress["spec"]["podSelector"] == {
@@ -17,7 +28,7 @@ def test_database_policies_allow_backend_and_migration_clients() -> None:
             {
                 "key": "app.kubernetes.io/component",
                 "operator": "In",
-                "values": ["backend", "migrate"],
+                "values": ["backend", "migrate", "seed"],
             }
         ]
     }
@@ -39,7 +50,7 @@ def test_database_policies_allow_backend_and_migration_clients() -> None:
                     {
                         "key": "app.kubernetes.io/component",
                         "operator": "In",
-                        "values": ["backend", "migrate"],
+                        "values": ["backend", "migrate", "seed"],
                     }
                 ]
             }

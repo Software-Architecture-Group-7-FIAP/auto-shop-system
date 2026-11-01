@@ -314,48 +314,11 @@ jobs:
       - name: Run migration before API rollout
         run: |
           set -euo pipefail
-          dump_job_diagnostics() {
-            local job_name="$1"
-            kubectl describe job "${job_name}" --namespace auto-shop || true
-            while IFS= read -r pod; do
-              [[ -n "${pod}" ]] || continue
-              kubectl describe "${pod}" --namespace auto-shop || true
-              kubectl logs "${pod}" --namespace auto-shop --all-containers=true --prefix || true
-            done < <(
-              kubectl get pods --namespace auto-shop \
-                --selector="job-name=${job_name}" \
-                --output=name || true
-            )
-          }
-          wait_for_job() {
-            local job_name="$1"
-            local timeout_seconds="$2"
-            local deadline=$((SECONDS + timeout_seconds))
-            while (( SECONDS < deadline )); do
-              local condition
-              condition="$(kubectl get job "${job_name}" --namespace auto-shop \
-                --output=jsonpath='{.status.conditions[?(@.status=="True")].type}')"
-              case "${condition}" in
-                Complete)
-                  return 0
-                  ;;
-                Failed)
-                  echo "::error::Kubernetes job ${job_name} failed."
-                  dump_job_diagnostics "${job_name}"
-                  return 1
-                  ;;
-              esac
-              sleep 5
-            done
-            echo "::error::Kubernetes job ${job_name} did not finish within ${timeout_seconds}s."
-            dump_job_diagnostics "${job_name}"
-            return 1
-          }
           kubectl wait --for=condition=available deployment/postgres --namespace auto-shop --timeout=180s
           kubectl apply -k k8s/overlays/local/migration
-          wait_for_job "auto-shop-migrate" 600
+          bash k8s/scripts/wait-for-job.sh auto-shop-migrate auto-shop 600
           kubectl apply -k k8s/overlays/local/seed
-          wait_for_job "auto-shop-seed" 600
+          bash k8s/scripts/wait-for-job.sh auto-shop-seed auto-shop 600
           kubectl apply -k k8s/overlays/local/app
           kubectl rollout status deployment/auto-shop-backend --namespace auto-shop --timeout=300s
           kubectl apply -k k8s/overlays/local/ingress

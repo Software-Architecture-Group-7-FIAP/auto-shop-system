@@ -6,15 +6,3 @@ images:
   - name: auto-shop-system
     newName: auto-shop-system
     newTag: local
-patches:
-  - target:
-      group: batch
-      version: v1
-      kind: Job
-      name: auto-shop-migrate
-    patch: |-
-      - op: add
-        path: /spec/template/spec/containers/0/envFrom/-
-        value:
-          secretRef:
-            name: auto-shop-secrets
