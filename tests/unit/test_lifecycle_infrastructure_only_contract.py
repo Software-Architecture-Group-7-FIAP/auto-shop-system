@@ -85,7 +85,7 @@ def test_start_child_dispatches_match_declared_workflow_input_contracts() -> Non
     workflow = (WORKFLOWS / "environment-start.yml").read_text(encoding="utf-8")
     dispatch_lines = [line for line in workflow.splitlines() if "--inputs " in line]
 
-    assert len(dispatch_lines) == 8
+    assert len(dispatch_lines) == 9
     assert all("session_scope" not in line for line in dispatch_lines)
 
 
