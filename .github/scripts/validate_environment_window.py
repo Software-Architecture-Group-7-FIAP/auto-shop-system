@@ -14,7 +14,7 @@ from lifecycle_session_auth import (
 BRT = ZoneInfo("America/Sao_Paulo")
 MAX_HML_DURATION = timedelta(hours=5)
 HML_LAST_DAY = date(2026, 11, 5)
-EMERGENCY_HML_LAST_DAY = date(2026, 10, 31)
+EMERGENCY_HML_LAST_DAY = date(2026, 11, 5)
 PRD_FIRST_DAY = date(2026, 11, 1)
 PRD_LAST_DAY = date(2026, 11, 5)
 STARTED_AT_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
