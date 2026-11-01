@@ -2,14 +2,14 @@ import json
 import os
 import secrets
 import subprocess
+import sys
 from pathlib import Path
 
 import boto3
 import psycopg2
 from botocore.exceptions import BotoCoreError, ClientError
-from sqlalchemy.exc import ArgumentError
 from sqlalchemy.engine import URL, make_url
-
+from sqlalchemy.exc import ArgumentError
 
 MIGRATION_LOCK_KEY = 7_349_841
 ALLOWED_PG_QUERY_PARAMETERS = frozenset({"sslmode", "sslrootcert"})
@@ -37,15 +37,14 @@ def _load_migration_database_url() -> str:
         raise RuntimeError("Migration database credentials are unavailable") from None
 
     if not isinstance(secret, dict):
-        raise RuntimeError("Migration database credentials are invalid")
+        raise TypeError("Migration database credentials are invalid")
 
     username = secret.get("username")
     password = secret.get("password")
     host = secret.get("host")
     port = secret.get("port")
     if not all(
-        isinstance(value, str) and value
-        for value in (username, password, host, port)
+        isinstance(value, str) and value for value in (username, password, host, port)
     ):
         raise RuntimeError("Migration database credentials are invalid")
 
@@ -113,21 +112,100 @@ def _psycopg2_connection_arguments(database_url: str) -> dict[str, object]:
     return {key: value for key, value in arguments.items() if value is not None}
 
 
+def _classify_connection_failure(error: Exception) -> tuple[str, bool, str | None]:
+    message = str(error).lower()
+    sqlstate = getattr(error, "pgcode", None)
+
+    if sqlstate and (sqlstate.startswith("08") or sqlstate == "57P03"):
+        if sqlstate == "57P03":
+            return "database server is not accepting connections yet", True, sqlstate
+        return "database connection was interrupted", True, sqlstate
+
+    if any(
+        marker in message
+        for marker in (
+            "connection refused",
+            "connection timed out",
+            "timeout expired",
+            "could not translate host name",
+            "temporary failure in name resolution",
+            "name or service not known",
+            "no route to host",
+            "network is unreachable",
+            "server closed the connection unexpectedly",
+            "the database system is starting up",
+            "cannot connect now",
+        )
+    ):
+        if (
+            "translate host name" in message
+            or "name resolution" in message
+            or "service not known" in message
+        ):
+            summary = "database hostname could not be resolved"
+        elif "refused" in message:
+            summary = "database connection was refused"
+        elif "timeout" in message or "timed out" in message:
+            summary = "database connection timed out"
+        elif "route to host" in message or "network is unreachable" in message:
+            summary = "database network path is unavailable"
+        elif "starting up" in message or "cannot connect now" in message:
+            summary = "database server is not accepting connections yet"
+        else:
+            summary = "database connection was interrupted"
+        return summary, True, sqlstate
+
+    if "password authentication failed" in message or "no password supplied" in message:
+        return "database rejected migration credentials", False, sqlstate
+    if "certificate" in message or "ssl error" in message:
+        return "database TLS certificate validation failed", False, sqlstate
+    return "database connection failed", False, sqlstate
+
+
 def run_migrations() -> int:
-    database_url, connect_timeout, use_migration_identity = _migration_config()
+    try:
+        database_url, connect_timeout, use_migration_identity = _migration_config()
+        connection_arguments = _psycopg2_connection_arguments(database_url)
+    except (ArgumentError, RuntimeError, TypeError) as error:
+        print(
+            f"migration preflight: invalid database configuration ({type(error).__name__})",
+            file=sys.stderr,
+            flush=True,
+        )
+        return 20
 
     try:
         connection = psycopg2.connect(
-            **_psycopg2_connection_arguments(database_url),
+            **connection_arguments,
             connect_timeout=connect_timeout,
         )
-    except (ArgumentError, OSError, RuntimeError, psycopg2.Error):
-        return 10
+    except (OSError, psycopg2.Error) as error:
+        summary, retryable, sqlstate = _classify_connection_failure(error)
+        sqlstate_message = f"; sqlstate={sqlstate}" if sqlstate else ""
+        print(
+            f"migration preflight: {summary} ({type(error).__name__}; "
+            f"retryable={str(retryable).lower()}{sqlstate_message})",
+            file=sys.stderr,
+            flush=True,
+        )
+        return 10 if retryable else 20
 
     try:
         with connection:
             with connection.cursor() as cursor:
-                cursor.execute("SELECT pg_advisory_lock(%s)", (MIGRATION_LOCK_KEY,))
+                cursor.execute("SELECT pg_try_advisory_lock(%s)", (MIGRATION_LOCK_KEY,))
+                lock_acquired = bool(cursor.fetchone()[0])
+            if not lock_acquired:
+                print(
+                    "migration failed: another migration is already holding the database advisory lock",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return 20
+            print(
+                "migration preflight: database connected and advisory lock acquired; applying Alembic revisions",
+                flush=True,
+            )
             if use_migration_identity:
                 migration_env = os.environ.copy()
                 migration_env.update(

@@ -15,7 +15,7 @@ on:
         required: true
         type: string
       session_mode:
-        description: Authorized production window
+        description: Coordinator-authorized production session
         required: true
         type: choice
         options: [prd-window]
@@ -65,7 +65,6 @@ jobs:
           SESSION_MODE: ${{ inputs.session_mode }}
           LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
           LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
-          ENVIRONMENT_SCHEDULE_ENABLED: ${{ vars.ENVIRONMENT_SCHEDULE_ENABLED || 'false' }}
           PRD_LIFECYCLE_AUTOMATION_READY: ${{ vars.PRD_LIFECYCLE_AUTOMATION_READY || 'false' }}
           PRD_COST_EXCEPTION_APPROVED: ${{ vars.PRD_COST_EXCEPTION_APPROVED || 'false' }}
           ENVIRONMENT_ACTIVE: ${{ vars.ENVIRONMENT_ACTIVE }}
@@ -75,11 +74,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$EVENT_NAME" == "push" ]]; then
-            echo "Push builds do not deploy; environment changes require a coordinator-backed workflow_dispatch."
-            exit 0
-          fi
-          [[ "$ENVIRONMENT_SCHEDULE_ENABLED" == "true" ]] || { echo "::error::ENVIRONMENT_SCHEDULE_ENABLED is not true."; exit 1; }
           [[ "$PRD_LIFECYCLE_AUTOMATION_READY" == "true" ]] || { echo "::error::PRD_LIFECYCLE_AUTOMATION_READY is not true."; exit 1; }
           [[ "$PRD_COST_EXCEPTION_APPROVED" == "true" ]] || { echo "::error::PRD_COST_EXCEPTION_APPROVED is not true."; exit 1; }
           [[ "$DEPLOY_PRODUCTION_ENABLED" == "true" ]] || { echo "::error::DEPLOY_PRODUCTION_ENABLED is not true."; exit 1; }
@@ -89,14 +83,11 @@ jobs:
             exit 1
           }
           [[ "$REQUESTED_SESSION_MODE" == "prd-window" ]] || { echo "::error::session_mode must be prd-window."; exit 1; }
-          local_hour="$(TZ=America/Sao_Paulo date +%H)"
-          action=operate
-          if [[ "$local_hour" -lt 7 ]]; then action=start; fi
           ENVIRONMENT_SESSION_ID="$REQUESTED_SESSION_ID" \
             ENVIRONMENT_WINDOW_STARTED_AT="$REQUESTED_STARTED_AT" \
             SESSION_MODE="$REQUESTED_SESSION_MODE" \
             ENVIRONMENT_STAGE=prd \
-            python3 .github/scripts/validate_environment_window.py --action "$action"
+            python3 .github/scripts/validate_environment_window.py --action deploy
 
   build-push:
     needs: lifecycle-authorization
@@ -109,7 +100,10 @@ jobs:
 
   deploy-production:
     needs: [build-push, lifecycle-authorization]
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && vars.DEPLOY_PRODUCTION_ENABLED == 'true'
+    if: >-
+      always() && needs.build-push.result == 'success' &&
+      (github.event_name == 'push' || needs.lifecycle-authorization.result == 'success') &&
+      github.ref == 'refs/heads/main' && vars.DEPLOY_PRODUCTION_ENABLED == 'true'
     runs-on: ubuntu-latest
     environment: prd
     permissions:
@@ -124,27 +118,35 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Require the authorized PRD deployment window
+      - name: Require PRD deployment authorization
         env:
-          ENVIRONMENT_ACTIVE: ${{ vars.ENVIRONMENT_ACTIVE }}
-          ENVIRONMENT_WINDOW_AUTHORIZED: ${{ vars.ENVIRONMENT_WINDOW_AUTHORIZED }}
+          EVENT_NAME: ${{ github.event_name }}
+          PRD_LIFECYCLE_AUTOMATION_READY: ${{ vars.PRD_LIFECYCLE_AUTOMATION_READY || 'false' }}
+          PRD_COST_EXCEPTION_APPROVED: ${{ vars.PRD_COST_EXCEPTION_APPROVED || 'false' }}
+          DEPLOY_PRODUCTION_ENABLED: ${{ vars.DEPLOY_PRODUCTION_ENABLED || 'false' }}
+          ALLOW_SYNTHETIC_SEED_IN_PRD: ${{ vars.ALLOW_SYNTHETIC_SEED_IN_PRD || 'false' }}
+          ENVIRONMENT_ACTIVE: ${{ vars.ENVIRONMENT_ACTIVE || 'false' }}
+          ENVIRONMENT_WINDOW_AUTHORIZED: ${{ vars.ENVIRONMENT_WINDOW_AUTHORIZED || 'false' }}
           ENVIRONMENT_SESSION_ID: ${{ inputs.session_id }}
           ENVIRONMENT_WINDOW_STARTED_AT: ${{ inputs.started_at }}
-          ENVIRONMENT_STAGE: prd
           SESSION_MODE: ${{ inputs.session_mode }}
           LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
           LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$SESSION_MODE" == "prd-window" ]] || { echo "::error::session_mode must be prd-window."; exit 1; }
-          local_hour="$(TZ=America/Sao_Paulo date +%H)"
-          if [[ "${local_hour}" -lt 7 ]]; then
-            action=start
-          else
-            action=operate
+          [[ "$PRD_LIFECYCLE_AUTOMATION_READY" == "true" ]] || { echo "::error::PRD_LIFECYCLE_AUTOMATION_READY is not true."; exit 1; }
+          [[ "$PRD_COST_EXCEPTION_APPROVED" == "true" ]] || { echo "::error::PRD_COST_EXCEPTION_APPROVED is not true."; exit 1; }
+          [[ "$DEPLOY_PRODUCTION_ENABLED" == "true" ]] || { echo "::error::DEPLOY_PRODUCTION_ENABLED is not true."; exit 1; }
+          [[ "$ALLOW_SYNTHETIC_SEED_IN_PRD" == "true" ]] || { echo "::error::ALLOW_SYNTHETIC_SEED_IN_PRD is not true."; exit 1; }
+          [[ "$ENVIRONMENT_ACTIVE" == "true" && "$ENVIRONMENT_WINDOW_AUTHORIZED" == "true" ]] || {
+            echo "::error::Production static authorization gates are not enabled."
+            exit 1
+          }
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            [[ "$SESSION_MODE" == "prd-window" ]] || { echo "::error::session_mode must be prd-window."; exit 1; }
+            python3 .github/scripts/validate_environment_window.py --action deploy
           fi
-          python3 .github/scripts/validate_environment_window.py --action "${action}"
 
       - name: Verify image is pullable without credentials
         run: docker pull "${IMAGE_REFERENCE}"
@@ -234,7 +236,7 @@ jobs:
 
   deploy-production-frontend:
     needs: deploy-production
-    if: github.event_name == 'workflow_dispatch' && vars.DEPLOY_PRODUCTION_ENABLED == 'true' && vars.DEPLOY_PRODUCTION_FRONTEND_ENABLED == 'true'
+    if: needs.deploy-production.result == 'success' && vars.DEPLOY_PRODUCTION_FRONTEND_ENABLED == 'true'
     permissions:
       contents: read
       id-token: write
@@ -262,10 +264,3 @@ jobs:
           echo "GitHub Environment prd: approval, AWS_REGION, and variable AWS_DEPLOY_ROLE_ARN_PRD; cluster name comes from SSM."
           echo "Ver .github/CD.md"
 
-  push-deploy-gated:
-    needs: [build-push, lifecycle-authorization]
-    if: always() && github.event_name == 'push' && vars.DEPLOY_PRODUCTION_ENABLED == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Keep production changes behind the lifecycle coordinator
-        run: echo "Push build completed; production deploy requires workflow_dispatch with a validated session_id, started_at, and session_mode."

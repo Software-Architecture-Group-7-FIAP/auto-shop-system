@@ -195,21 +195,11 @@ ensure_redis_credentials() {
 }
 
 wait_migration() {
-  if ! kubectl wait --for=condition=complete "job/${MIGRATION_JOB}" \
-    --namespace "${NAMESPACE}" --timeout=300s; then
-    kubectl logs "job/${MIGRATION_JOB}" --namespace "${NAMESPACE}" --tail=100 2>&1 \
-      | sed -E 's#(postgres(ql)?(\+[^:/?#[:space:]]+)?://)[^[:space:]]+#\1[REDACTED]#Ig' || true
-    exit 1
-  fi
+  bash "${REPO_ROOT}/k8s/scripts/wait-for-job.sh" "${MIGRATION_JOB}" "${NAMESPACE}" 300
 }
 
 wait_seed() {
-  if ! kubectl wait --for=condition=complete "job/${SEED_JOB}" \
-    --namespace "${NAMESPACE}" --timeout=300s; then
-    kubectl logs "job/${SEED_JOB}" --namespace "${NAMESPACE}" --tail=100 2>&1 \
-      | sed -E 's#(postgres(ql)?(\+[^:/?#[:space:]]+)?://)[^[:space:]]+#\1[REDACTED]#Ig' || true
-    exit 1
-  fi
+  bash "${REPO_ROOT}/k8s/scripts/wait-for-job.sh" "${SEED_JOB}" "${NAMESPACE}" 300
 }
 
 smoke_test() {

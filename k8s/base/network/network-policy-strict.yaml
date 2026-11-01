@@ -22,9 +22,11 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: kube-system
+              kubernetes.io/metadata.name: kube-system
       ports:
         - protocol: UDP
+          port: 53
+        - protocol: TCP
           port: 53
 ---
 apiVersion: networking.k8s.io/v1
@@ -54,13 +56,45 @@ metadata:
   namespace: auto-shop
 spec:
   podSelector:
-    matchLabels:
-      app.kubernetes.io/component: backend
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - backend
+          - migrate
+          - seed
   policyTypes:
     - Egress
   egress:
     - to:
-        - podSelector: {}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: database
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-ingress
+  namespace: auto-shop
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: database
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - backend
+                  - migrate
+                  - seed
       ports:
         - protocol: TCP
           port: 5432

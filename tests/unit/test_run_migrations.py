@@ -19,6 +19,7 @@ class FakeConnection:
         self.cursor_instance = Mock()
         self.cursor_instance.__enter__ = Mock(return_value=self.cursor_instance)
         self.cursor_instance.__exit__ = Mock(return_value=False)
+        self.cursor_instance.fetchone = Mock(return_value=(True,))
 
     def __enter__(self):
         return self
@@ -40,15 +41,21 @@ def test_run_migrations_holds_database_advisory_lock():
     with (
         patch(
             "src.scripts.run_migrations._migration_config",
-            return_value=("postgresql+psycopg2://user:password@localhost:5432/testdb", 5, False),
+            return_value=(
+                "postgresql+psycopg2://user:password@localhost:5432/testdb",
+                5,
+                False,
+            ),
         ),
         patch("src.scripts.run_migrations.psycopg2.connect", return_value=connection),
-        patch("src.scripts.run_migrations.subprocess.run", return_value=completed) as run,
+        patch(
+            "src.scripts.run_migrations.subprocess.run", return_value=completed
+        ) as run,
     ):
         assert run_migrations() == 0
 
     connection.cursor_instance.execute.assert_called_once_with(
-        "SELECT pg_advisory_lock(%s)", (MIGRATION_LOCK_KEY,)
+        "SELECT pg_try_advisory_lock(%s)", (MIGRATION_LOCK_KEY,)
     )
     run.assert_called_once_with(["alembic", "upgrade", "head"], check=False)
 
@@ -145,7 +152,9 @@ def test_migration_database_url_uses_the_scoped_migration_secret(monkeypatch):
     )
 
 
-def test_migration_database_url_rejects_a_secret_with_the_wrong_database_role(monkeypatch):
+def test_migration_database_url_rejects_a_secret_with_the_wrong_database_role(
+    monkeypatch,
+):
     monkeypatch.setenv(
         "MIGRATION_DATABASE_SECRET_ARN",
         "arn:aws:secretsmanager:us-east-1:123456789012:secret:auto-shop/staging/hml/migrations-AbCdEf",
@@ -180,16 +189,84 @@ def test_deployed_migration_config_fails_closed_without_migration_secret(
 
 
 def test_run_migrations_returns_database_unavailable_code_without_logging_connection_details():
-    with patch(
-        "src.scripts.run_migrations._migration_config",
-        return_value=("postgresql+psycopg2://user:password@localhost:5432/testdb", 5, False),
-    ), patch(
-        "src.scripts.run_migrations.psycopg2.connect",
-        side_effect=psycopg2.OperationalError("connection refused"),
-    ), patch("src.scripts.run_migrations.subprocess.run") as run:
+    with (
+        patch(
+            "src.scripts.run_migrations._migration_config",
+            return_value=(
+                "postgresql+psycopg2://user:password@localhost:5432/testdb",
+                5,
+                False,
+            ),
+        ),
+        patch(
+            "src.scripts.run_migrations.psycopg2.connect",
+            side_effect=psycopg2.OperationalError("connection refused"),
+        ),
+        patch("src.scripts.run_migrations.subprocess.run") as run,
+    ):
         assert run_migrations() == 10
 
     run.assert_not_called()
+
+
+def test_run_migrations_logs_retryable_database_connection_failure_without_secrets(
+    capsys,
+):
+    secret = "must-not-appear-in-logs"
+    error = psycopg2.OperationalError(
+        f"connection to db.internal failed: connection refused; password={secret}"
+    )
+
+    with (
+        patch(
+            "src.scripts.run_migrations._migration_config",
+            return_value=("postgresql://user:password@db.internal/testdb", 2, False),
+        ),
+        patch("src.scripts.run_migrations.psycopg2.connect", side_effect=error),
+    ):
+        assert run_migrations() == 10
+
+    output = capsys.readouterr().err
+    assert "connection was refused" in output
+    assert "retryable=true" in output
+    assert secret not in output
+    assert "db.internal" not in output
+
+
+def test_run_migrations_does_not_retry_invalid_database_configuration(capsys):
+    with (
+        patch(
+            "src.scripts.run_migrations._migration_config",
+            return_value=("sqlite://", 2, False),
+        ),
+        patch("src.scripts.run_migrations.psycopg2.connect") as connect,
+    ):
+        assert run_migrations() == 20
+
+    connect.assert_not_called()
+    assert "invalid database configuration" in capsys.readouterr().err
+
+
+def test_run_migrations_fails_immediately_when_another_migration_holds_the_lock(capsys):
+    connection = FakeConnection()
+    connection.cursor_instance.fetchone.return_value = (False,)
+
+    with (
+        patch(
+            "src.scripts.run_migrations._migration_config",
+            return_value=(
+                "postgresql+psycopg2://user:password@localhost:5432/testdb",
+                5,
+                False,
+            ),
+        ),
+        patch("src.scripts.run_migrations.psycopg2.connect", return_value=connection),
+        patch("src.scripts.run_migrations.subprocess.run") as run,
+    ):
+        assert run_migrations() == 20
+
+    run.assert_not_called()
+    assert "another migration is already holding" in capsys.readouterr().err
 
 
 def test_run_migrations_propagates_alembic_failure_code():
@@ -198,7 +275,11 @@ def test_run_migrations_propagates_alembic_failure_code():
     with (
         patch(
             "src.scripts.run_migrations._migration_config",
-            return_value=("postgresql+psycopg2://user:password@localhost:5432/testdb", 5, False),
+            return_value=(
+                "postgresql+psycopg2://user:password@localhost:5432/testdb",
+                5,
+                False,
+            ),
         ),
         patch("src.scripts.run_migrations.psycopg2.connect", return_value=connection),
         patch(
