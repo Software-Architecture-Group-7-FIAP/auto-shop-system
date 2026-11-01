@@ -1,9 +1,28 @@
+import re
 from pathlib import Path
 
 import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _workflow_job(workflow: str, job_name: str) -> str:
+    lines = workflow.splitlines()
+    job_header = f"  {job_name}:"
+
+    try:
+        start = lines.index(job_header)
+    except ValueError as error:
+        raise AssertionError(f"Workflow job {job_name!r} is missing") from error
+
+    job_lines = [lines[start]]
+    for line in lines[start + 1 :]:
+        if line.startswith("  ") and not line.startswith("    "):
+            break
+        job_lines.append(line)
+
+    return "\n".join(job_lines)
 
 
 def test_auth_preflight_policy_matches_lambda_auth_function_names() -> None:
@@ -43,6 +62,67 @@ def test_deploy_requires_anonymous_ghcr_pull_before_aws_credentials(
     assert "packages: read" not in workflow
     assert "mirror_ghcr_image_to_ecr.py" not in workflow
     assert "ecr_image" not in workflow
+
+
+def test_reusable_build_runs_anonymous_pull_in_an_unprivileged_job() -> None:
+    workflow = (ROOT / ".github/workflows/reusable-build-push.yml").read_text(
+        encoding="utf-8"
+    )
+    build_job = _workflow_job(workflow, "build-push")
+    preflight_job = _workflow_job(workflow, "verify-anonymous-pull")
+
+    assert "permissions: {}" in workflow
+    assert "permissions:" in build_job
+    assert "packages: write" in build_job
+    assert "needs: build-push" in preflight_job
+    assert "runs-on: ubuntu-latest" in preflight_job
+    assert "permissions: {}" in preflight_job
+    assert (
+        "IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}"
+        in preflight_job
+    )
+    assert 'docker pull "${IMAGE_REFERENCE}"' in preflight_job
+    assert "docker/login-action" not in preflight_job
+    assert "GITHUB_TOKEN" not in preflight_job
+    assert "packages:" not in preflight_job
+    assert "continue-on-error" not in preflight_job
+
+    assert 'short="${GITHUB_SHA::7}"' in build_job
+    assert 'tag="sha-${short}"' in build_job
+    assert "image_reference: ${{ steps.meta.outputs.image_reference }}" in build_job
+    assert "value: ${{ jobs.build-push.outputs.image_reference }}" in workflow
+
+
+@pytest.mark.parametrize(
+    ("workflow_name", "job_name", "branch"),
+    (
+        ("cd-staging.yml", "deploy-staging", "refs/heads/develop"),
+        ("cd-prod.yml", "deploy-production", "refs/heads/main"),
+    ),
+)
+def test_deploy_jobs_require_dispatch_and_successful_prerequisites(
+    workflow_name: str, job_name: str, branch: str,
+) -> None:
+    workflow = (ROOT / ".github/workflows" / workflow_name).read_text(
+        encoding="utf-8"
+    )
+    deploy_job = _workflow_job(workflow, job_name)
+    condition_match = re.search(
+        r"(?ms)^    if:\s*(.*?)(?=^    [A-Za-z_][\w-]*:|\Z)", deploy_job
+    )
+
+    assert condition_match is not None
+    condition = condition_match.group(1)
+    assert "github.event_name == 'workflow_dispatch'" in condition
+    assert f"github.ref == '{branch}'" in condition
+    assert "needs.build-push.result == 'success'" in condition
+    assert "needs.lifecycle-authorization.result == 'success'" in condition
+    assert (
+        re.search(r"github\.event_name\s*(?:==|!=)\s*'push'", condition)
+        is None
+    )
+    assert "always()" not in condition
+    assert "needs: [build-push, lifecycle-authorization]" in deploy_job
 
 
 def test_customer_auth_overlays_share_issuer_and_select_stage_jwks() -> None:

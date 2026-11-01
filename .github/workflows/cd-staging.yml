@@ -105,7 +105,12 @@ jobs:
 
   deploy-staging:
     needs: [build-push, lifecycle-authorization]
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop' && vars.DEPLOY_STAGING_ENABLED == 'true'
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/develop' &&
+      vars.DEPLOY_STAGING_ENABLED == 'true' &&
+      needs.build-push.result == 'success' &&
+      needs.lifecycle-authorization.result == 'success'
     runs-on: ubuntu-latest
     environment: hml
     timeout-minutes: 30
