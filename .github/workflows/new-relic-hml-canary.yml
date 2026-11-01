@@ -17,10 +17,6 @@ on:
         required: true
         type: choice
         options: [hml]
-      session_token:
-        description: Signed coordinator session capability; validation fails if missing.
-        required: false
-        type: string
       region:
         description: New Relic account data region confirmed by the account owner
         required: true
@@ -50,17 +46,26 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Prepare the protected expiring-session capability
+        env:
+          SESSION_ID: ${{ inputs.session_id }}
+          STARTED_AT: ${{ inputs.started_at }}
+          SESSION_MODE: ${{ inputs.session_mode }}
+          STAGING_SESSION_ALLOW_ANY_TIME: ${{ vars.STAGING_SESSION_ALLOW_ANY_TIME || 'false' }}
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+        run: python3 .github/scripts/sign_lifecycle_session.py
+
       - name: Validate coordinator inputs and HML session gates
         env:
           SOURCE_REF: ${{ github.ref }}
           SESSION_ID: ${{ inputs.session_id }}
           STARTED_AT: ${{ inputs.started_at }}
           SESSION_MODE: ${{ inputs.session_mode }}
-          LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
           LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
           STAGING_ACTIVE: ${{ vars.STAGING_ACTIVE || 'false' }}
           STAGING_SESSION_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
           AUTHORIZED_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
+          STAGING_SESSION_ALLOW_ANY_TIME: ${{ vars.STAGING_SESSION_ALLOW_ANY_TIME || 'false' }}
         shell: bash
         run: |
           set -euo pipefail

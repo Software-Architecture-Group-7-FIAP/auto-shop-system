@@ -13,11 +13,12 @@ from lifecycle_session_auth import (
 
 BRT = ZoneInfo("America/Sao_Paulo")
 MAX_HML_DURATION = timedelta(hours=5)
-HML_LAST_DAY = date(2026, 10, 31)
+HML_LAST_DAY = date(2026, 11, 5)
+EMERGENCY_HML_LAST_DAY = date(2026, 10, 31)
 PRD_FIRST_DAY = date(2026, 11, 1)
 PRD_LAST_DAY = date(2026, 11, 5)
 STARTED_AT_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
-SUPPORTED_ACTIONS = frozenset({"start", "health", "operate", "teardown"})
+SUPPORTED_ACTIONS = frozenset({"start", "health", "operate", "deploy", "teardown"})
 SUPPORTED_STAGES = frozenset({"hml", "prd"})
 
 
@@ -105,12 +106,13 @@ def validate_environment_window(
     now: datetime,
     emergency_teardown: bool = False,
     emergency_hml_teardown: bool = False,
+    allow_hml_any_time: bool = False,
 ) -> timedelta | None:
     if stage not in SUPPORTED_STAGES:
         raise EnvironmentWindowError("ENVIRONMENT_STAGE must be hml or prd.")
     if action not in SUPPORTED_ACTIONS:
         raise EnvironmentWindowError(
-            "The action must be start, health, operate, or teardown."
+            "The action must be start, health, operate, deploy, or teardown."
         )
     if now.tzinfo is None or now.utcoffset() != timedelta(0):
         raise EnvironmentWindowError("The current time must be UTC-aware.")
@@ -131,19 +133,35 @@ def validate_environment_window(
         raise EnvironmentWindowError(
             f"ENVIRONMENT_SESSION_ID must match the coordinator's {stage} BRT session date."
         )
+    if action == "deploy":
+        return None
+
     elapsed = now - start
     if elapsed < timedelta(0):
         raise EnvironmentWindowError("ENVIRONMENT_WINDOW_STARTED_AT is in the future.")
 
     if stage == "hml":
+        if allow_hml_any_time:
+            session_end = start + MAX_HML_DURATION
+            cleanup_end = session_end + timedelta(hours=1)
+            if action == "teardown":
+                if now < session_end:
+                    raise EnvironmentWindowError("HML teardown cannot start before the session ends.")
+                if now >= cleanup_end:
+                    raise EnvironmentWindowError("The HML cleanup window has expired.")
+                return cleanup_end - now
+            if now >= session_end:
+                raise EnvironmentWindowError("The HML session ends after five hours.")
+            return session_end - now
+
         local_now = now.astimezone(BRT)
         hml_cutoff = datetime.combine(HML_LAST_DAY, time(23, 0), tzinfo=BRT)
         local_start = start.astimezone(BRT)
         if not emergency_hml_teardown and local_now >= hml_cutoff:
             raise EnvironmentWindowError(
-                "HML lifecycle actions are authorized only before 23:00 BRT on 31/10/2026."
+                "HML lifecycle actions are authorized only before 23:00 BRT on 05/11/2026."
             )
-        if local_start.date() > HML_LAST_DAY:
+        if emergency_hml_teardown and local_start.date() > EMERGENCY_HML_LAST_DAY:
             raise EnvironmentWindowError("Emergency cleanup cannot target a session after the HML lifecycle.")
         if not emergency_hml_teardown and local_start.date() != local_now.date():
             raise EnvironmentWindowError("An HML session must start on the current BRT day.")
@@ -216,6 +234,10 @@ def main() -> int:
                 session_mode=os.environ.get("SESSION_MODE", ""),
                 session_id=os.environ.get("ENVIRONMENT_SESSION_ID", ""),
                 started_at=os.environ.get("ENVIRONMENT_WINDOW_STARTED_AT", ""),
+                allow_hml_any_time=(
+                    os.environ.get("STAGING_SESSION_ALLOW_ANY_TIME", "").lower()
+                    == "true"
+                ),
             )
         remaining = validate_environment_window(
             active=os.environ.get("ENVIRONMENT_ACTIVE", ""),
@@ -227,12 +249,19 @@ def main() -> int:
             now=datetime.now(timezone.utc),
             emergency_teardown=arguments.emergency_teardown,
             emergency_hml_teardown=arguments.emergency_hml_teardown,
+            allow_hml_any_time=(
+                os.environ.get("STAGING_SESSION_ALLOW_ANY_TIME", "").lower() == "true"
+            ),
         )
     except (EnvironmentWindowError, LifecycleSessionAuthError) as error:
         print(f"::error::{error}", file=sys.stderr)
         return 1
 
-    message = f"Environment window accepted for {stage}/{arguments.action}."
+    message = (
+        f"Environment deployment authorization accepted for {stage}."
+        if arguments.action == "deploy"
+        else f"Environment window accepted for {stage}/{arguments.action}."
+    )
     if remaining is not None:
         message += f" {int(remaining.total_seconds())} HML seconds remain."
     print(message)

@@ -1,9 +1,9 @@
 """Guard the PostgreSQL enum handling in migration 011.
 
-``create_type`` is a ``postgresql.ENUM`` argument. ``sa.Enum`` accepts and
-silently discards it, and the adapted native type then emits a ``CREATE TYPE``
-for a type migration 009 already created, aborting ``alembic upgrade head``
-with ``DuplicateObject``.
+The PostgreSQL migration must reference the existing ``serviceorderstatus``
+type without creating it. A generic ``sa.Enum`` uses native PostgreSQL enum
+creation by default, which would try to recreate the type from migration 009
+and abort ``alembic upgrade head`` with ``DuplicateObject``.
 
 Verified against postgres:16-alpine: upgrading a database already at 010 fails
 with the pre-fix form and succeeds with this one. Note that building a database
@@ -70,7 +70,7 @@ def test_status_enum_falls_back_to_a_portable_type_off_postgres():
 
 def test_sa_enum_would_have_recreated_the_type():
     """The shape this migration must not go back to."""
-    unsafe = sa.Enum("Recebida", name="serviceorderstatus", create_type=False)
+    unsafe = sa.Enum("Recebida", name="serviceorderstatus")
 
     assert unsafe.dialect_impl(postgresql.dialect()).create_type is True
     assert _emits_create_type(unsafe) is True

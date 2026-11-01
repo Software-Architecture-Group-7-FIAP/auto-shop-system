@@ -91,6 +91,7 @@ def test_json_formatter_emits_required_fields_and_correlation_id():
 def test_domain_error_on_service_order_uses_processing_failed_event():
     formatter = JsonLogFormatter("test")
     logger = logging.getLogger("src.domain.errors")
+    previous_level = logger.level
     logger.setLevel(logging.INFO)
     payloads: list[dict] = []
 
@@ -109,6 +110,7 @@ def test_domain_error_on_service_order_uses_processing_failed_event():
         correlation_id_var.reset(correlation)
         service_order_id_var.reset(order)
         logger.removeHandler(capture)
+        logger.setLevel(previous_level)
 
     failed, missing = payloads
     assert failed["event"] == "service_order_processing_failed"

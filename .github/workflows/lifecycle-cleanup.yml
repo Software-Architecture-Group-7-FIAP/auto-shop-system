@@ -1,0 +1,126 @@
+name: Expired HML lifecycle cleanup
+run-name: lifecycle:hml:expired-session-cleanup:${{ github.run_id }}
+
+on:
+  schedule:
+    - cron: "0 0-1,14-23 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+  id-token: write
+
+env:
+  LIFECYCLE_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+  LIFECYCLE_TRUSTED_OPERATORS: ${{ vars.LIFECYCLE_TRUSTED_OPERATORS || '' }}
+  LIFECYCLE_CROSS_REPO_ACTOR: ${{ vars.LIFECYCLE_CROSS_REPO_ACTOR || '' }}
+
+concurrency:
+  group: lifecycle-expired-session-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    environment: operations
+    permissions:
+      actions: write
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EXPECTED_AWS_ACCOUNT_ID: "035611741563"
+      LIFECYCLE_TABLE_NAME: auto-shop-staging-lifecycle-sessions
+      LIFECYCLE_TRUSTED_OPERATORS: ${{ vars.LIFECYCLE_TRUSTED_OPERATORS || '' }}
+      LIFECYCLE_CROSS_REPO_ACTOR: ${{ vars.LIFECYCLE_CROSS_REPO_ACTOR || '' }}
+      LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+    steps:
+      - name: Require main as the cleanup workflow source branch
+        env:
+          SOURCE_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_REF" == "refs/heads/main" ]] || {
+            echo "::error::Expired HML lifecycle cleanup runs only from main."
+            exit 1
+          }
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Require a trusted cross-repository dispatch actor
+        run: python3 .github/scripts/require_trusted_lifecycle_operator.py --dispatch-only
+
+      - name: Configure the narrow lifecycle cleanup ledger role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::035611741563:role/auto-shop/auto-shop-staging-github-lifecycle-cleanup
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 3600
+
+      - name: Verify the account and find expired lifecycle sessions
+        id: expired
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$AWS_REGION" == "us-east-1" && "$EXPECTED_AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || {
+            echo "::error::The lifecycle cleanup AWS account or region is invalid."
+            exit 1
+          }
+          actual_account="$(aws sts get-caller-identity --query Account --output text)"
+          [[ "$actual_account" == "$EXPECTED_AWS_ACCOUNT_ID" ]] || {
+            echo "::error::The lifecycle cleanup role resolved to an unexpected AWS account."
+            exit 1
+          }
+          [[ -n "$LIFECYCLE_CROSS_REPO_TOKEN" ]] || {
+            echo "::error::LIFECYCLE_CROSS_REPO_TOKEN is required to dispatch the coordinated stop workflow."
+            exit 1
+          }
+          python3 .github/scripts/lifecycle_session_ledger.py list-expired \
+            --limit 100 \
+            --output "$RUNNER_TEMP/lifecycle-expired-sessions.json"
+          count="$(python3 -c 'import json,sys; print(sum(1 for x in json.load(open(sys.argv[1], encoding="utf-8")) if x.get("stage") == "hml" and x.get("session_scope") == "infrastructure-only"))' "$RUNNER_TEMP/lifecycle-expired-sessions.json")"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          deadline="$(python3 - <<'PY'
+          from datetime import datetime, time, timezone
+          from zoneinfo import ZoneInfo
+
+          brt = ZoneInfo("America/Sao_Paulo")
+          local_now = datetime.now(brt)
+          local_deadline = datetime.combine(local_now.date(), time(23, 0), tzinfo=brt)
+          print(local_deadline.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+          PY
+          )"
+          echo "deadline_utc=$deadline" >> "$GITHUB_OUTPUT"
+          echo "Found $count expired infrastructure-only HML session(s); other stages and scopes are excluded." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dispatch teardown for expired infrastructure-only HML sessions
+        if: steps.expired.outputs.count != '0'
+        env:
+          CLEANUP_DEADLINE_UTC: ${{ steps.expired.outputs.deadline_utc }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/dispatch_expired_lifecycle_sessions.py \
+            --sessions "$RUNNER_TEMP/lifecycle-expired-sessions.json" \
+            --deadline-utc "$CLEANUP_DEADLINE_UTC" \
+            --limit 4 \
+            --results "$RUNNER_TEMP/lifecycle-cleanup-results.json"
+
+      - name: Record that no eligible expired HML sessions were found
+        if: steps.expired.outputs.count == '0'
+        run: echo "No expired infrastructure-only HML sessions were found." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload cleanup discovery and dispatch outcomes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hml-lifecycle-cleanup-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/lifecycle-expired-sessions.json
+            ${{ runner.temp }}/lifecycle-cleanup-results.json
+          if-no-files-found: ignore
+          retention-days: 90

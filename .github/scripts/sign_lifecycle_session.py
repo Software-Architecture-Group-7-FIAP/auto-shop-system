@@ -39,7 +39,16 @@ def main() -> int:
                 os.environ.get("CLOSE_REQUEST_ID", ""),
             )
         else:
-            token = sign_lifecycle_session(signing_key, session_mode, session_id, started_at)
+            token = sign_lifecycle_session(
+                signing_key,
+                session_mode,
+                session_id,
+                started_at,
+                allow_hml_any_time=(
+                    os.environ.get("STAGING_SESSION_ALLOW_ANY_TIME", "").lower()
+                    == "true"
+                ),
+            )
         with open(environment_file, "a", encoding="utf-8") as output:
             output.write(f"LIFECYCLE_SESSION_TOKEN={token}\n")
     except (LifecycleSessionAuthError, OSError) as error:

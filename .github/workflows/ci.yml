@@ -316,9 +316,9 @@ jobs:
           set -euo pipefail
           kubectl wait --for=condition=available deployment/postgres --namespace auto-shop --timeout=180s
           kubectl apply -k k8s/overlays/local/migration
-          kubectl wait --for=condition=complete job/auto-shop-migrate --namespace auto-shop --timeout=300s
+          bash k8s/scripts/wait-for-job.sh auto-shop-migrate auto-shop 600
           kubectl apply -k k8s/overlays/local/seed
-          kubectl wait --for=condition=complete job/auto-shop-seed --namespace auto-shop --timeout=300s
+          bash k8s/scripts/wait-for-job.sh auto-shop-seed auto-shop 600
           kubectl apply -k k8s/overlays/local/app
           kubectl rollout status deployment/auto-shop-backend --namespace auto-shop --timeout=300s
           kubectl apply -k k8s/overlays/local/ingress

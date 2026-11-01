@@ -21,7 +21,13 @@ class LifecycleSessionAuthError(ValueError):
     """Raised when session signing inputs or capability are invalid."""
 
 
-def _validated_material(session_mode: str, session_id: str, started_at: str) -> bytes:
+def _validated_material(
+    session_mode: str,
+    session_id: str,
+    started_at: str,
+    *,
+    allow_hml_any_time: bool = False,
+) -> bytes:
     match = SESSION_PATTERN.fullmatch(session_id)
     if match is None:
         raise LifecycleSessionAuthError("The lifecycle session ID is malformed.")
@@ -42,19 +48,33 @@ def _validated_material(session_mode: str, session_id: str, started_at: str) -> 
     if session_mode == "prd-window" and local_start.strftime("%H:%M:%S") != "06:00:00":
         raise LifecycleSessionAuthError("PRD sessions must be signed for a 06:00 BRT start.")
     local_start_time = local_start.time().replace(tzinfo=None)
-    if session_mode == "hml" and not time(7, 0) <= local_start_time <= time(17, 0):
+    if (
+        session_mode == "hml"
+        and not allow_hml_any_time
+        and not time(7, 0) <= local_start_time <= time(17, 0)
+    ):
         raise LifecycleSessionAuthError("HML sessions must start between 07:00 and 17:00 BRT.")
 
     return f"{session_mode}|{session_id}|{started_at}".encode("utf-8")
 
 
 def sign_lifecycle_session(
-    signing_key: str, session_mode: str, session_id: str, started_at: str
+    signing_key: str,
+    session_mode: str,
+    session_id: str,
+    started_at: str,
+    *,
+    allow_hml_any_time: bool = False,
 ) -> str:
     key = signing_key.encode("utf-8")
     if len(key) < 32:
         raise LifecycleSessionAuthError("LIFECYCLE_SESSION_SIGNING_KEY must contain at least 32 UTF-8 bytes.")
-    material = _validated_material(session_mode, session_id, started_at)
+    material = _validated_material(
+        session_mode,
+        session_id,
+        started_at,
+        allow_hml_any_time=allow_hml_any_time,
+    )
     return hmac.new(key, material, hashlib.sha256).hexdigest()
 
 
@@ -64,10 +84,18 @@ def verify_lifecycle_session(
     session_mode: str,
     session_id: str,
     started_at: str,
+    *,
+    allow_hml_any_time: bool = False,
 ) -> None:
     if not TOKEN_PATTERN.fullmatch(token):
         raise LifecycleSessionAuthError("A valid coordinator session capability is required.")
-    expected = sign_lifecycle_session(signing_key, session_mode, session_id, started_at)
+    expected = sign_lifecycle_session(
+        signing_key,
+        session_mode,
+        session_id,
+        started_at,
+        allow_hml_any_time=allow_hml_any_time,
+    )
     if not hmac.compare_digest(token, expected):
         raise LifecycleSessionAuthError("The coordinator session capability does not match this session.")
 

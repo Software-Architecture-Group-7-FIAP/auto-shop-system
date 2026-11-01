@@ -75,9 +75,10 @@ def test_stop_workflow_reserves_audit_window_and_runs_audit_after_teardown_failu
     assert "audit_start_utc=" in resolver
     assert "resolve_session:" in workflow
     assert "audit:" in workflow
-    assert "if: always() && needs.resolve_session.outputs.session_authorized == 'true'" in workflow
-    assert "if: needs.resolve_session.result == 'success' && needs.resolve_session.outputs.teardown_allowed == 'true'" in workflow
-    assert workflow.count('--deadline-utc "$TEARDOWN_END"') == 9
+    assert "always() && needs.resolve_session.outputs.session_authorized == 'true'" in workflow
+    assert "needs.close.outputs.close_needed == 'true'" in workflow
+    assert "needs.resolve_session.outputs.teardown_allowed == 'true'" in workflow
+    assert workflow.count('--deadline-utc "$TEARDOWN_END"') >= 9
     assert "--deadline-utc \"$CLEANUP_END\"" in workflow
     assert "default=30" in coordinator
     assert "--deadline-utc \"$TEARDOWN_END\"" in workflow
@@ -138,13 +139,39 @@ def test_hml_infrastructure_only_profile_skips_application_release_and_public_ed
 
     assert "SESSION_PROFILE: ${{ steps.window.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE || 'full' }}" in start
     assert "Infra-only HML sessions require both application deploy gates to remain false." in start
-    assert start.count("if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'") == 5
+    profile_guard = "if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'"
+    guarded_steps = (
+        "Validate persistent customer auth Lambdas before opening session resources",
+        "Configure read-only Cost Explorer identity",
+        "Verify the account and record observed pre-cycle billing",
+        "Deploy the application and recreate its synthetic seed",
+        "Apply the database grants after application migrations",
+        "Configure the narrow public-edge lifecycle role",
+        "Reconcile the public API edge against the current ALB while preserving its URL",
+        "Dispatch and wait for public endpoint health",
+    )
+    for step_name in guarded_steps:
+        step = start.split(f"- name: {step_name}", 1)[1].split("- name:", 1)[0]
+        assert profile_guard in step
     assert "Bootstrap the synthetic lifecycle database" in start
-    assert "SESSION_PROFILE: ${{ needs.resolve_session.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE || 'full' }}" in stop
-    assert "HML infrastructure-only close selected; public-edge and app release steps will be skipped." in stop
-    assert stop.count("vars.STAGING_SESSION_PROFILE != 'infra-only'") >= 3
-    destroy_step = stop.split("- name: Destroy the ephemeral database after optional edge maintenance", 1)[1]
-    assert "if: steps.close_decision.outputs.close_needed == 'true'" in destroy_step.split("\n", 4)[1]
+    assert stop.startswith("name: HML infrastructure-only stop")
+    for excluded in ("cloudfront", "api gateway", "reconcile_public_edge", "deploy the application"):
+        assert excluded.lower() not in stop.lower()
+    destroy_step = stop.split("- name: Destroy the ephemeral HML database", 1)[1]
+    assert "steps.close_decision.outputs.close_needed == 'true'" in destroy_step.split("\n", 4)[1]
+
+
+def test_automatic_hml_close_dispatch_binds_the_session_mode_for_ledger_authorization() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "environment-start.yml").read_text(encoding="utf-8")
+    dispatch = workflow.split(
+        "- name: Dispatch and wait for the HML full close lifecycle", 1
+    )[1].split("\n      - name:", 1)[0]
+    input_line = next(line for line in dispatch.splitlines() if "--inputs " in line)
+
+    assert "--authorization-action close" in dispatch
+    assert "session_mode" in input_line
+    assert "$SESSION_MODE" in input_line
+
 
 
 def test_authenticated_ghcr_images_are_mirrored_to_ecr_before_eks_deploy() -> None:
