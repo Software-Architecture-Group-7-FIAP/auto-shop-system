@@ -432,7 +432,7 @@ jobs:
           --expected-title "$SESSION_ID-hml-all-plan"
           --authorization-action close
           --inputs "{\"operation\":\"plan\",\"stack\":\"hml\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"\",\"confirm\":\"\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name hml_destroy --timeout-seconds 3600
+          --github-output "$GITHUB_OUTPUT" --output-name hml_destroy --timeout-seconds 3600 --no-session-token
           --deadline-utc "$TEARDOWN_END"
 
       - name: Apply the reviewed HML namespace teardown plan
@@ -450,7 +450,7 @@ jobs:
           --expected-title "$SESSION_ID-hml-all-destroy"
           --authorization-action close
           --inputs "{\"operation\":\"destroy\",\"stack\":\"hml\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"destroy\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name hml_destroy_apply --timeout-seconds 3600
+          --github-output "$GITHUB_OUTPUT" --output-name hml_destroy_apply --timeout-seconds 3600 --no-session-token
           --deadline-utc "$TEARDOWN_END"
 
       - name: Destroy the ephemeral HML database
@@ -468,7 +468,7 @@ jobs:
           --expected-title "database/$SESSION_ID/teardown/destroy"
           --authorization-action close
           --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"confirm\":\"destroy\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name database_destroy --timeout-seconds 3600
+          --github-output "$GITHUB_OUTPUT" --output-name database_destroy --timeout-seconds 3600 --no-session-token
           --deadline-utc "$TEARDOWN_END"
 
       - name: Plan the full K8s platform teardown
@@ -485,7 +485,7 @@ jobs:
           --expected-title "$SESSION_ID-platform-all-plan"
           --authorization-action close
           --inputs "{\"operation\":\"plan\",\"stack\":\"platform\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"\",\"confirm\":\"\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name platform_destroy --timeout-seconds 3600
+          --github-output "$GITHUB_OUTPUT" --output-name platform_destroy --timeout-seconds 3600 --no-session-token
           --deadline-utc "$TEARDOWN_END"
 
       - name: Apply the reviewed K8s platform teardown plan
@@ -503,7 +503,7 @@ jobs:
           --expected-title "$SESSION_ID-platform-all-destroy"
           --authorization-action close
           --inputs "{\"operation\":\"destroy\",\"stack\":\"platform\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"destroy\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name platform_destroy_apply --timeout-seconds 3600
+          --github-output "$GITHUB_OUTPUT" --output-name platform_destroy_apply --timeout-seconds 3600 --no-session-token
           --deadline-utc "$TEARDOWN_END"
 
       - name: Plan compute-only foundation teardown
@@ -520,7 +520,7 @@ jobs:
           --expected-title "$SESSION_ID-foundation-compute-plan"
           --authorization-action close
           --inputs "{\"operation\":\"plan\",\"stack\":\"foundation\",\"scope\":\"compute\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"\",\"confirm\":\"\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name foundation_destroy --timeout-seconds 3600
+          --github-output "$GITHUB_OUTPUT" --output-name foundation_destroy --timeout-seconds 3600 --no-session-token
           --deadline-utc "$TEARDOWN_END"
 
       - name: Apply the reviewed compute-only foundation teardown plan
@@ -538,7 +538,7 @@ jobs:
           --expected-title "$SESSION_ID-foundation-compute-destroy"
           --authorization-action close
           --inputs "{\"operation\":\"destroy\",\"stack\":\"foundation\",\"scope\":\"compute\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"destroy\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name foundation_destroy_apply --timeout-seconds 3600
+          --github-output "$GITHUB_OUTPUT" --output-name foundation_destroy_apply --timeout-seconds 3600 --no-session-token
           --deadline-utc "$TEARDOWN_END"
 
       - name: Plan NAT shutdown
@@ -555,7 +555,7 @@ jobs:
           --expected-title "$SESSION_ID-foundation-nat-disable"
           --authorization-action close
           --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"foundation\",\"operation\":\"nat-disable\",\"enable_nat_gateway\":\"false\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name nat_plan --timeout-seconds 3600
+          --github-output "$GITHUB_OUTPUT" --output-name nat_plan --timeout-seconds 3600 --no-session-token
           --deadline-utc "$TEARDOWN_END"
 
       - name: Apply the reviewed NAT shutdown plan
@@ -573,7 +573,7 @@ jobs:
           --expected-title "$SESSION_ID-foundation-nat-disable-apply"
           --authorization-action close
           --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"foundation\",\"operation\":\"nat-disable\",\"enable_nat_gateway\":\"false\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name nat_apply --timeout-seconds 3600
+          --github-output "$GITHUB_OUTPUT" --output-name nat_apply --timeout-seconds 3600 --no-session-token
           --deadline-utc "$TEARDOWN_END"
 
   audit:
@@ -678,7 +678,7 @@ jobs:
           --expected-title "$SESSION_ID-all-orphan-audit"
           --authorization-action audit
           --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name orphan_audit --timeout-seconds 900
+          --github-output "$GITHUB_OUTPUT" --output-name orphan_audit --timeout-seconds 900 --no-session-token
           --deadline-utc "$CLEANUP_END"
 
       - name: Persist teardown and audit outcomes in the lifecycle ledger
