@@ -5,8 +5,9 @@ Updated: 2026-11-01
 ## Current state
 
 - PR [#166](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/pull/166) is open against `develop`.
-- Published branch head is `5dd5d95c18ba43d311500110a62481c2c40157a7`; the fixes in this document are local and have not yet been pushed.
+- Published branch head is `7740359a1a76b433e66942e70aff6f8b11f98b74` (`fix: unblock migration deployment smoke checks`).
 - Latest published CI run [41308974246](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/actions/runs/41308974246) passed every check except `cluster-smoke`.
+- CI for the current branch is running after the fixes were published.
 - The user authorized publishing the fixes and merging with an approval bypass after required CI checks pass. No merge or HML/PROD deployment has happened yet.
 - Local Kind validation now passes migration, seed, API rollout, and HTTP smoke checks after the fixes listed below.
 
@@ -31,7 +32,7 @@ The full smoke sequence exposed a second network-policy gap: database egress and
 
 ## Validation completed locally
 
-- Focused pytest set after the final changes: 21 passed.
+- Focused pytest set after the final changes: 21 passed. Ruff checks and format checks passed; both deployment Bash scripts passed `bash -n`; workflow YAML parsed; local migration/foundation Kustomize rendered; `git diff --check` passed.
 - Built `auto-shop-system:local` and created a disposable Kind v1.36 cluster.
 - Reproduced the original migration DNS failure and confirmed the new waiter reported `FailureTarget` and printed the preserved pod logs without waiting 600 seconds.
 - After fixing DNS egress, migration completed all Alembic revisions in about seven seconds.
@@ -46,6 +47,7 @@ The full smoke sequence exposed a second network-policy gap: database egress and
 - `e1f680b` — align deployment-validator tests with the new contract.
 - `435a5e1` — add database NetworkPolicy rules and initial cluster-smoke diagnostics.
 - `5dd5d95` — update the seed deployment contract test.
+- `7740359` — correct DNS/database NetworkPolicies, fail-fast Job waiting, and migration diagnostics.
 
 The old HML lifecycle runs `#41`, `#42`, and `#43` were canceled during the earlier investigation. Run `#41` had a Kubernetes foundation-plan HTTP 422; `#42` and `#43` refused duplicate lifecycle openings while an opening run remained active. No AWS mutation occurred in those refused runs.
 
@@ -53,10 +55,9 @@ Earlier settings inspection showed HML backend deployment enabled and its AWS ro
 
 ## Next steps
 
-1. Rerun the focused tests, Bash syntax checks, Kustomize rendering, and `git diff --check`.
-2. Commit and push these fixes to PR #166, then wait for every required CI check.
-3. If CI passes, use the previously authorized approval bypass and merge into `develop`.
-4. Monitor the resulting HML deployment and confirm the migration and API rollout. Do not force production while its readiness/cost gates are closed.
+1. Wait for all required checks on the current branch.
+2. If CI passes, use the previously authorized approval bypass and merge into `develop`.
+3. Monitor the resulting HML deployment and confirm the migration and API rollout. Do not force production while its readiness/cost gates are closed.
 
 ## Links
 
