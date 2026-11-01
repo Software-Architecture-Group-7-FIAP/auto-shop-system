@@ -197,35 +197,13 @@ jobs:
               --overwrite 2>/dev/null || true
             migration_secret_arn="${RDS_SECRET_ARN}"
           fi
-          # Attempt to get service-order event bus parameter; if missing, create default
-          if service_order_event_bus_name="$(aws ssm get-parameter \
+          # EventBridge and its SSM contracts are provisioned by reviewed Terraform.
+          service_order_event_bus_name="$(aws ssm get-parameter \
             --name "${SSM_PARAMETER_PREFIX}/events/service-order-bus-name" \
-            --query 'Parameter.Value' --output text 2>&1)"; then
-            :
-          else
-            echo "⚠ Service order event bus parameter not found; using default..."
-            service_order_event_bus_name="auto-shop-service-orders"
-            aws ssm put-parameter \
-              --name "${SSM_PARAMETER_PREFIX}/events/service-order-bus-name" \
-              --value "${service_order_event_bus_name}" \
-              --type String \
-              --overwrite 2>/dev/null || true
-          fi
-          # Attempt to get service-order publisher role parameter; if missing, create default
-          if service_order_publisher_role_arn="$(aws ssm get-parameter \
+            --query 'Parameter.Value' --output text)"
+          service_order_publisher_role_arn="$(aws ssm get-parameter \
             --name "${SSM_PARAMETER_PREFIX}/events/service-order-publisher-role-arn/hml" \
-            --query 'Parameter.Value' --output text 2>&1)"; then
-            :
-          else
-            echo "⚠ Service order publisher role parameter not found; using default..."
-            ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
-            service_order_publisher_role_arn="arn:aws:iam::${ACCOUNT_ID}:role/auto-shop-service-order-publisher-hml"
-            aws ssm put-parameter \
-              --name "${SSM_PARAMETER_PREFIX}/events/service-order-publisher-role-arn/hml" \
-              --value "${service_order_publisher_role_arn}" \
-              --type String \
-              --overwrite 2>/dev/null || true
-          fi
+            --query 'Parameter.Value' --output text)"
           if [[ ! "${cluster_name}" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$ ]]; then
             echo "The EKS cluster name in SSM is invalid." >&2
             exit 1
