@@ -69,11 +69,12 @@ jobs:
           STAGING_SESSION_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
           AUTHORIZED_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
           DEPLOY_STAGING_ENABLED: ${{ vars.DEPLOY_STAGING_ENABLED || 'false' }}
+          DEPLOY_STAGING_FRONTEND_ENABLED: ${{ vars.DEPLOY_STAGING_FRONTEND_ENABLED || 'false' }}
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$DEPLOY_STAGING_ENABLED" == "true" ]] || {
-            echo "::error::DEPLOY_STAGING_ENABLED is not true."
+          [[ "$DEPLOY_STAGING_ENABLED" == "true" && "$DEPLOY_STAGING_FRONTEND_ENABLED" == "true" ]] || {
+            echo "::error::Both HML backend and frontend deploy gates must be true."
             exit 1
           }
           [[ "$STAGING_ACTIVE" == "true" && "$STAGING_SESSION_AUTHORIZED" == "true" && "$AUTHORIZED_SESSION_MODE" == "hml" ]] || {
@@ -87,7 +88,7 @@ jobs:
             ENVIRONMENT_WINDOW_STARTED_AT="$REQUESTED_STARTED_AT" \
             SESSION_MODE="$REQUESTED_SESSION_MODE" \
             ENVIRONMENT_STAGE=hml \
-            python3 .github/scripts/validate_environment_window.py --action deploy
+            python3 .github/scripts/validate_environment_window.py --action operate
 
   build-push:
     needs: lifecycle-authorization
@@ -101,9 +102,11 @@ jobs:
   deploy-staging:
     needs: [build-push, lifecycle-authorization]
     if: >-
-      always() && needs.build-push.result == 'success' &&
-      (github.event_name == 'push' || needs.lifecycle-authorization.result == 'success') &&
-      github.ref == 'refs/heads/develop' && vars.DEPLOY_STAGING_ENABLED == 'true'
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/develop' &&
+      vars.DEPLOY_STAGING_ENABLED == 'true' &&
+      needs.build-push.result == 'success' &&
+      needs.lifecycle-authorization.result == 'success'
     runs-on: ubuntu-latest
     environment: hml
     timeout-minutes: 30
@@ -118,35 +121,18 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Require HML deployment authorization
+      - name: Require the authorized HML operating window
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          DEPLOY_STAGING_ENABLED: ${{ vars.DEPLOY_STAGING_ENABLED || 'false' }}
-          STAGING_ACTIVE: ${{ vars.STAGING_ACTIVE || 'false' }}
-          STAGING_SESSION_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
-          AUTHORIZED_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
+          ENVIRONMENT_ACTIVE: ${{ vars.STAGING_ACTIVE }}
+          ENVIRONMENT_WINDOW_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED }}
           ENVIRONMENT_SESSION_ID: ${{ inputs.session_id }}
           ENVIRONMENT_WINDOW_STARTED_AT: ${{ inputs.started_at }}
+          ENVIRONMENT_STAGE: hml
           SESSION_MODE: ${{ inputs.session_mode }}
           LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
           LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
         shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$DEPLOY_STAGING_ENABLED" == "true" ]] || { echo "::error::DEPLOY_STAGING_ENABLED is not true."; exit 1; }
-          [[ "$STAGING_ACTIVE" == "true" && "$STAGING_SESSION_AUTHORIZED" == "true" && "$AUTHORIZED_SESSION_MODE" == "hml" ]] || {
-            echo "::error::HML static authorization gates are not enabled."
-            exit 1
-          }
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            [[ "$SESSION_MODE" == "hml" ]] || { echo "::error::session_mode must be hml."; exit 1; }
-            ENVIRONMENT_ACTIVE="$STAGING_ACTIVE" \
-              ENVIRONMENT_WINDOW_AUTHORIZED="$STAGING_SESSION_AUTHORIZED" \
-              ENVIRONMENT_SESSION_ID="$ENVIRONMENT_SESSION_ID" \
-              ENVIRONMENT_WINDOW_STARTED_AT="$ENVIRONMENT_WINDOW_STARTED_AT" \
-              ENVIRONMENT_STAGE=hml \
-              python3 .github/scripts/validate_environment_window.py --action deploy
-          fi
+        run: python3 .github/scripts/validate_environment_window.py --action operate
 
       - name: Validate the Terraform-managed HML deploy role ARN
         env:
@@ -278,7 +264,7 @@ jobs:
 
   deploy-staging-frontend:
     needs: deploy-staging
-    if: needs.deploy-staging.result == 'success' && vars.DEPLOY_STAGING_FRONTEND_ENABLED == 'true'
+    if: github.event_name == 'workflow_dispatch' && vars.DEPLOY_STAGING_ENABLED == 'true' && vars.DEPLOY_STAGING_FRONTEND_ENABLED == 'true'
     permissions:
       contents: read
       id-token: write
@@ -313,4 +299,12 @@ jobs:
           echo "Deploy staging ignorado: defina a variável de repositório DEPLOY_STAGING_ENABLED=true."
           echo "GitHub Environment hml: AWS_REGION and variable AWS_DEPLOY_ROLE_ARN_HML; cluster name comes from SSM."
           echo "Ver .github/CD.md"
+
+  push-deploy-gated:
+    needs: [build-push, lifecycle-authorization]
+    if: always() && github.event_name == 'push' && vars.DEPLOY_STAGING_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep HML changes behind the lifecycle coordinator
+        run: echo "Push build completed; HML deploy requires workflow_dispatch with a validated session_id, started_at, and session_mode."
 
