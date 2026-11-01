@@ -19,6 +19,18 @@ API_ROOT = "https://api.github.com"
 BRT = ZoneInfo("America/Sao_Paulo")
 SESSION_PATTERN = re.compile(r"^(?:hml|prd)-(\d{4}-\d{2}-\d{2})$")
 ACTIVE_STATUSES = {"queued", "requested", "waiting", "in_progress", "pending"}
+FAILED_CONCLUSIONS = {"failure", "cancelled", "timed_out", "startup_failure", "action_required"}
+COMPLETED_CONCLUSIONS = {
+    "success",
+    "failure",
+    "cancelled",
+    "timed_out",
+    "startup_failure",
+    "action_required",
+    "neutral",
+    "skipped",
+    "stale",
+}
 FIRST_MUTATION_MARKER = "Apply the exact K8s foundation opening plan"
 RUN_TITLE_SUFFIX = re.compile(r"(?::[0-9a-f]{32}|:\d+)$")
 
@@ -111,6 +123,38 @@ def _opening_mutation_started(repository: str, run_id: object, token: str) -> bo
     raise ValueError(
         "The first-mutation marker has no conclusive execution state; refusing teardown"
     )
+
+
+def close_run_is_safe_to_retry(repository: str, run: dict[str, object], token: str) -> bool:
+    """Check if a failed close run is safe to retry (failed before teardown started)."""
+    run_id = run.get("id")
+    if not isinstance(run_id, int):
+        raise ValueError("Close run has no valid numeric ID")
+    request = Request(
+        f"{API_ROOT}/repos/{repository}/actions/runs/{run_id}/jobs?per_page=100",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "auto-shop-lifecycle-coordinator",
+        },
+    )
+    try:
+        with urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (HTTPError, URLError, OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"Failed to fetch close run jobs: {error}") from error
+    if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list):
+        raise ValueError("GitHub returned an invalid close job listing")
+
+    # If the close job (which performs teardown) started, it's not safe to retry
+    close_jobs = [job for job in payload.get("jobs", []) if isinstance(job, dict) and job.get("name") == "close"]
+    if close_jobs:
+        close_job = close_jobs[0]
+        # If the close job started (has started_at), it's not safe to retry
+        if close_job.get("started_at"):
+            return False
+    return True
 
 
 def _opening_close_decision(
