@@ -4,11 +4,51 @@ set -euo pipefail
 namespace="${1:-auto-shop}"
 hpa="auto-shop-backend-hpa"
 deployment="auto-shop-backend"
-load_pod="hpa-load"
 started_at=$SECONDS
+load_exec_pids=()
+
+stop_load() {
+  # kubectl exec (without a TTY) does not reliably propagate client-side
+  # termination to the remote process, so killing the local backgrounded
+  # `kubectl exec` client is not sufficient on its own. The container image
+  # has no pkill/kill binary, so use Python (always present in this image)
+  # to find and SIGKILL any process carrying our marker string.
+  local pid
+  for pid in "${load_exec_pids[@]:-}"; do
+    [[ -n "$pid" ]] || continue
+    kill "$pid" >/dev/null 2>&1 || true
+  done
+  load_exec_pids=()
+
+  local pod
+  for pod in $(kubectl get pods --namespace "$namespace" --selector app=auto-shop-backend \
+    --output=jsonpath='{.items[*].metadata.name}' 2>/dev/null || true); do
+    kubectl exec --namespace "$namespace" "$pod" -- python -c "
+import os, signal
+# Build the marker at runtime (not as one literal) so this scanner's own
+# cmdline/source never contains the contiguous marker string and can't
+# accidentally match (and SIGKILL) itself.
+marker = 'hpa_cpu_load' + '_marker'
+self_pid = os.getpid()
+for pid in os.listdir('/proc'):
+    if not pid.isdigit() or int(pid) == self_pid:
+        continue
+    try:
+        with open(f'/proc/{pid}/cmdline', 'rb') as f:
+            cmdline = f.read().decode(errors='replace')
+    except (FileNotFoundError, ProcessLookupError):
+        continue
+    if marker in cmdline:
+        try:
+            os.kill(int(pid), signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+" >/dev/null 2>&1 || true
+  done
+}
 
 cleanup() {
-  kubectl delete pod "$load_pod" --namespace "$namespace" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  stop_load
   local hpa_manifest
   hpa_manifest="$(mktemp)"
   sed "s/namespace: auto-shop$/namespace: ${namespace}/" k8s/base/app/hpa.yaml >"$hpa_manifest"
@@ -82,30 +122,48 @@ if ! kubectl patch hpa "$hpa" --namespace "$namespace" --type=json \
   return 1
 fi
 
-echo "::notice::Verifying backend service exists..."
-if ! kubectl get service auto-shop-backend-service --namespace "$namespace" >/dev/null 2>&1; then
-  echo "::error::Backend service not found in $namespace"
+echo "::notice::Starting CPU load directly inside backend pods (bypasses network path entirely)..."
+# Exec a CPU-bound busy loop into each backend pod's own container. This avoids
+# relying on pod-to-pod service networking (which can behave inconsistently
+# across CNI/runner environments) and guarantees the exact pods being measured
+# by the HPA are the ones generating load.
+backend_pods="$(kubectl get pods --namespace "$namespace" --selector app=auto-shop-backend \
+  --output=jsonpath='{.items[*].metadata.name}')"
+if [[ -z "$backend_pods" ]]; then
+  echo "::error::No backend pods found to load"
   return 1
 fi
-
-echo "::notice::Starting HTTP load generation (10 concurrent workers)..."
-# Generate HTTP load: 10 parallel wget workers making requests to backend service
-# Each wget has 2s timeout to prevent hanging; requests cause CPU load on backend pods
-kubectl run "$load_pod" --namespace "$namespace" --restart=Never --image=busybox:1.36 -- \
-  sh -c 'for i in $(seq 1 10); do (while true; do wget --timeout=2 -q -O /dev/null http://auto-shop-backend-service/health/live || true; done) & done; wait'
+for pod in $backend_pods; do
+  kubectl exec --namespace "$namespace" "$pod" -- python -c "
+while True:
+    pass
+" hpa_cpu_load_marker &
+  load_exec_pids+=("$!")
+done
+echo "Started ${#load_exec_pids[@]} load process(es) across pods: $backend_pods"
 
 echo "Waiting for HPA to scale up to three replicas (triggered by CPU load)..."
 wait_for "HPA scale up to three ready replicas" 240 has_ready_replicas 3
 
-echo "::notice::Load generation complete, scaling down..."
-kubectl delete pod "$load_pod" --namespace "$namespace" --wait=true --timeout=30s || true
+echo "::notice::Load generation complete, stopping load..."
+stop_load
 
-echo "::notice::Resetting HPA to normal thresholds..."
-# Reset all HPA parameters back to production values
+# Metrics-server/HPA have inherent reporting lag (samples can be tens of
+# seconds stale), so the HPA may still act on "high CPU" readings for a
+# while after the load is actually gone. Restore realistic CPU/memory
+# targets now, but deliberately KEEP maxReplicas capped at 3 and
+# scaleDown.stabilizationWindowSeconds at 0: this makes any lag-driven
+# scale decision harmless (capped at the same 3 we already expect) instead
+# of letting a stale "still hot" sample race the cap back up to 10.
+echo "::notice::Restoring realistic CPU/memory targets (keeping safety cap at 3 replicas)..."
 kubectl patch hpa "$hpa" --namespace "$namespace" --type=json \
-  -p='[{"op":"replace","path":"/spec/maxReplicas","value":10},{"op":"replace","path":"/spec/metrics/0/resource/target/averageUtilization","value":70},{"op":"replace","path":"/spec/metrics/1/resource/target/averageUtilization","value":80},{"op":"replace","path":"/spec/behavior/scaleDown/stabilizationWindowSeconds","value":300},{"op":"replace","path":"/spec/behavior/scaleDown/policies/0/value","value":10}]'
+  -p='[{"op":"replace","path":"/spec/metrics/0/resource/target/averageUtilization","value":70},{"op":"replace","path":"/spec/metrics/1/resource/target/averageUtilization","value":80}]'
 
 echo "Waiting for HPA to scale down to two replicas..."
 wait_for "HPA scale down to two ready replicas" 240 has_ready_replicas 2
+
+echo "::notice::Restoring production HPA configuration (maxReplicas=10, scaleDown stabilization=300s)..."
+kubectl patch hpa "$hpa" --namespace "$namespace" --type=json \
+  -p='[{"op":"replace","path":"/spec/maxReplicas","value":10},{"op":"replace","path":"/spec/behavior/scaleDown/stabilizationWindowSeconds","value":300},{"op":"replace","path":"/spec/behavior/scaleDown/policies/0/value","value":10}]'
 
 echo "::notice::HPA scaling verification complete: received metrics and scaled both up and down."
