@@ -40,8 +40,10 @@ All gates below must be explicitly configured before an opening. Missing values 
 |---|---|
 | PRD | `ENVIRONMENT_SCHEDULE_ENABLED=true`, `PRD_LIFECYCLE_AUTOMATION_READY=true`, `PRD_COST_EXCEPTION_APPROVED=true`, `ENVIRONMENT_ACTIVE=true`, `ENVIRONMENT_WINDOW_AUTHORIZED=true` |
 | HML | `STAGING_ACTIVE=true`, `STAGING_SESSION_AUTHORIZED=true`, `STAGING_SESSION_MODE=hml` |
-| PRD deploy | `DEPLOY_PRODUCTION_ENABLED=true`, `ALLOW_SYNTHETIC_SEED_IN_PRD=true` |
-| HML deploy | `DEPLOY_STAGING_ENABLED=true`, `DEPLOY_STAGING_FRONTEND_ENABLED=true` |
+| PRD backend deploy | `DEPLOY_PRODUCTION_ENABLED=true`, `ALLOW_SYNTHETIC_SEED_IN_PRD=true` |
+| PRD frontend deploy | `DEPLOY_PRODUCTION_ENABLED=true`, `DEPLOY_PRODUCTION_FRONTEND_ENABLED=true`, `ALLOW_SYNTHETIC_SEED_IN_PRD=true` |
+| HML backend deploy | `DEPLOY_STAGING_ENABLED=true` |
+| HML frontend deploy | `DEPLOY_STAGING_ENABLED=true`, `DEPLOY_STAGING_FRONTEND_ENABLED=true` |
 
 The central workflows also require repository variables for AWS account/region, lifecycle alert topic, K8s and database repository/ref, edge settings, and the reviewed PRD/HML daily cost estimate. Refs must be `main` for infrastructure repositories. The app dispatch uses `main` for PRD and `develop` for HML. The explicit secret `LIFECYCLE_CROSS_REPO_TOKEN` must have Actions dispatch/read/cancel access on the app, K8s, and database repositories. There is no `GITHUB_TOKEN` fallback.
 

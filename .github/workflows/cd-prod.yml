@@ -245,7 +245,7 @@ jobs:
 
   deploy-production-frontend:
     needs: deploy-production
-    if: github.event_name == 'workflow_dispatch' && vars.DEPLOY_PRODUCTION_ENABLED == 'true' && vars.DEPLOY_PRODUCTION_FRONTEND_ENABLED == 'true'
+    if: needs.deploy-production.result == 'success' && vars.DEPLOY_PRODUCTION_FRONTEND_ENABLED == 'true' && github.event_name == 'workflow_dispatch' && vars.DEPLOY_PRODUCTION_ENABLED == 'true'
     permissions:
       contents: read
       id-token: write

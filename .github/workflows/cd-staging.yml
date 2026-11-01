@@ -69,12 +69,11 @@ jobs:
           STAGING_SESSION_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
           AUTHORIZED_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
           DEPLOY_STAGING_ENABLED: ${{ vars.DEPLOY_STAGING_ENABLED || 'false' }}
-          DEPLOY_STAGING_FRONTEND_ENABLED: ${{ vars.DEPLOY_STAGING_FRONTEND_ENABLED || 'false' }}
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$DEPLOY_STAGING_ENABLED" == "true" && "$DEPLOY_STAGING_FRONTEND_ENABLED" == "true" ]] || {
-            echo "::error::Both HML backend and frontend deploy gates must be true."
+          [[ "$DEPLOY_STAGING_ENABLED" == "true" ]] || {
+            echo "::error::HML backend deploy gate is not enabled."
             exit 1
           }
           [[ "$STAGING_ACTIVE" == "true" && "$STAGING_SESSION_AUTHORIZED" == "true" && "$AUTHORIZED_SESSION_MODE" == "hml" ]] || {
@@ -264,7 +263,7 @@ jobs:
 
   deploy-staging-frontend:
     needs: deploy-staging
-    if: github.event_name == 'workflow_dispatch' && vars.DEPLOY_STAGING_ENABLED == 'true' && vars.DEPLOY_STAGING_FRONTEND_ENABLED == 'true'
+    if: needs.deploy-staging.result == 'success' && vars.DEPLOY_STAGING_FRONTEND_ENABLED == 'true' && github.event_name == 'workflow_dispatch' && vars.DEPLOY_STAGING_ENABLED == 'true'
     permissions:
       contents: read
       id-token: write
