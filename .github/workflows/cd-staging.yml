@@ -147,6 +147,9 @@ jobs:
               python3 .github/scripts/validate_environment_window.py --action deploy
           fi
 
+      - name: Verify image is pullable without credentials
+        run: docker pull "${IMAGE_REFERENCE}"
+
       - name: Validate the Terraform-managed HML deploy role ARN
         env:
           DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN_HML || '' }}
