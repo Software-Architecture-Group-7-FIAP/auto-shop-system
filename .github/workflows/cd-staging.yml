@@ -110,7 +110,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      packages: read
     env:
       IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
     steps:
@@ -147,14 +146,6 @@ jobs:
               ENVIRONMENT_STAGE=hml \
               python3 .github/scripts/validate_environment_window.py --action deploy
           fi
-
-      - name: Authenticate with GHCR
-        run: |
-          set -euo pipefail
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-
-      - name: Verify image is pullable
-        run: docker pull "${IMAGE_REFERENCE}"
 
       - name: Validate the Terraform-managed HML deploy role ARN
         env:
