@@ -16,7 +16,7 @@ def test_hml_teardown_accepts_the_resolved_session_mode(monkeypatch, tmp_path) -
     class FrozenDateTime(datetime):
         @classmethod
         def now(cls, tz=None):
-            return datetime(2026, 10, 31, 16, 0, tzinfo=timezone.utc)
+            return datetime(2026, 10, 31, 17, 30, tzinfo=timezone.utc)
 
     monkeypatch.setattr(SESSION, "datetime", FrozenDateTime)
     output = tmp_path / "github-output"

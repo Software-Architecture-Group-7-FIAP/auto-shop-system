@@ -34,6 +34,15 @@ on:
         description: Optional unique ID used to correlate scheduled cleanup requests.
         required: false
         type: string
+      session_token:
+        description: Signed lifecycle capability forwarded by the coordinator.
+        required: false
+        type: string
+      emergency_cleanup:
+        description: HML-only cleanup authorized by the signed emergency capability.
+        required: false
+        default: false
+        type: boolean
       lifecycle_dispatch_id:
         description: Optional one-use coordinator authorization for automated close.
         required: false
@@ -55,7 +64,7 @@ concurrency:
 
 jobs:
   resolve_session:
-    if: vars.ENVIRONMENT_SCHEDULE_ENABLED == 'true'
+    if: github.event_name != 'schedule' || vars.ENVIRONMENT_SCHEDULE_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: operations
@@ -71,21 +80,37 @@ jobs:
       audit_start_utc: ${{ steps.window.outputs.audit_start_utc }}
       teardown_allowed: ${{ steps.window.outputs.teardown_allowed }}
       session_authorized: ${{ steps.authorize.outputs.session_authorized }}
+      emergency_authorized: ${{ steps.capability.outputs.emergency_authorized }}
       session_scope: ${{ steps.authorize.outputs.session_scope }}
     env:
       LIFECYCLE_TRUSTED_OPERATORS: ${{ vars.LIFECYCLE_TRUSTED_OPERATORS || '' }}
       LIFECYCLE_CROSS_REPO_ACTOR: ${{ vars.LIFECYCLE_CROSS_REPO_ACTOR || '' }}
     steps:
-      - name: Require main as the lifecycle coordinator source branch
+      - name: Require main or a signed coordinator dispatch on develop
         env:
-          SOURCE_REF: ${{ github.ref }}
+          REQUESTED_REF: ${{ github.ref_name }}
+          EMERGENCY_CLEANUP: ${{ inputs.emergency_cleanup }}
+          LIFECYCLE_DISPATCH_ID: ${{ inputs.lifecycle_dispatch_id }}
+          LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$SOURCE_REF" == "refs/heads/main" ]] || {
-            echo "::error::HML lifecycle operations must run from main."
-            exit 1
-          }
+          if [[ "$EMERGENCY_CLEANUP" == "true" ]]; then
+            [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$REQUESTED_REF" == "develop" ]] || {
+              echo "::error::Emergency HML cleanup must be dispatched to develop."
+              exit 1
+            }
+          elif [[ "$REQUESTED_REF" == "develop" ]]; then
+            [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$LIFECYCLE_DISPATCH_ID" =~ ^[0-9a-f]{32}$ && -n "$LIFECYCLE_SESSION_TOKEN" ]] || {
+              echo "::error::A develop stop requires the signed coordinator dispatch."
+              exit 1
+            }
+          else
+            [[ "$REQUESTED_REF" == "main" ]] || {
+              echo "::error::HML lifecycle operations must run from main."
+              exit 1
+            }
+          fi
 
       - uses: actions/checkout@v4
         with:
@@ -99,6 +124,7 @@ jobs:
           REQUESTED_STARTED_AT: ${{ inputs.started_at }}
           REQUESTED_SESSION_MODE: ${{ inputs.session_mode || 'hml' }}
           REQUESTED_SESSION_SCOPE: ${{ inputs.session_scope || 'infrastructure-only' }}
+          EMERGENCY_CLEANUP: ${{ inputs.emergency_cleanup }}
           CLEANUP_FLAG: ${{ startsWith(inputs.close_request_id, 'cleanup-') && inputs.lifecycle_dispatch_id != '' && '--cleanup-dispatch' || '' }}
         shell: bash
         run: |
@@ -108,19 +134,60 @@ jobs:
             echo "::error::This workflow closes infrastructure-only HML sessions only."
             exit 1
           }
+          resolver_args=(
+            --action teardown
+            --stage "$REQUESTED_STAGE"
+            --session-id "$REQUESTED_SESSION_ID"
+            --started-at "$REQUESTED_STARTED_AT"
+            --session-mode "$REQUESTED_SESSION_MODE"
+          )
+          if [[ "$EMERGENCY_CLEANUP" == "true" ]]; then
+            resolver_args+=(--emergency-hml-teardown)
+          elif [[ -n "$CLEANUP_FLAG" ]]; then
+            resolver_args+=(--cleanup-dispatch)
+          fi
           python3 .github/scripts/resolve_lifecycle_session.py \
-            --action teardown \
-            --stage "$REQUESTED_STAGE" \
-            --session-id "$REQUESTED_SESSION_ID" \
-            --started-at "$REQUESTED_STARTED_AT" \
-            --session-mode "$REQUESTED_SESSION_MODE" \
-            $CLEANUP_FLAG \
+            "${resolver_args[@]}" \
             --github-output "$GITHUB_OUTPUT"
 
-      - name: Require the trusted lifecycle actor before AWS credentials
+      - name: Verify the signed emergency HML capability before AWS credentials
+        id: capability
+        env:
+          EMERGENCY_CLEANUP: ${{ inputs.emergency_cleanup }}
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+          ENVIRONMENT_STAGE: hml
+          ENVIRONMENT_SESSION_ID: ${{ steps.window.outputs.session_id }}
+          ENVIRONMENT_WINDOW_STARTED_AT: ${{ steps.window.outputs.started_at }}
+          CLOSE_REQUEST_ID: ${{ inputs.close_request_id }}
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "$EMERGENCY_CLEANUP" == "true" ]]; then
+            [[ -n "$LIFECYCLE_SESSION_TOKEN" ]] || {
+              echo "::error::Emergency cleanup requires a signed HML capability."
+              exit 1
+            }
+            python3 .github/scripts/validate_environment_window.py \
+              --action teardown --stage hml --emergency-hml-teardown
+            echo "emergency_authorized=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "emergency_authorized=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Require the trusted lifecycle actor before AWS credentials
+        env:
+          EMERGENCY_AUTHORIZED: ${{ steps.capability.outputs.emergency_authorized }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$EMERGENCY_AUTHORIZED" == "true" ]]; then
+            echo "Verified signed emergency HML capability."
+            exit 0
+          fi
           [[ "$GITHUB_ACTOR" == "$LIFECYCLE_TRIGGERING_ACTOR" ]] || { echo "::error::The triggering actor does not match."; exit 1; }
           [[ -n "$LIFECYCLE_TRUSTED_OPERATORS" ]] || { echo "::error::LIFECYCLE_TRUSTED_OPERATORS must be set."; exit 1; }
           case ",$LIFECYCLE_TRUSTED_OPERATORS," in
@@ -141,13 +208,21 @@ jobs:
         env:
           LIFECYCLE_DISPATCH_ID: ${{ inputs.lifecycle_dispatch_id }}
           CLOSE_REQUEST_ID: ${{ inputs.close_request_id }}
+          EMERGENCY_AUTHORIZED: ${{ steps.capability.outputs.emergency_authorized }}
           SESSION_ID: ${{ steps.window.outputs.session_id }}
           STARTED_AT: ${{ steps.window.outputs.started_at }}
           LIFECYCLE_TABLE_NAME: auto-shop-staging-lifecycle-sessions
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -n "$LIFECYCLE_DISPATCH_ID" ]]; then
+          dispatch_id_for_ledger="$LIFECYCLE_DISPATCH_ID"
+          if [[ "$EMERGENCY_AUTHORIZED" == "true" ]]; then
+            [[ "$LIFECYCLE_DISPATCH_ID" =~ ^[0-9a-f]{32}$ ]] || {
+              echo "::error::Emergency cleanup requires a correlated dispatch ID."
+              exit 1
+            }
+            dispatch_id_for_ledger=""
+          elif [[ -n "$LIFECYCLE_DISPATCH_ID" ]]; then
             [[ "$LIFECYCLE_DISPATCH_ID" =~ ^[0-9a-f]{32}$ ]] || {
               echo "::error::The lifecycle dispatch ID must contain 32 lowercase hexadecimal characters."
               exit 1
@@ -168,7 +243,7 @@ jobs:
             --session-id "$SESSION_ID" \
             --stage hml \
             --started-at "$STARTED_AT" \
-            --dispatch-id "$LIFECYCLE_DISPATCH_ID" \
+            --dispatch-id "$dispatch_id_for_ledger" \
             --github-output "$GITHUB_OUTPUT"
           session_scope="$(awk -F= '$1 == "session_scope" {print $2}' "$GITHUB_OUTPUT" | tail -n 1)"
           [[ "$session_scope" == "infrastructure-only" ]] || {
@@ -205,25 +280,43 @@ jobs:
       LIFECYCLE_TRUSTED_OPERATORS: ${{ vars.LIFECYCLE_TRUSTED_OPERATORS || '' }}
       LIFECYCLE_CROSS_REPO_ACTOR: ${{ vars.LIFECYCLE_CROSS_REPO_ACTOR || '' }}
       LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+      LIFECYCLE_EMERGENCY_CAPABILITY_VERIFIED: ${{ needs.resolve_session.outputs.emergency_authorized }}
+      EMERGENCY_CLEANUP: ${{ inputs.emergency_cleanup }}
+      CLOSE_REQUEST_ID: ${{ inputs.close_request_id }}
       K8S_INFRA_REPOSITORY: ${{ vars.K8S_INFRA_REPOSITORY }}
       K8S_INFRA_REF: ${{ vars.K8S_INFRA_REF }}
       DATABASE_INFRA_REPOSITORY: ${{ vars.DATABASE_INFRA_REPOSITORY }}
       DATABASE_INFRA_REF: ${{ vars.DATABASE_INFRA_REF }}
       EXPECTED_AWS_ACCOUNT_ID: "035611741563"
     steps:
-      - name: Require main and the original trusted lifecycle actor
+      - name: Require main or a verified coordinator stop from develop
         env:
-          SOURCE_REF: ${{ github.ref }}
+          REQUESTED_REF: ${{ github.ref_name }}
+          DEVELOP_DISPATCH_AUTHORIZED: ${{ needs.resolve_session.outputs.session_authorized }}
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$SOURCE_REF" == "refs/heads/main" ]] || { echo "::error::HML lifecycle operations must run from main."; exit 1; }
+          if [[ "$EMERGENCY_CLEANUP" == "true" ]]; then
+            [[ "$REQUESTED_REF" == "develop" && "$LIFECYCLE_EMERGENCY_CAPABILITY_VERIFIED" == "true" ]] || {
+              echo "::error::Emergency teardown requires the verified capability on develop."
+              exit 1
+            }
+          elif [[ "$REQUESTED_REF" == "develop" ]]; then
+            [[ "$DEVELOP_DISPATCH_AUTHORIZED" == "true" ]] || {
+              echo "::error::A develop stop requires a consumed coordinator authorization."
+              exit 1
+            }
+          else
+            [[ "$REQUESTED_REF" == "main" ]] || { echo "::error::HML lifecycle operations must run from main."; exit 1; }
+          fi
           [[ "$GITHUB_ACTOR" == "$LIFECYCLE_TRIGGERING_ACTOR" ]] || { echo "::error::The triggering actor does not match."; exit 1; }
-          [[ -n "$LIFECYCLE_TRUSTED_OPERATORS" ]] || { echo "::error::LIFECYCLE_TRUSTED_OPERATORS must be set."; exit 1; }
-          case ",$LIFECYCLE_TRUSTED_OPERATORS," in
-            *,"$GITHUB_ACTOR"*) ;;
-            *) echo "::error::GitHub actor not in allowlist."; exit 1;;
-          esac
+          if [[ "$LIFECYCLE_EMERGENCY_CAPABILITY_VERIFIED" != "true" ]]; then
+            [[ -n "$LIFECYCLE_TRUSTED_OPERATORS" ]] || { echo "::error::LIFECYCLE_TRUSTED_OPERATORS must be set."; exit 1; }
+            case ",$LIFECYCLE_TRUSTED_OPERATORS," in
+              *,"$GITHUB_ACTOR"*) ;;
+              *) echo "::error::GitHub actor not in allowlist."; exit 1;;
+            esac
+          fi
           echo "Authorization passed for $GITHUB_ACTOR"
 
       - uses: actions/checkout@v4
@@ -241,7 +334,9 @@ jobs:
           SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
           STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
           CLOSE_REQUEST_ID: ${{ inputs.close_request_id }}
+          EMERGENCY_CLEANUP: ${{ inputs.emergency_cleanup }}
           CLEANUP_FLAG: ${{ startsWith(inputs.close_request_id, 'cleanup-') && inputs.lifecycle_dispatch_id != '' && '--cleanup-dispatch' || '' }}
+          EMERGENCY_FLAG: ${{ inputs.emergency_cleanup && '--emergency-cleanup' || '' }}
         run: >-
           python3 .github/scripts/assert_lifecycle_close_needed.py
           --stage hml
@@ -249,6 +344,7 @@ jobs:
           --started-at "$STARTED_AT"
           --close-request-id "$CLOSE_REQUEST_ID"
           $CLEANUP_FLAG
+          $EMERGENCY_FLAG
           --github-output "$GITHUB_OUTPUT"
 
       - name: Configure the lifecycle stop role
@@ -265,12 +361,34 @@ jobs:
           SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
           STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
           DISPATCH_ID: ${{ inputs.lifecycle_dispatch_id }}
-        run: >-
-          python3 .github/scripts/lifecycle_session_ledger.py begin-close
-          --session-id "$SESSION_ID"
-          --stage hml
-          --started-at "$STARTED_AT"
-          --dispatch-id "$DISPATCH_ID"
+          EMERGENCY_AUTHORIZED: ${{ needs.resolve_session.outputs.emergency_authorized }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          dispatch_id="$DISPATCH_ID"
+          if [[ "$EMERGENCY_AUTHORIZED" == "true" ]]; then dispatch_id=""; fi
+          python3 .github/scripts/lifecycle_session_ledger.py begin-close \
+            --session-id "$SESSION_ID" \
+            --stage hml \
+            --started-at "$STARTED_AT" \
+            --dispatch-id "$dispatch_id"
+
+      - name: Sign the lifecycle capability for coordinated child dispatches
+        if: steps.close_decision.outputs.close_needed == 'true'
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          CLOSE_REQUEST_ID: ${{ inputs.close_request_id }}
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$EMERGENCY_CLEANUP" == "true" ]]; then
+            python3 .github/scripts/sign_lifecycle_session.py --emergency-hml-cleanup
+          else
+            python3 .github/scripts/sign_lifecycle_session.py
+          fi
 
       - name: Record when no close is needed
         if: steps.close_decision.outputs.close_needed == 'false'
@@ -476,6 +594,9 @@ jobs:
       LIFECYCLE_TRUSTED_OPERATORS: ${{ vars.LIFECYCLE_TRUSTED_OPERATORS || '' }}
       LIFECYCLE_CROSS_REPO_ACTOR: ${{ vars.LIFECYCLE_CROSS_REPO_ACTOR || '' }}
       LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
+      LIFECYCLE_EMERGENCY_CAPABILITY_VERIFIED: ${{ needs.resolve_session.outputs.emergency_authorized }}
+      EMERGENCY_CLEANUP: ${{ inputs.emergency_cleanup }}
+      CLOSE_REQUEST_ID: ${{ inputs.close_request_id }}
       K8S_INFRA_REPOSITORY: ${{ vars.K8S_INFRA_REPOSITORY }}
       SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
       STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
@@ -483,18 +604,55 @@ jobs:
       CLEANUP_END: ${{ needs.resolve_session.outputs.cleanup_end_utc }}
       AUDIT_START: ${{ needs.resolve_session.outputs.audit_start_utc }}
     steps:
-      - name: Require main and the trusted lifecycle actor
+      - name: Require main or a verified coordinator stop from develop
         env:
-          SOURCE_REF: ${{ github.ref }}
+          REQUESTED_REF: ${{ github.ref_name }}
+          DEVELOP_DISPATCH_AUTHORIZED: ${{ needs.resolve_session.outputs.session_authorized }}
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$SOURCE_REF" == "refs/heads/main" ]] || { echo "::error::HML lifecycle operations must run from main."; exit 1; }
-          bash -c "set -euo pipefail; [[ "${GITHUB_ACTOR}" == "${LIFECYCLE_TRIGGERING_ACTOR}" ]] || { echo "::error::The triggering actor does not match."; exit 1; }; [[ -n "${LIFECYCLE_TRUSTED_OPERATORS}" ]] || { echo "::error::LIFECYCLE_TRUSTED_OPERATORS must be set."; exit 1; }; case ",${LIFECYCLE_TRUSTED_OPERATORS}," in   *,"${GITHUB_ACTOR}"*) ;;   *) echo "::error::GitHub actor not in allowlist."; exit 1;; esac; if [[ "$*" == *"require-dispatch-actor"* ]]; then   [[ -n "${LIFECYCLE_CROSS_REPO_ACTOR}" ]] || { echo "::error::LIFECYCLE_CROSS_REPO_ACTOR must be set."; exit 1; };   case ",${LIFECYCLE_TRUSTED_OPERATORS}," in     *,"${LIFECYCLE_CROSS_REPO_ACTOR}"*) ;;     *) echo "::error::Dispatch actor not in allowlist."; exit 1;;   esac; fi; echo Authorization passed."
+          if [[ "$EMERGENCY_CLEANUP" == "true" ]]; then
+            [[ "$REQUESTED_REF" == "develop" && "$LIFECYCLE_EMERGENCY_CAPABILITY_VERIFIED" == "true" ]] || {
+              echo "::error::Emergency teardown audit requires the verified capability on develop."
+              exit 1
+            }
+          elif [[ "$REQUESTED_REF" == "develop" ]]; then
+            [[ "$DEVELOP_DISPATCH_AUTHORIZED" == "true" ]] || {
+              echo "::error::A develop audit requires a consumed coordinator authorization."
+              exit 1
+            }
+          else
+            [[ "$REQUESTED_REF" == "main" ]] || { echo "::error::HML lifecycle operations must run from main."; exit 1; }
+          fi
+          [[ "$GITHUB_ACTOR" == "$LIFECYCLE_TRIGGERING_ACTOR" ]] || { echo "::error::The triggering actor does not match."; exit 1; }
+          if [[ "$LIFECYCLE_EMERGENCY_CAPABILITY_VERIFIED" != "true" ]]; then
+            [[ -n "$LIFECYCLE_TRUSTED_OPERATORS" ]] || { echo "::error::LIFECYCLE_TRUSTED_OPERATORS must be set."; exit 1; }
+            case ",$LIFECYCLE_TRUSTED_OPERATORS," in
+              *,"$GITHUB_ACTOR"*) ;;
+              *) echo "::error::GitHub actor not in allowlist."; exit 1;;
+            esac
+          fi
+          echo "Authorization passed for $GITHUB_ACTOR"
 
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: Sign the lifecycle capability for read-only audit dispatch
+        env:
+          SESSION_ID: ${{ needs.resolve_session.outputs.session_id }}
+          STARTED_AT: ${{ needs.resolve_session.outputs.started_at }}
+          SESSION_MODE: ${{ needs.resolve_session.outputs.session_mode }}
+          CLOSE_REQUEST_ID: ${{ inputs.close_request_id }}
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$EMERGENCY_CLEANUP" == "true" ]]; then
+            python3 .github/scripts/sign_lifecycle_session.py --emergency-hml-cleanup
+          else
+            python3 .github/scripts/sign_lifecycle_session.py
+          fi
 
       - name: Configure the lifecycle stop role for audit authorization
         uses: aws-actions/configure-aws-credentials@v4

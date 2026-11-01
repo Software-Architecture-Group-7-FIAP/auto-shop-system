@@ -32,6 +32,13 @@ COMPLETED_CONCLUSIONS = {
     "stale",
 }
 FIRST_MUTATION_MARKER = "Apply the exact K8s foundation opening plan"
+CLOSE_MUTATION_MARKERS = (
+    "Apply the reviewed HML namespace teardown plan",
+    "Destroy the ephemeral HML database",
+    "Apply the reviewed K8s platform teardown plan",
+    "Apply the reviewed compute-only foundation teardown plan",
+    "Apply the reviewed NAT shutdown plan",
+)
 RUN_TITLE_SUFFIX = re.compile(r"(?::[0-9a-f]{32}|:\d+)$")
 
 
@@ -44,26 +51,52 @@ def _matches_opening_title(title: str, base_title: str) -> bool:
 
 def _runs(repository: str, workflow: str, local_day: date, token: str) -> list[dict[str, object]]:
     day_start = datetime.combine(local_day, time.min, tzinfo=BRT).astimezone(timezone.utc)
-    query = urlencode({
-        "created": ">=" + day_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "per_page": "100",
-    })
-    request = Request(
-        f"{API_ROOT}/repos/{repository}/actions/workflows/{workflow}/runs?{query}",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "auto-shop-lifecycle-coordinator",
-        },
-    )
-    with urlopen(request, timeout=30) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    if not isinstance(payload, dict) or not isinstance(payload.get("workflow_runs"), list):
-        raise ValueError("GitHub returned an invalid workflow run listing")
-    if int(payload.get("total_count", 0)) > 100:
-        raise ValueError(f"More than 100 {workflow} runs prevent a safe idempotency check")
-    return [run for run in payload["workflow_runs"] if isinstance(run, dict)]
+    results: list[dict[str, object]] = []
+    expected_count: int | None = None
+    page = 1
+    while expected_count is None or len(results) < expected_count:
+        query = urlencode({
+            "created": ">=" + day_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "per_page": "100",
+            "page": str(page),
+        })
+        request = Request(
+            f"{API_ROOT}/repos/{repository}/actions/workflows/{workflow}/runs?{query}",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {token}",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "auto-shop-lifecycle-coordinator",
+            },
+        )
+        with urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        if not isinstance(payload, dict) or not isinstance(payload.get("workflow_runs"), list):
+            raise ValueError(f"GitHub returned an invalid {workflow} run listing")
+        total_count = payload.get("total_count")
+        entries = payload["workflow_runs"]
+        if isinstance(total_count, bool) or not isinstance(total_count, int) or total_count < 0:
+            raise ValueError(f"GitHub returned an invalid {workflow} run count")
+        if total_count > 100:
+            raise ValueError(f"More than 100 {workflow} runs prevent a safe idempotency check")
+        if expected_count is None:
+            expected_count = total_count
+        elif total_count != expected_count:
+            raise ValueError(f"GitHub returned an inconsistent {workflow} run count")
+        if not all(isinstance(run, dict) for run in entries):
+            raise ValueError(f"GitHub returned malformed {workflow} run entries")
+        results.extend(entries)
+        run_ids = [run.get("id") for run in results]
+        if len(run_ids) != len(set(run_ids)):
+            raise ValueError(f"GitHub returned duplicate {workflow} run IDs")
+        if len(results) >= expected_count:
+            break
+        if not entries:
+            raise ValueError(f"GitHub returned an incomplete {workflow} run listing")
+        page += 1
+    if expected_count is None or len(results) != expected_count:
+        raise ValueError(f"GitHub returned an incomplete {workflow} run listing")
+    return results
 
 
 def _runs_for_brt_day(runs: list[dict[str, object]], local_day: date) -> list[dict[str, object]]:
@@ -80,7 +113,7 @@ def _runs_for_brt_day(runs: list[dict[str, object]], local_day: date) -> list[di
 
 def _opening_mutation_started(repository: str, run_id: object, token: str) -> bool:
     request = Request(
-        f"{API_ROOT}/repos/{repository}/actions/runs/{run_id}/jobs?per_page=100",
+        f"{API_ROOT}/repos/{repository}/actions/runs/{run_id}/jobs?filter=all&per_page=100",
         headers={
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",
@@ -95,34 +128,52 @@ def _opening_mutation_started(repository: str, run_id: object, token: str) -> bo
     total_count = payload.get("total_count")
     if not isinstance(total_count, int):
         raise ValueError("GitHub returned an invalid job count")
-    if total_count > 100:
-        raise ValueError("Too many jobs prevent a safe opening-mutation check")
-    open_jobs = [job for job in payload["jobs"] if isinstance(job, dict) and job.get("name") == "open"]
-    if len(open_jobs) > 1:
-        raise ValueError("Multiple coordinator open jobs were found; refusing teardown")
-    if not open_jobs:
+    if total_count > 100 or total_count != len(payload["jobs"]):
+        raise ValueError("The opening job listing is incomplete; refusing teardown")
+    if not all(isinstance(job, dict) for job in payload["jobs"]):
+        raise ValueError("The opening job listing contains malformed entries")
+    return has_started_mutating_job(payload["jobs"])
+
+
+def has_started_mutating_job(jobs: list[dict[str, object]]) -> bool:
+    """Find mutation across every opening attempt so a rerun cannot hide earlier work."""
+    open_jobs = [job for job in jobs if job.get("name") == "open"]
+    for open_job in open_jobs:
+        if open_job.get("conclusion") == "skipped":
+            continue
+        steps = open_job.get("steps")
+        if not isinstance(steps, list):
+            raise ValueError("The coordinator open job has no readable step list")
+        markers = [step for step in steps if isinstance(step, dict) and step.get("name") == FIRST_MUTATION_MARKER]
+        if len(markers) != 1:
+            raise ValueError("The expected first-mutation marker is missing or ambiguous; refusing teardown")
+        marker = markers[0]
+        if marker.get("conclusion") == "skipped":
+            continue
+        if marker.get("started_at") or marker.get("conclusion") is not None:
+            return True
+        raise ValueError("The first-mutation marker has no conclusive execution state; refusing teardown")
+    return False
+
+
+def close_run_proves_no_mutation(jobs: list[dict[str, object]]) -> bool:
+    """Require complete evidence that every possible teardown mutation was skipped."""
+    close_jobs = [job for job in jobs if job.get("name") == "close"]
+    if len(close_jobs) != 1:
         return False
-    if open_jobs[0].get("conclusion") == "skipped":
-        return False
-    steps = open_jobs[0].get("steps")
+    steps = close_jobs[0].get("steps")
     if not isinstance(steps, list):
-        raise ValueError("The coordinator open job has no readable step list")
-    markers = [
-        step for step in steps
-        if isinstance(step, dict) and step.get("name") == FIRST_MUTATION_MARKER
-    ]
-    if len(markers) != 1:
-        raise ValueError("The expected first-mutation marker is missing or ambiguous; refusing teardown")
-    marker = markers[0]
-    conclusion = marker.get("conclusion")
-    if conclusion == "skipped":
-        # GitHub may populate started_at for skipped steps; the conclusion is authoritative.
         return False
-    if conclusion is not None or marker.get("started_at"):
-        return True
-    raise ValueError(
-        "The first-mutation marker has no conclusive execution state; refusing teardown"
-    )
+    for marker_name in CLOSE_MUTATION_MARKERS:
+        markers = [step for step in steps if isinstance(step, dict) and step.get("name") == marker_name]
+        if len(markers) != 1:
+            return False
+        marker = markers[0]
+        if marker.get("conclusion") == "skipped":
+            continue
+        if marker.get("started_at") or marker.get("conclusion") is not None:
+            return False
+    return True
 
 
 def close_run_is_safe_to_retry(repository: str, run: dict[str, object], token: str) -> bool:
@@ -130,31 +181,56 @@ def close_run_is_safe_to_retry(repository: str, run: dict[str, object], token: s
     run_id = run.get("id")
     if not isinstance(run_id, int):
         raise ValueError("Close run has no valid numeric ID")
-    request = Request(
-        f"{API_ROOT}/repos/{repository}/actions/runs/{run_id}/jobs?per_page=100",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "auto-shop-lifecycle-coordinator",
-        },
-    )
+    attempts = run.get("run_attempt", 1)
+    if isinstance(attempts, bool) or not isinstance(attempts, int) or attempts < 1:
+        raise ValueError("Close run has an invalid attempt count")
+    if str(run.get("status", "")) in ACTIVE_STATUSES:
+        return False
     try:
-        with urlopen(request, timeout=30) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        for attempt in range(1, attempts + 1):
+            request = Request(
+                f"{API_ROOT}/repos/{repository}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100",
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "Authorization": f"Bearer {token}",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                    "User-Agent": "auto-shop-lifecycle-coordinator",
+                },
+            )
+            with urlopen(request, timeout=30) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list):
+                raise ValueError("GitHub returned an invalid close job listing")
+            jobs = payload["jobs"]
+            total_count = payload.get("total_count")
+            if not isinstance(total_count, int) or total_count != len(jobs) or total_count > 100:
+                raise ValueError("GitHub returned an incomplete close job listing")
+            if not all(isinstance(job, dict) for job in jobs):
+                raise ValueError("GitHub returned malformed close jobs")
+            if not close_run_proves_no_mutation(jobs):
+                return False
     except (HTTPError, URLError, OSError, json.JSONDecodeError) as error:
         raise ValueError(f"Failed to fetch close run jobs: {error}") from error
-    if not isinstance(payload, dict) or not isinstance(payload.get("jobs"), list):
-        raise ValueError("GitHub returned an invalid close job listing")
-
-    # If the close job (which performs teardown) started, it's not safe to retry
-    close_jobs = [job for job in payload.get("jobs", []) if isinstance(job, dict) and job.get("name") == "close"]
-    if close_jobs:
-        close_job = close_jobs[0]
-        # If the close job started (has started_at), it's not safe to retry
-        if close_job.get("started_at"):
-            return False
     return True
+
+
+def emergency_cleanup_is_authorized(
+    *,
+    stage: str,
+    close_request_id: str,
+    event_name: str,
+    workflow: str,
+    ref: str,
+    capability_verified: str,
+) -> bool:
+    return (
+        stage == "hml"
+        and re.fullmatch(r"emergency-[1-9][0-9]{0,19}", close_request_id) is not None
+        and event_name == "workflow_dispatch"
+        and workflow == "HML infrastructure-only stop"
+        and ref == "refs/heads/develop"
+        and capability_verified == "true"
+    )
 
 
 def _opening_close_decision(
@@ -191,6 +267,7 @@ def main() -> int:
     parser.add_argument("--started-at", required=True)
     parser.add_argument("--close-request-id", default="")
     parser.add_argument("--cleanup-dispatch", action="store_true")
+    parser.add_argument("--emergency-cleanup", action="store_true")
     parser.add_argument("--github-output", required=True)
     arguments = parser.parse_args()
 
@@ -202,6 +279,19 @@ def main() -> int:
         return 1
     if arguments.close_request_id and not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", arguments.close_request_id):
         print("::error::close_request_id may contain only letters, digits, dot, underscore, and hyphen (maximum 64 characters).", file=sys.stderr)
+        return 1
+    if arguments.cleanup_dispatch and arguments.emergency_cleanup:
+        print("::error::Choose only one cleanup authorization mode.", file=sys.stderr)
+        return 1
+    if arguments.emergency_cleanup and not emergency_cleanup_is_authorized(
+        stage=arguments.stage,
+        close_request_id=arguments.close_request_id,
+        event_name=os.environ.get("GITHUB_EVENT_NAME", ""),
+        workflow=os.environ.get("GITHUB_WORKFLOW", ""),
+        ref=os.environ.get("GITHUB_REF", ""),
+        capability_verified=os.environ.get("LIFECYCLE_EMERGENCY_CAPABILITY_VERIFIED", ""),
+    ):
+        print("::error::Emergency cleanup requires a verified HML capability on the develop stop workflow.", file=sys.stderr)
         return 1
 
     match = SESSION_PATTERN.fullmatch(arguments.session_id)
@@ -217,7 +307,11 @@ def main() -> int:
     if started_at.astimezone(BRT).date() != session_day:
         print("::error::The resolved session start does not belong to the session's BRT date.", file=sys.stderr)
         return 1
-    if not arguments.cleanup_dispatch and datetime.now(timezone.utc).astimezone(BRT).date() != session_day:
+    if (
+        not arguments.cleanup_dispatch
+        and not arguments.emergency_cleanup
+        and datetime.now(timezone.utc).astimezone(BRT).date() != session_day
+    ):
         print("::error::The close guard is outside the session's BRT calendar day.", file=sys.stderr)
         return 1
 

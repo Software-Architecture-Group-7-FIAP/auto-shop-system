@@ -33,6 +33,8 @@ AUDIT_RETENTION_SECONDS = 30 * 24 * 60 * 60
 CLOSE_LEASE_SECONDS = 6 * 60 * 60
 GSI_NAME = "status-expiry-index"
 SESSION_SCOPES = {"integrated", "infrastructure-only", "release-validation"}
+STOP_WORKFLOW_NAME = "HML infrastructure-only stop"
+START_WORKFLOW_NAME = "Coordinated environment start"
 
 
 class LedgerError(ValueError):
@@ -210,12 +212,14 @@ def _session_values(session_id: str, stage: str, started_at: str) -> tuple[datet
     return parsed_start, local_end, expires_at, ttl
 
 
-def _operator(*, allow_scheduled_stop: bool = False) -> str:
+def _operator(*, allow_scheduled_stop: bool = False, allow_emergency_stop: bool = False) -> str:
     actor = _require_original_actor()
+    if allow_emergency_stop and _emergency_cleanup_capability_verified("hml"):
+        return actor
     if (
         allow_scheduled_stop
         and os.environ.get("GITHUB_EVENT_NAME") == "schedule"
-        and os.environ.get("GITHUB_WORKFLOW") == "Coordinated environment stop"
+        and os.environ.get("GITHUB_WORKFLOW") == STOP_WORKFLOW_NAME
         and os.environ.get("GITHUB_REF") == "refs/heads/main"
     ):
         return actor
@@ -258,6 +262,97 @@ def _require_main_branch() -> None:
         raise LedgerError("Lifecycle authorization is allowed only from refs/heads/main.")
 
 
+def _verified_normal_stop_dispatch(session_id: str, dispatch_id: str) -> bool:
+    if not SESSION_PATTERN.fullmatch(session_id) or not DISPATCH_ID_PATTERN.fullmatch(dispatch_id):
+        return False
+    try:
+        state = _get_item(session_id, "STATE", consistent=True)
+        authorization = _get_item(session_id, f"AUTH#DISPATCH#{dispatch_id}", consistent=True)
+        event_inputs = _inputs_from_event()
+        run_id, run_attempt = _run_identity()
+        actor = _validate_dispatch_actor(authorization, state)
+    except LedgerError:
+        return False
+    return (
+        event_inputs.get("session_id") == session_id
+        and event_inputs.get("lifecycle_dispatch_id") == dispatch_id
+        and event_inputs.get("started_at") == state.get("started_at")
+        and event_inputs.get("session_mode") == state.get("session_mode")
+        and authorization.get("action") == "close"
+        and authorization.get("status") == "consumed"
+        and authorization.get("source_actor") == state.get("operator")
+        and authorization.get("source_workflow") == START_WORKFLOW_NAME
+        and authorization.get("source_ref") == "refs/heads/main"
+        and authorization.get("consumer_actor") == actor
+        and authorization.get("consumer_run_id") == run_id
+        and int(authorization.get("consumer_run_attempt", 0)) == run_attempt
+        and authorization.get("target_repository") == os.environ.get("GITHUB_REPOSITORY")
+        and authorization.get("target_workflow") == STOP_WORKFLOW_NAME
+        and authorization.get("target_ref") == os.environ.get("GITHUB_REF") == "refs/heads/develop"
+    )
+
+
+def _verified_consumed_source_close(
+    session_id: str,
+    dispatch_id: str,
+    child_authorization: dict[str, Any],
+    state: dict[str, Any],
+) -> bool:
+    if not DISPATCH_ID_PATTERN.fullmatch(dispatch_id):
+        return False
+    try:
+        source_authorization = _get_item(
+            session_id,
+            f"AUTH#DISPATCH#{dispatch_id}",
+            consistent=True,
+        )
+    except LedgerError:
+        return False
+    source_run_id = child_authorization.get("source_run_id")
+    source_run_attempt = int(child_authorization.get("source_run_attempt", 0))
+    source_repository = child_authorization.get("source_repository")
+    return (
+        child_authorization.get("source_workflow") == STOP_WORKFLOW_NAME
+        and child_authorization.get("source_ref") == "refs/heads/develop"
+        and child_authorization.get("source_close_authorization_verified") == "true"
+        and child_authorization.get("source_actor") == state.get("operator")
+        and source_authorization.get("action") == "close"
+        and source_authorization.get("status") == "consumed"
+        and source_authorization.get("source_actor") == state.get("operator")
+        and source_authorization.get("source_workflow") == START_WORKFLOW_NAME
+        and source_authorization.get("source_ref") == "refs/heads/main"
+        and source_authorization.get("target_repository") == source_repository
+        and source_authorization.get("target_workflow") == STOP_WORKFLOW_NAME
+        and source_authorization.get("target_ref") == "refs/heads/develop"
+        and source_authorization.get("consumer_run_id") == source_run_id
+        and int(source_authorization.get("consumer_run_attempt", 0)) == source_run_attempt
+        and source_authorization.get("consumer_actor") == source_authorization.get("dispatch_actor")
+        and source_authorization.get("dispatch_actor") == child_authorization.get("dispatch_actor")
+    )
+
+
+def _require_stop_coordinator_branch(*, session_id: str = "", dispatch_id: str = "") -> None:
+    if os.environ.get("GITHUB_WORKFLOW") != STOP_WORKFLOW_NAME:
+        raise LedgerError("The HML stop coordinator must run from main or prove an authorized close on develop.")
+    if os.environ.get("GITHUB_REF") == "refs/heads/main":
+        return
+    if os.environ.get("GITHUB_REF") == "refs/heads/develop":
+        if _emergency_cleanup_capability_verified("hml") or _verified_normal_stop_dispatch(session_id, dispatch_id):
+            return
+    raise LedgerError("The HML stop coordinator must run from main or prove an authorized close on develop.")
+
+
+def _emergency_cleanup_capability_verified(stage: str) -> bool:
+    return (
+        stage == "hml"
+        and os.environ.get("LIFECYCLE_EMERGENCY_CAPABILITY_VERIFIED") == "true"
+        and os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+        and os.environ.get("GITHUB_WORKFLOW") == STOP_WORKFLOW_NAME
+        and os.environ.get("GITHUB_REF") == "refs/heads/develop"
+        and re.fullmatch(r"emergency-[1-9][0-9]*", os.environ.get("CLOSE_REQUEST_ID", "")) is not None
+    )
+
+
 def _run_identity() -> tuple[str, int]:
     run_id = _required_environment("GITHUB_RUN_ID")
     raw_attempt = _required_environment("GITHUB_RUN_ATTEMPT")
@@ -279,7 +374,7 @@ def _require_safe_retry_context(
         or session_mode != "hml"
         or session_scope != "infrastructure-only"
         or os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
-        or os.environ.get("GITHUB_WORKFLOW") != "HML infrastructure-only start"
+        or os.environ.get("GITHUB_WORKFLOW") != "Coordinated environment start"
     ):
         raise LedgerError("Safe retry ownership handoff is limited to the guarded HML infrastructure-only start.")
     if not RUN_ID_PATTERN.fullmatch(source_run_id) or source_run_id == run_id:
@@ -544,7 +639,7 @@ def resolve_session_scope(
     *,
     dispatch_id: str = "",
 ) -> str:
-    _require_main_branch()
+    _require_stop_coordinator_branch(session_id=session_id, dispatch_id=dispatch_id)
     _session_values(session_id, stage, started_at)
     run_id, run_attempt = _run_identity()
     state = _get_item(session_id, "STATE", consistent=True)
@@ -567,11 +662,8 @@ def resolve_session_scope(
         ):
             raise LedgerError("The close dispatch was not consumed by this exact stop run.")
     else:
-        actor = _operator(allow_scheduled_stop=True)
-        if (
-            os.environ.get("GITHUB_EVENT_NAME") != "schedule"
-            and actor not in {state.get("operator"), state.get("close_actor")}
-        ):
+        actor = _operator(allow_scheduled_stop=True, allow_emergency_stop=True)
+        if actor not in {state.get("operator"), state.get("close_actor")} and not _emergency_cleanup_capability_verified(stage):
             raise LedgerError("The session scope may be resolved only by its trusted lifecycle operator.")
     return scope
 
@@ -586,14 +678,28 @@ def issue_dispatch_authorization(
     ref: str,
     inputs: dict[str, str],
 ) -> None:
-    _require_main_branch()
-    dispatch_actor = _configured_dispatch_actor()
     if not SESSION_PATTERN.fullmatch(session_id):
         raise LedgerError("The lifecycle session identifier is malformed.")
     if not DISPATCH_ID_PATTERN.fullmatch(dispatch_id):
         raise LedgerError("The lifecycle dispatch identifier is malformed.")
     if action not in {"open", "health", "close", "cleanup-close", "audit"}:
         raise LedgerError("The lifecycle dispatch action is not allowed.")
+    emergency_close = _emergency_cleanup_capability_verified(session_id.split("-", 1)[0])
+    source_close_dispatch_id = ""
+    if os.environ.get("GITHUB_REF") == "refs/heads/develop":
+        if action not in {"close", "audit"}:
+            raise LedgerError(
+                "Lifecycle dispatch authorization is allowed only from main or a verified emergency close/audit on develop."
+            )
+        if not emergency_close:
+            source_close_dispatch_id = _inputs_from_event().get("lifecycle_dispatch_id", "")
+            if not _verified_normal_stop_dispatch(session_id, source_close_dispatch_id):
+                raise LedgerError(
+                    "Develop-branch child authorization requires a consumed normal close or verified emergency capability."
+                )
+    elif os.environ.get("GITHUB_REF") != "refs/heads/main":
+        raise LedgerError("Lifecycle dispatch authorization is allowed only from main or verified stop work on develop.")
+    dispatch_actor = _configured_dispatch_actor()
     run_id, run_attempt = _run_identity()
     state = _get_item(session_id, "STATE")
     now = int(time.time())
@@ -669,7 +775,11 @@ def issue_dispatch_authorization(
         "source_run_id": _s(run_id),
         "source_run_attempt": _n(run_attempt),
         "source_workflow": _s(os.environ.get("GITHUB_WORKFLOW", "")),
+        "source_repository": _s(os.environ.get("GITHUB_REPOSITORY", "")),
         "source_ref": _s(os.environ.get("GITHUB_REF", "")),
+        "emergency_capability_verified": _s("true" if emergency_close else "false"),
+        "source_close_dispatch_id": _s(source_close_dispatch_id),
+        "source_close_authorization_verified": _s("true" if source_close_dispatch_id else "false"),
         "stage": _s(state["stage"]),
         "target_repository": _s(repository),
         "target_workflow": _s(workflow),
@@ -694,6 +804,10 @@ def issue_dispatch_authorization(
             or existing.get("inputs_sha256") != dispatch_inputs_hash
             or existing.get("action") != action
             or existing.get("stage") != state.get("stage")
+            or existing.get("source_repository") != os.environ.get("GITHUB_REPOSITORY", "")
+            or existing.get("emergency_capability_verified") != ("true" if emergency_close else "false")
+            or existing.get("source_close_dispatch_id") != source_close_dispatch_id
+            or existing.get("source_close_authorization_verified") != ("true" if source_close_dispatch_id else "false")
             or int(existing.get("expires_at", 0)) <= now
         ):
             raise LedgerError("A conflicting or consumed dispatch authorization already exists.")
@@ -744,12 +858,43 @@ def consume_dispatch_authorization(
     actor = _validate_dispatch_actor(authorization, state)
     if authorization.get("record_type") != "authorization" or authorization.get("stage") != state.get("stage"):
         raise LedgerError("The dispatch authorization is not bound to the session stage.")
-    if authorization.get("source_actor") != state.get("operator") or authorization.get("source_ref") != "refs/heads/main":
-        raise LedgerError("The dispatch authorization source does not match the trusted lifecycle operator and branch.")
-
     source_run_id = authorization.get("source_run_id")
     source_run_attempt = int(authorization.get("source_run_attempt", 0))
     source_workflow = authorization.get("source_workflow")
+    source_ref = authorization.get("source_ref")
+    emergency_authorization = authorization.get("emergency_capability_verified") == "true"
+    source_close_dispatch_id = authorization.get("source_close_dispatch_id", "")
+    source_close_proof = authorization.get("source_close_authorization_verified") == "true"
+    emergency_source = (
+        action in {"close", "audit"}
+        and source_ref == "refs/heads/develop"
+        and source_workflow == STOP_WORKFLOW_NAME
+        and emergency_authorization
+    )
+    normal_develop_source = (
+        action in {"close", "audit"}
+        and source_ref == "refs/heads/develop"
+        and source_workflow == STOP_WORKFLOW_NAME
+        and source_close_proof
+        and not emergency_authorization
+    )
+    if emergency_authorization and not emergency_source:
+        raise LedgerError("Emergency capability proof is valid only for a develop-branch close or audit authorization.")
+    if source_close_proof and not normal_develop_source:
+        raise LedgerError("Consumed close-dispatch proof is valid only for a develop-branch close or audit authorization.")
+    if normal_develop_source and not _verified_consumed_source_close(
+        session_id,
+        source_close_dispatch_id,
+        authorization,
+        state,
+    ):
+        raise LedgerError("The develop-branch close authorization has no matching consumed source close dispatch.")
+    if source_close_dispatch_id and not source_close_proof:
+        raise LedgerError("The source close dispatch ID is missing its verification proof.")
+    if authorization.get("source_actor") != state.get("operator") or not (
+        source_ref == "refs/heads/main" or emergency_source or normal_develop_source
+    ):
+        raise LedgerError("The dispatch authorization source does not match the trusted lifecycle operator and branch.")
     if action in {"open", "health"}:
         source_is_current_open = (
             source_workflow == "Coordinated environment start"
@@ -767,7 +912,7 @@ def consume_dispatch_authorization(
             and source_run_attempt == int(state.get("start_run_attempt", 0))
         )
         source_is_current_close = (
-            source_workflow == "Coordinated environment stop"
+            source_workflow == STOP_WORKFLOW_NAME
             and source_run_id == state.get("close_run_id")
             and source_run_attempt == int(state.get("close_run_attempt", 0))
         )
@@ -783,7 +928,7 @@ def consume_dispatch_authorization(
             raise LedgerError("The expired close dispatch was not issued by the scheduled cleanup workflow.")
     elif action == "audit":
         if (
-            source_workflow != "Coordinated environment stop"
+            source_workflow != STOP_WORKFLOW_NAME
             or state.get("status") != "closing"
             or source_run_id != state.get("close_run_id")
             or source_run_attempt != int(state.get("close_run_attempt", 0))
@@ -867,7 +1012,7 @@ def begin_close(
     *,
     dispatch_id: str,
 ) -> None:
-    _require_main_branch()
+    _require_stop_coordinator_branch(session_id=session_id, dispatch_id=dispatch_id)
     actor = _required_environment("GITHUB_ACTOR")
     if not ACTOR_PATTERN.fullmatch(actor):
         raise LedgerError("The GitHub actor is malformed.")
@@ -875,6 +1020,7 @@ def begin_close(
     _, local_end, expires_at, _ = _session_values(session_id, stage, started_at)
     now = int(time.time())
     state = _get_item(session_id, "STATE")
+    emergency_cleanup = _emergency_cleanup_capability_verified(stage)
     if state.get("started_at") != started_at or state.get("stage") != stage:
         raise LedgerError("The close request does not match the stored lifecycle session.")
     authorization: dict[str, Any] | None = None
@@ -911,17 +1057,18 @@ def begin_close(
                 raise LedgerError("Expired cleanup authorization is missing, expired, or from another workflow.")
             cleanup_authorized = True
     elif os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
-        actor = _operator()
-        if actor not in {state.get("operator"), state.get("close_actor")}:
+        actor = _operator(allow_emergency_stop=True)
+        if actor not in {state.get("operator"), state.get("close_actor")} and not emergency_cleanup:
             raise LedgerError("A manual close requires the trusted lifecycle operator.")
     elif os.environ.get("GITHUB_EVENT_NAME") == "schedule":
-        actor = _operator(allow_scheduled_stop=True)
+        actor = _operator(allow_scheduled_stop=True, allow_emergency_stop=True)
         if now < expires_at:
             raise LedgerError("The scheduled stop cannot close a session before its maximum window expires.")
     else:
         raise LedgerError("Close requires a trusted operator, an issued authorization, or the exact scheduled stop workflow.")
 
     cleanup_deadline = int(state.get("cleanup_deadline_at", 0))
+    cleanup_authorized = cleanup_authorized or emergency_cleanup
     if now >= cleanup_deadline and not cleanup_authorized:
         raise LedgerError("Same-day teardown window expired; only the daily cleanup workflow may continue it.")
 
@@ -971,7 +1118,7 @@ def begin_close(
 
 
 def finalize_close(session_id: str) -> None:
-    _operator(allow_scheduled_stop=True)
+    _operator(allow_scheduled_stop=True, allow_emergency_stop=True)
     run_id, run_attempt = _run_identity()
     now = int(time.time())
     _ddb(
@@ -993,7 +1140,7 @@ def finalize_close(session_id: str) -> None:
 
 
 def record_close_step(session_id: str, step: str, outcome: str, detail: str) -> None:
-    _operator(allow_scheduled_stop=True)
+    _operator(allow_scheduled_stop=True, allow_emergency_stop=True)
     if not re.fullmatch(r"[a-z][a-z0-9_-]{0,39}", step):
         raise LedgerError("The teardown step name is malformed.")
     if outcome not in {"success", "failure", "skipped"}:
@@ -1125,6 +1272,19 @@ def main() -> int:
     expired_parser.add_argument("--output", required=True)
     expired_parser.add_argument("--limit", type=int, default=100)
 
+    issue_parser = subparsers.add_parser("issue-dispatch")
+    issue_parser.add_argument("--session-id", required=True)
+    issue_parser.add_argument("--dispatch-id", required=True)
+    issue_parser.add_argument(
+        "--action",
+        choices=("open", "health", "close", "cleanup-close", "audit"),
+        required=True,
+    )
+    issue_parser.add_argument("--repository", required=True)
+    issue_parser.add_argument("--workflow", required=True)
+    issue_parser.add_argument("--ref", required=True)
+    issue_parser.add_argument("--inputs", required=True)
+
     arguments = parser.parse_args()
     try:
         if arguments.command == "authorize-open":
@@ -1174,6 +1334,24 @@ def main() -> int:
             output_path = Path(arguments.output)
             output_path.write_text(json.dumps(expired, indent=2) + "\n", encoding="utf-8")
             print(f"Found {len(expired)} expired lifecycle session(s).")
+        elif arguments.command == "issue-dispatch":
+            try:
+                inputs = json.loads(arguments.inputs)
+            except json.JSONDecodeError as error:
+                raise LedgerError("Dispatch inputs must be a JSON object containing only strings.") from error
+            if not isinstance(inputs, dict) or not all(
+                isinstance(key, str) and isinstance(value, str) for key, value in inputs.items()
+            ):
+                raise LedgerError("Dispatch inputs must be a JSON object containing only strings.")
+            issue_dispatch_authorization(
+                session_id=arguments.session_id,
+                dispatch_id=arguments.dispatch_id,
+                action=arguments.action,
+                repository=arguments.repository,
+                workflow=arguments.workflow,
+                ref=arguments.ref,
+                inputs=inputs,
+            )
         return 0
     except LedgerError as error:
         print(f"::error::{error}", file=sys.stderr)
