@@ -74,9 +74,13 @@ O código Terraform mantém `enable_custom_domains = false` até que os CNAMEs d
 
 Não existe autorização implícita para `terraform apply` ou deploy. Antes de qualquer sessão AWS, confira custo, região, conta, recursos e teardown conforme o ADR-0064; cada apply exige validação específica. O custo por sessão ainda precisa incluir CloudFront/S3, WAFs, ACM/domínio e o ciclo completo de criação e destruição.
 
-## Registry visibility decision
+## Registry and image delivery
 
-The GHCR package is intended to remain public. Build workflows publish immutable `sha-<commit>` images. Before requesting AWS credentials, deploy workflows verify anonymous GHCR access; EKS nodes pull that same public image directly. Deploy jobs need no `packages: read` permission, ECR mirror, registry credential, or Kubernetes `imagePullSecret`. The existing ECR repository and images are legacy artifacts and remain untouched until a separate retention review. Keep deployment gates disabled until the anonymous pull check succeeds.
+The build publishes a commit-derived `sha-<7>` image to GHCR. A deploy job runs only after `workflow_dispatch`, lifecycle authorization, and AWS OIDC authentication. It uses authenticated GHCR access through the job-scoped `GITHUB_TOKEN` with `packages: read` to pull the exact image for the workflow commit, checks its OCI revision, and mirrors it to the private ECR repository `auto-shop-system` with immutable tags. The helper verifies the existing repository's account, region, URI, and tag mutability, then confirms that the ECR image matches the GHCR source. The same ECR reference is passed to `k8s/scripts/deploy.sh`.
+
+EKS nodes pull the deployed image from private ECR. The node instance role (or Fargate pod execution role) must be allowed `ecr:GetAuthorizationToken`, `ecr:BatchGetImage`, `ecr:BatchCheckLayerAvailability`, and `ecr:GetDownloadUrlForLayer`; the authorization token action requires `Resource: "*"`. Nodes also need network access to the ECR API, ECR Docker registry, and S3 layer storage, through NAT or the required VPC endpoints. No Kubernetes `imagePullSecret` is needed when the node role supplies ECR pull access.
+
+The existing deploy roles receive ECR mirror permissions scoped to the `auto-shop-system` repository ARN, plus the resource-wide authorization-token action. Their permissions boundary is managed outside this repository and must allow these ECR actions. Before enabling a deploy gate, verify that the ECR repository exists in the configured account and region with immutable tags, the GHCR package grants Actions access to `GITHUB_TOKEN`, the external boundary permits the mirror actions, and the EKS node role and network allow private ECR pulls. These external settings were not changed or verified here.
 
 ## Terraform local
 

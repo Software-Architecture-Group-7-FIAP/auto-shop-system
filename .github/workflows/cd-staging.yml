@@ -117,8 +117,9 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      packages: read
     env:
-      IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
+      SOURCE_IMAGE: ${{ needs.build-push.outputs.ghcr_image_reference }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -137,9 +138,6 @@ jobs:
         shell: bash
         run: python3 .github/scripts/validate_environment_window.py --action operate
 
-      - name: Verify image is pullable without credentials
-        run: docker pull "${IMAGE_REFERENCE}"
-
       - name: Validate the Terraform-managed HML deploy role ARN
         env:
           DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN_HML || '' }}
@@ -156,6 +154,18 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN_HML }}
           aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Mirror authenticated GHCR image to private ECR
+        id: ecr_image
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_reference="$(python3 scripts/mirror_ghcr_image_to_ecr.py "${SOURCE_IMAGE}")"
+          echo "image_reference=${image_reference}" >> "${GITHUB_OUTPUT}"
 
       - uses: azure/setup-kubectl@v4
         with:
@@ -215,7 +225,7 @@ jobs:
 
       - name: Deploy to staging
         env:
-          IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
+          IMAGE_REFERENCE: ${{ steps.ecr_image.outputs.image_reference }}
           MIGRATION_DATABASE_SECRET_ARN: ${{ steps.eks.outputs.migration_secret_arn }}
           SERVICE_ORDER_EVENT_BUS_NAME: ${{ steps.eks.outputs.service_order_event_bus_name }}
           SERVICE_ORDER_PUBLISHER_ROLE_ARN: ${{ steps.eks.outputs.service_order_publisher_role_arn }}
@@ -252,7 +262,7 @@ jobs:
     steps:
       - name: Deploy gated until staging infra (#87)
         env:
-          IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
+          IMAGE_REFERENCE: ${{ needs.build-push.outputs.ghcr_image_reference }}
         run: |
           echo "Imagem publicada: ${IMAGE_REFERENCE}"
           echo "Deploy staging ignorado: defina a variável de repositório DEPLOY_STAGING_ENABLED=true."

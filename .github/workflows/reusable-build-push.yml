@@ -3,11 +3,11 @@ name: Reusable build and push
 on:
   workflow_call:
     outputs:
-      image_reference:
+      ghcr_image_reference:
         description: Lowercase GHCR reference with sha-* tag
-        value: ${{ jobs.build-push.outputs.image_reference }}
+        value: ${{ jobs.build-push.outputs.ghcr_image_reference }}
       image_tag:
-        description: Immutable tag (sha-<short>)
+        description: Commit-derived tag (sha-<short>)
         value: ${{ jobs.build-push.outputs.image_tag }}
 
 permissions: {}
@@ -19,7 +19,7 @@ jobs:
       contents: read
       packages: write
     outputs:
-      image_reference: ${{ steps.meta.outputs.image_reference }}
+      ghcr_image_reference: ${{ steps.meta.outputs.image_reference }}
       image_tag: ${{ steps.meta.outputs.image_tag }}
     steps:
       - uses: actions/checkout@v4
@@ -53,20 +53,3 @@ jobs:
 
       - name: Publish image reference
         run: echo "Pushed ${{ steps.meta.outputs.image_reference }}"
-
-  verify-anonymous-pull:
-    needs: build-push
-    runs-on: ubuntu-latest
-    permissions: {}
-    env:
-      IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
-    steps:
-      - name: Verify image is pullable without credentials
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${IMAGE_REFERENCE}" != ghcr.io/*:sha-* ]]; then
-            echo "Expected an immutable sha-tagged GHCR image reference." >&2
-            exit 1
-          fi
-          docker pull "${IMAGE_REFERENCE}"
