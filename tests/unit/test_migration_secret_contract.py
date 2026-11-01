@@ -58,7 +58,7 @@ def test_oidc_role_environment_subjects_match_deployment_workflows():
 
 def test_alembic_preserves_percent_encoded_passwords_and_deploy_logs_redact_driver_urls():
     alembic_env = (REPO_ROOT / "alembic/env.py").read_text(encoding="utf-8")
-    deploy_script = (REPO_ROOT / "k8s/scripts/deploy.sh").read_text(encoding="utf-8")
+    wait_for_job_script = (REPO_ROOT / "k8s/scripts/wait-for-job.sh").read_text(encoding="utf-8")
 
     assert 'settings.database_url.replace("%", "%%")' in alembic_env
-    assert r"(postgres(ql)?(\+[^:/?#[:space:]]+)?://)" in deploy_script
+    assert r"(postgres(ql)?(\+[^:]*)?://[^:/@[:space:]]+:)[^@/[:space:]]+@" in wait_for_job_script
