@@ -13,6 +13,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
+from guard_lifecycle_spend_cap import GROSS_RECORD_TYPES
+
 
 SESSION_PATTERN = re.compile(r"^(?:hml|prd)-\d{4}-\d{2}-\d{2}$")
 
@@ -36,7 +38,7 @@ def _base_report(stage: str, session_id: str, phase: str, estimate: Decimal | No
         "observed_billing": {
             "source": "AWS Cost Explorer UnblendedCost",
             "type": "observed billing",
-            "period_start_utc": (as_of.date() - timedelta(days=30)).isoformat(),
+            "period_start_utc": as_of.date().replace(day=1).isoformat(),
             "period_end_exclusive_utc": as_of.date().isoformat(),
             "data_lag_note": "Cost Explorer data can lag resource usage; the captured billing window is not a real-time meter.",
             "status": "unavailable",
@@ -77,7 +79,11 @@ def main() -> int:
     as_of = datetime.now(timezone.utc)
     report = _base_report(arguments.stage, arguments.session_id, arguments.phase, estimate, as_of)
     end_date = as_of.date()
-    start_date = end_date - timedelta(days=30)
+    start_date = end_date.replace(day=1)
+    group_by_json = json.dumps([
+        {"Type": "DIMENSION", "Key": "SERVICE"},
+        {"Type": "DIMENSION", "Key": "RECORD_TYPE"},
+    ])
     command = [
         "aws",
         "ce",
@@ -89,10 +95,11 @@ def main() -> int:
         "--metrics",
         "UnblendedCost",
         "--group-by",
-        "Type=DIMENSION,Key=SERVICE",
+        group_by_json,
         "--output",
         "json",
         "--no-cli-pager",
+        "--no-paginate",
     ]
 
     try:
@@ -106,29 +113,71 @@ def main() -> int:
             raise subprocess.CalledProcessError(1, "aws sts get-caller-identity")
         response = subprocess.run(command, check=True, capture_output=True, text=True)
         data = json.loads(response.stdout)
-        totals: dict[str, Decimal] = {}
+
+        # Fail closed if Cost Explorer would require pagination (paid API calls)
+        if data.get("NextPageToken"):
+            raise ValueError("Cost Explorer pagination would require paid API calls")
+
+        # Validate and aggregate costs (only include GROSS_RECORD_TYPES)
+        daily_totals: list[dict[str, str]] = []
+        service_totals: dict[str, Decimal] = {}
+        all_record_types: set[str] = set()
         currency = "USD"
+
         for day in data.get("ResultsByTime", []):
+            day_start = day.get("TimePeriod", {}).get("Start", "")
+            day_amount = Decimal("0")
+
             for group in day.get("Groups", []):
                 keys = group.get("Keys", [])
-                service = str(keys[0]) if keys else "Unknown"
+                if len(keys) < 2:
+                    continue
+                service = str(keys[0])
+                record_type = str(keys[1])
+                all_record_types.add(record_type)
+
                 metric = group.get("Metrics", {}).get("UnblendedCost", {})
                 amount = Decimal(str(metric.get("Amount", "0")))
-                totals[service] = totals.get(service, Decimal("0")) + amount
                 currency = str(metric.get("Unit", currency))
+
+                # Only include positive (gross) record types
+                if record_type in GROSS_RECORD_TYPES:
+                    service_totals[service] = service_totals.get(service, Decimal("0")) + amount
+                    day_amount += amount
+
+            if day_start:
+                daily_totals.append({"date": day_start, "amount": str(day_amount)})
+
+        # Fail closed if any completely unrecognized record types found
+        known_negatives = {"Credit", "Refund", "SavingsPlanNegation", "Other", "Discount", "Adjustment"}
+        unrecognized = all_record_types - set(GROSS_RECORD_TYPES) - known_negatives
+        if unrecognized:
+            raise ValueError(f"Unrecognized record types: {unrecognized}")
+
+        data_through = daily_totals[-1]["date"] if daily_totals else (end_date - timedelta(days=1)).isoformat()
+
         report["observed_billing"].update(
             {
+                "source": "AWS Cost Explorer UnblendedCost grouped by SERVICE and RECORD_TYPE",
                 "status": "available",
                 "reason": None,
                 "currency": currency,
+                "group_by": ["SERVICE", "RECORD_TYPE"],
                 "services": [
                     {"service": service, "amount": str(amount)}
-                    for service, amount in sorted(totals.items())
+                    for service, amount in sorted(service_totals.items())
                 ],
-                "query_period_days": 30,
+                "daily_totals": daily_totals,
+                "data_through_utc": data_through,
+                "period_start_utc": start_date.isoformat(),
+                "period_end_exclusive_utc": end_date.isoformat(),
+                "query_period_days": (end_date - start_date).days,
+                "gross_record_types": sorted(GROSS_RECORD_TYPES),
+                "positive_records_only": True,
             }
         )
-    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError, InvalidOperation):
+        report["aws_account_id"] = arguments.expected_account_id
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError, InvalidOperation, ValueError):
         report["observed_billing"]["reason"] = (
             "Cost Explorer identity, expected account, permissions, or billing query was unavailable."
         )

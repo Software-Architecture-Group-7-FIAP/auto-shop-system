@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/part-of: auto-shop-platform
 spec:
   backoffLimit: 1
-  activeDeadlineSeconds: 300
+  activeDeadlineSeconds: 600
   ttlSecondsAfterFinished: 600
   template:
     metadata:
@@ -59,6 +59,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: auto-shop-config
+            - secretRef:
+                name: auto-shop-secrets
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

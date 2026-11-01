@@ -9,41 +9,55 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 def test_start_is_limited_to_a_gated_infrastructure_only_hml_session() -> None:
     workflow = (WORKFLOWS / "environment-start.yml").read_text(encoding="utf-8")
 
-    hml_gate = workflow.split("  hml-gates:", 1)[1].split("  cost-preflight:", 1)[0]
+    hml_gate = workflow.split("  hml-gates:", 1)[1].split("  open:", 1)[0]
     assert "environment: hml-lifecycle" in hml_gate
     assert "K8S_HML_TERRAFORM_ROOT_READY" in hml_gate
-    assert "--window-end-inclusive 2026-11-05" in workflow
-    assert "--session-scope infrastructure-only" in workflow
+    resolver = (ROOT / ".github" / "scripts" / "resolve_lifecycle_session.py").read_text(
+        encoding="utf-8"
+    )
+    assert "HML_LAST_DAY = date(2026, 11, 5)" in resolver
+    assert "SESSION_SCOPE: ${{ steps.window.outputs.stage == 'hml' && 'infrastructure-only' || 'integrated' }}" in workflow
+    assert '--session-scope "$SESSION_SCOPE"' in workflow
     assert "environment: operations" in workflow
     role = workflow.index("Configure the narrow lifecycle start role")
     authorize = workflow.index("lifecycle_session_ledger.py authorize-open")
     assert role < authorize
-    assert "validate_auth_lambda_preflight.py" not in workflow
+    profile_guard = "if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'"
+    for step_name in (
+        "Configure the read-only persistent auth preflight role",
+        "Validate persistent customer auth Lambdas before opening session resources",
+    ):
+        auth_step = workflow.split(f"- name: {step_name}", 1)[1].split("- name:", 1)[0]
+        assert profile_guard in auth_step
     assert "inputs.started_at || 'default-17-BRT'" in workflow
     assert "Apply the exact K8s foundation opening plan" in workflow
 
 
 def test_hml_gate_has_no_aws_or_actions_token_permissions() -> None:
     workflow = (WORKFLOWS / "environment-start.yml").read_text(encoding="utf-8")
-    hml_gate = workflow.split("  hml-gates:", 1)[1].split("  cost-preflight:", 1)[0]
+    hml_gate = workflow.split("  hml-gates:", 1)[1].split("  open:", 1)[0]
 
     assert "permissions:\n      contents: read" in hml_gate
     assert "id-token: write" not in hml_gate
     assert "actions: write" not in hml_gate
 
 
-def test_start_has_no_application_or_public_edge_work() -> None:
-    workflow = (WORKFLOWS / "environment-start.yml").read_text(encoding="utf-8").lower()
-    for excluded in (
-        "deploy-lambda.yml",
-        "aws lambda update-function-code",
-        "cloudfront",
-        "api gateway",
-        "edge_jwt",
-        "reconcile_public_edge",
-        "deploy the application",
-    ):
-        assert excluded not in workflow
+def test_start_gates_application_and_public_edge_work_outside_infra_only_hml() -> None:
+    workflow = (WORKFLOWS / "environment-start.yml").read_text(encoding="utf-8")
+    profile_guard = "if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'"
+    gated_steps = (
+        "Deploy the application and recreate its synthetic seed",
+        "Apply the database grants after application migrations",
+        "Configure the narrow public-edge lifecycle role",
+        "Reconcile the public API edge against the current ALB while preserving its URL",
+        "Dispatch and wait for public endpoint health",
+    )
+
+    for step_name in gated_steps:
+        step = workflow.split(f"- name: {step_name}", 1)[1].split("- name:", 1)[0]
+        assert profile_guard in step
+
+    assert "Infra-only HML sessions require both application deploy gates to remain false." in workflow
 
 
 def test_start_provisions_database_before_hml_identity_then_bootstraps_credentials() -> None:
@@ -51,8 +65,8 @@ def test_start_provisions_database_before_hml_identity_then_bootstraps_credentia
     provision_step = workflow.split("      - name: Provision the HML database role and SSM contract", 1)[1].split(
         "      - name: Plan the isolated HML namespace opening", 1
     )[0]
-    bootstrap_step = workflow.split("      - name: Bootstrap the HML lifecycle database", 1)[1].split(
-        "      - name: Record the infrastructure-only opening", 1
+    bootstrap_step = workflow.split("      - name: Bootstrap the synthetic lifecycle database", 1)[1].split(
+        "      - name: Deploy the application and recreate its synthetic seed", 1
     )[0]
 
     assert workflow.index("Apply the exact K8s platform opening plan") < workflow.index(
@@ -62,14 +76,15 @@ def test_start_provisions_database_before_hml_identity_then_bootstraps_credentia
         "Plan the isolated HML namespace opening"
     )
     assert workflow.index("Apply the exact HML namespace opening plan") < workflow.index(
-        "Bootstrap the HML lifecycle database"
+        "Bootstrap the synthetic lifecycle database"
     )
 
-    for step, phase, output in (
-        (provision_step, "provision", "database_provision"),
-        (bootstrap_step, "bootstrap", "database_bootstrap"),
+    assert 'DATABASE_INFRA_REF" == "main"' in workflow
+    for step, phase, output, workflow_ref in (
+        (provision_step, "provision", "database_provision", "--ref main"),
+        (bootstrap_step, "bootstrap", "database_bootstrap", '--ref "$DATABASE_INFRA_REF"'),
     ):
-        assert '--repository "$DATABASE_INFRA_REPOSITORY" --workflow apply.yml --ref main' in step
+        assert f'--repository "$DATABASE_INFRA_REPOSITORY" --workflow apply.yml {workflow_ref}' in step
         assert "--authorization-action open" in step
         assert "session_scope" not in step
         dispatch_input_line = next(line for line in step.splitlines() if "--inputs " in line)
@@ -78,19 +93,22 @@ def test_start_provisions_database_before_hml_identity_then_bootstraps_credentia
         assert set(dispatch_inputs) == {"session_id", "started_at", "session_mode", "phase"}
         assert dispatch_inputs["phase"] == phase
         assert f"--output-name {output}" in step
-    assert "--session-scope infrastructure-only" in workflow
+    assert "SESSION_SCOPE: ${{ steps.window.outputs.stage == 'hml' && 'infrastructure-only' || 'integrated' }}" in workflow
+    assert '--session-scope "$SESSION_SCOPE"' in workflow
 
 
 def test_start_child_dispatches_match_declared_workflow_input_contracts() -> None:
     workflow = (WORKFLOWS / "environment-start.yml").read_text(encoding="utf-8")
     dispatch_lines = [line for line in workflow.splitlines() if "--inputs " in line]
 
-    assert len(dispatch_lines) == 8
+    assert len(dispatch_lines) == 12
     assert all("session_scope" not in line for line in dispatch_lines)
 
 
 def test_stop_is_limited_to_infrastructure_only_hml_and_verifies_teardown() -> None:
     workflow = (WORKFLOWS / "environment-stop.yml").read_text(encoding="utf-8")
+    close_job = workflow.split("  close:\n", 1)[1].split("  audit:\n", 1)[0]
+    audit_job = workflow.split("  audit:\n", 1)[1].split("  post-cost-capture:\n", 1)[0]
 
     assert "--stage hml" in workflow
     assert "REQUESTED_SESSION_SCOPE" in workflow and "infrastructure-only" in workflow
@@ -103,6 +121,25 @@ def test_stop_is_limited_to_infrastructure_only_hml_and_verifies_teardown() -> N
     assert workflow.index("Destroy the ephemeral HML database") < workflow.index(
         "Plan the full K8s platform teardown"
     )
+    assert "teardown_needed: ${{ steps.close_decision.outputs.teardown_needed }}" in close_job
+    assert "Record when no teardown is needed" in close_job
+    for step_name in (
+        "Validate the HML cross-repository teardown configuration",
+        "Plan the isolated HML namespace teardown",
+        "Apply the reviewed HML namespace teardown plan",
+        "Destroy the ephemeral HML database",
+        "Plan the full K8s platform teardown",
+        "Apply the reviewed K8s platform teardown plan",
+        "Plan compute-only foundation teardown",
+        "Apply the reviewed compute-only foundation teardown plan",
+        "Plan NAT shutdown",
+        "Apply the reviewed NAT shutdown plan",
+    ):
+        step = close_job.split(f"      - name: {step_name}", 1)[1].split("      - name:", 1)[0]
+        assert "steps.close_decision.outputs.teardown_needed == 'true'" in step
+    assert "needs.close.outputs.close_needed == 'true'" in audit_job
+    assert "Finalize the ledger only after teardown and orphan audit succeed" in audit_job
+    assert "steps.orphan_audit.outcome == 'success'" in audit_job
     dispatch_lines = [line for line in workflow.splitlines() if "--inputs " in line]
     assert dispatch_lines
     assert all("session_scope" not in line for line in dispatch_lines)

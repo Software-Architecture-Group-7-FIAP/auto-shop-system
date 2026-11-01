@@ -13,7 +13,8 @@ from lifecycle_session_auth import (
 
 BRT = ZoneInfo("America/Sao_Paulo")
 MAX_HML_DURATION = timedelta(hours=5)
-HML_LAST_DAY = date(2026, 10, 31)
+HML_LAST_DAY = date(2026, 11, 5)
+EMERGENCY_HML_LAST_DAY = date(2026, 10, 31)
 PRD_FIRST_DAY = date(2026, 11, 1)
 PRD_LAST_DAY = date(2026, 11, 5)
 STARTED_AT_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -155,9 +156,9 @@ def validate_environment_window(
         local_start = start.astimezone(BRT)
         if not emergency_hml_teardown and local_now >= hml_cutoff:
             raise EnvironmentWindowError(
-                "HML lifecycle actions are authorized only before 23:00 BRT on 31/10/2026."
+                "HML lifecycle actions are authorized only before 23:00 BRT on 05/11/2026."
             )
-        if local_start.date() > HML_LAST_DAY:
+        if emergency_hml_teardown and local_start.date() > EMERGENCY_HML_LAST_DAY:
             raise EnvironmentWindowError("Emergency cleanup cannot target a session after the HML lifecycle.")
         if not emergency_hml_teardown and local_start.date() != local_now.date():
             raise EnvironmentWindowError("An HML session must start on the current BRT day.")

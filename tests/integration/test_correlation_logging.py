@@ -1,5 +1,6 @@
 import json
 import logging
+from contextlib import contextmanager
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -8,7 +9,8 @@ from src.infrastructure.observability.json_logging import JsonLogFormatter
 from src.main import app
 
 
-def _capture_src_logs():
+@contextmanager
+def _capture_logs(logger_name: str):
     stream_records: list[str] = []
 
     class _Capture(logging.Handler):
@@ -16,17 +18,23 @@ def _capture_src_logs():
             stream_records.append(JsonLogFormatter("development").format(record))
 
     handler = _Capture()
-    logger = logging.getLogger("src")
+    logger = logging.getLogger(logger_name)
+    previous_level = logger.level
+    previous_disabled = logger.disabled
+    logger.setLevel(logging.INFO)
+    logger.disabled = False
     logger.addHandler(handler)
-    return logger, handler, stream_records
+    try:
+        yield stream_records
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous_level)
+        logger.disabled = previous_disabled
 
 
 def test_health_echoes_correlation_id_and_stays_quiet(client):
-    logger, handler, records = _capture_src_logs()
-    try:
+    with _capture_logs("src.http") as records:
         response = client.get("/health/live", headers={"X-Correlation-ID": "probe-1"})
-    finally:
-        logger.removeHandler(handler)
 
     assert response.status_code == 200
     assert response.headers["x-correlation-id"] == "probe-1"
@@ -61,11 +69,8 @@ def test_unsafe_correlation_header_is_replaced(client):
 
 
 def test_access_log_is_json_with_correlation_id(client):
-    logger, handler, records = _capture_src_logs()
-    try:
+    with _capture_logs("src.http") as records:
         response = client.get("/", headers={"X-Correlation-ID": "home-1"})
-    finally:
-        logger.removeHandler(handler)
 
     assert response.status_code == 200
     payloads = [json.loads(line) for line in records]
@@ -105,14 +110,11 @@ def test_unhandled_error_returns_correlation_headers(client, auth_headers, monke
 
 
 def test_missing_service_order_log_carries_correlation_and_order_id(client, auth_headers):
-    logger, handler, records = _capture_src_logs()
-    try:
+    with _capture_logs("src.domain.errors") as records:
         response = client.get(
             "/api/v1/admin/service-orders/404",
             headers={**auth_headers, "X-Correlation-ID": "os-404"},
         )
-    finally:
-        logger.removeHandler(handler)
 
     assert response.status_code == 404
     assert response.headers["x-correlation-id"] == "os-404"

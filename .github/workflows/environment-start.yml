@@ -21,6 +21,9 @@ permissions:
   contents: read
   id-token: write
 
+env:
+  LIFECYCLE_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+
 jobs:
   prd-gates:
     if: github.event_name == 'schedule' || inputs.stage == 'prd'
@@ -45,7 +48,9 @@ jobs:
   hml-gates:
     if: github.event_name == 'workflow_dispatch' && inputs.stage == 'hml'
     runs-on: ubuntu-latest
-    environment: staging
+    environment: hml-lifecycle
+    permissions:
+      contents: read
     outputs:
       staging_active: ${{ steps.gates.outputs.staging_active }}
       staging_authorized: ${{ steps.gates.outputs.staging_authorized }}
@@ -56,12 +61,22 @@ jobs:
           STAGING_ACTIVE: ${{ vars.STAGING_ACTIVE || 'false' }}
           STAGING_SESSION_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
           STAGING_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
+          K8S_HML_TERRAFORM_ROOT_READY: ${{ vars.K8S_HML_TERRAFORM_ROOT_READY || 'false' }}
+          K8S_PRIVATE_RUNNER_PREREQUISITES_READY: ${{ vars.K8S_PRIVATE_RUNNER_PREREQUISITES_READY || 'false' }}
         id: gates
         shell: bash
         run: |
           set -euo pipefail
           [[ "$STAGING_ACTIVE" == "true" && "$STAGING_SESSION_AUTHORIZED" == "true" && "$STAGING_SESSION_MODE" == "hml" ]] || {
             echo "::error::Set STAGING_ACTIVE=true, STAGING_SESSION_AUTHORIZED=true, and STAGING_SESSION_MODE=hml before opening HML."
+            exit 1
+          }
+          [[ "$K8S_HML_TERRAFORM_ROOT_READY" == "true" ]] || {
+            echo "::error::K8S_HML_TERRAFORM_ROOT_READY must be true before opening the HML namespace."
+            exit 1
+          }
+          [[ "$K8S_PRIVATE_RUNNER_PREREQUISITES_READY" == "true" ]] || {
+            echo "::error::K8S_PRIVATE_RUNNER_PREREQUISITES_READY must be true before using the private runner."
             exit 1
           }
           {
@@ -98,6 +113,8 @@ jobs:
       DATABASE_INFRA_REPOSITORY: ${{ vars.DATABASE_INFRA_REPOSITORY }}
       DATABASE_INFRA_REF: ${{ vars.DATABASE_INFRA_REF }}
       ALERT_TOPIC_ARN: ${{ vars.LIFECYCLE_ALERT_TOPIC_ARN }}
+      LIFECYCLE_TRUSTED_OPERATORS: ${{ vars.LIFECYCLE_TRUSTED_OPERATORS || '' }}
+      LIFECYCLE_TABLE_NAME: auto-shop-staging-lifecycle-sessions
       EDGE_JWT_SECRET_ARN: ${{ vars.EDGE_JWT_SECRET_ARN }}
       EDGE_ENABLE_CUSTOM_DOMAINS: ${{ vars.EDGE_ENABLE_CUSTOM_DOMAINS }}
       EDGE_DISABLE_EXECUTE_API_ENDPOINT: ${{ vars.EDGE_DISABLE_EXECUTE_API_ENDPOINT }}
@@ -116,6 +133,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: Require the triggering actor before AWS credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_ACTOR" == "$LIFECYCLE_TRIGGERING_ACTOR" ]] || { echo "::error::The triggering actor does not match."; exit 1; }
+          [[ -n "$LIFECYCLE_TRUSTED_OPERATORS" ]] || { echo "::error::LIFECYCLE_TRUSTED_OPERATORS must be set."; exit 1; }
+          case ",$LIFECYCLE_TRUSTED_OPERATORS," in
+            *,"$GITHUB_ACTOR"*) ;;
+            *) echo "::error::GitHub actor not in the trusted lifecycle operator list."; exit 1;;
+          esac
 
       - name: Resolve the one session identifier and all BRT deadlines
         id: window
@@ -140,13 +168,38 @@ jobs:
           LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
         run: python3 .github/scripts/sign_lifecycle_session.py
 
-      - name: Block a second opening run for this BRT date
+      - name: Reject a second opening run for the same HML date
         if: steps.window.outputs.stage == 'hml' || steps.window.outputs.stage == 'prd'
+        id: daily_unique
         env:
           GH_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
           LIFECYCLE_CROSS_REPO_TOKEN: ${{ secrets.LIFECYCLE_CROSS_REPO_TOKEN }}
           STAGE: ${{ steps.window.outputs.stage }}
         run: python3 .github/scripts/assert_daily_lifecycle_unique.py --stage "$STAGE"
+
+      - name: Configure the narrow lifecycle start role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/auto-shop/auto-shop-staging-github-lifecycle-start
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 900
+
+      - name: Record the trusted operator and authorize an infrastructure-only session
+        env:
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          SESSION_STAGE: ${{ steps.window.outputs.stage }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          SESSION_SCOPE: ${{ steps.window.outputs.stage == 'hml' && 'infrastructure-only' || 'integrated' }}
+          SAFE_RETRY_SOURCE_RUN_ID: ${{ steps.daily_unique.outputs.recovery_source_run_id || '' }}
+        run: >-
+          python3 .github/scripts/lifecycle_session_ledger.py authorize-open
+          --session-id "$SESSION_ID"
+          --stage "$SESSION_STAGE"
+          --started-at "$STARTED_AT"
+          --session-mode "$SESSION_MODE"
+          --session-scope "$SESSION_SCOPE"
+          --safe-retry-source-run-id "$SAFE_RETRY_SOURCE_RUN_ID"
 
       - name: Validate all credentials, repositories, deploy gates, alerting, and cost evidence inputs
         env:
@@ -186,6 +239,7 @@ jobs:
           fi
 
       - name: Configure the read-only persistent auth preflight role
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/auto-shop-staging-github-auth-preflight
@@ -193,6 +247,7 @@ jobs:
           role-duration-seconds: 900
 
       - name: Validate persistent customer auth Lambdas before opening session resources
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
         env:
           EXPECTED_AWS_ACCOUNT_ID: ${{ env.EXPECTED_AWS_ACCOUNT_ID }}
         run: python3 .github/scripts/validate_auth_lambda_preflight.py
@@ -227,13 +282,14 @@ jobs:
           PY
 
       - name: Configure read-only Cost Explorer identity
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_COST_READER_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Verify the account and record observed pre-cycle billing
-        if: always()
+        if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
         env:
           STAGE: ${{ steps.window.outputs.stage }}
           SESSION_ID: ${{ steps.window.outputs.session_id }}
@@ -258,7 +314,7 @@ jobs:
           WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
         run: >-
           python3 .github/scripts/cross_repo_lifecycle.py
-          --repository "$K8S_INFRA_REPOSITORY" --workflow ci.yml --ref "$K8S_INFRA_REF"
+          --repository "$K8S_INFRA_REPOSITORY" --workflow ci.yml --ref main
           --expected-title "$SESSION_ID-foundation-open"
           --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"foundation\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\"}"
           --github-output "$GITHUB_OUTPUT" --output-name foundation --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
@@ -272,7 +328,7 @@ jobs:
           WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
         run: >-
           python3 .github/scripts/cross_repo_lifecycle.py
-          --repository "$K8S_INFRA_REPOSITORY" --workflow apply.yml --ref "$K8S_INFRA_REF"
+          --repository "$K8S_INFRA_REPOSITORY" --workflow apply.yml --ref main
           --expected-title "$SESSION_ID-foundation-open-apply"
           --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"foundation\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}"
           --github-output "$GITHUB_OUTPUT" --output-name foundation_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
@@ -286,7 +342,7 @@ jobs:
           WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
         run: >-
           python3 .github/scripts/cross_repo_lifecycle.py
-          --repository "$K8S_INFRA_REPOSITORY" --workflow ci.yml --ref "$K8S_INFRA_REF"
+          --repository "$K8S_INFRA_REPOSITORY" --workflow cluster-ci.yml --ref main
           --expected-title "$SESSION_ID-platform-open"
           --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"platform\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\"}"
           --github-output "$GITHUB_OUTPUT" --output-name platform --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
@@ -300,12 +356,13 @@ jobs:
           WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
         run: >-
           python3 .github/scripts/cross_repo_lifecycle.py
-          --repository "$K8S_INFRA_REPOSITORY" --workflow apply.yml --ref "$K8S_INFRA_REF"
+          --repository "$K8S_INFRA_REPOSITORY" --workflow cluster-apply.yml --ref main
           --expected-title "$SESSION_ID-platform-open-apply"
           --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"platform\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}"
           --github-output "$GITHUB_OUTPUT" --output-name platform_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
 
-      - name: Bootstrap the synthetic lifecycle database
+      - name: Provision the HML database role and SSM contract
+        if: steps.window.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE == 'infra-only'
         env:
           SESSION_ID: ${{ steps.window.outputs.session_id }}
           STARTED_AT: ${{ steps.window.outputs.started_at }}
@@ -313,8 +370,54 @@ jobs:
           WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
         run: >-
           python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$DATABASE_INFRA_REPOSITORY" --workflow apply.yml --ref main
+          --expected-title "database/$SESSION_ID/apply/provision"
+          --authorization-action open
+          --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"phase\":\"provision\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name database_provision --timeout-seconds 1200 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Plan the isolated HML namespace opening
+        if: steps.window.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE == 'infra-only'
+        id: hml_namespace
+        env:
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow cluster-ci.yml --ref main
+          --expected-title "$SESSION_ID-hml-all-plan"
+          --inputs "{\"operation\":\"plan\",\"stack\":\"hml\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"\",\"confirm\":\"\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name hml_namespace --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Apply the exact HML namespace opening plan
+        if: steps.window.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE == 'infra-only'
+        env:
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          PLAN_ID: ${{ steps.hml_namespace.outputs.hml_namespace_plan_id }}
+          WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$K8S_INFRA_REPOSITORY" --workflow cluster-apply.yml --ref main
+          --expected-title "$SESSION_ID-hml-all-apply"
+          --inputs "{\"operation\":\"apply\",\"stack\":\"hml\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name hml_namespace_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Bootstrap the synthetic lifecycle database
+        env:
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
+        if: steps.window.outputs.stage != 'hml' || vars.STAGING_SESSION_PROFILE == 'infra-only'
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
           --repository "$DATABASE_INFRA_REPOSITORY" --workflow apply.yml --ref "$DATABASE_INFRA_REF"
           --expected-title "database/$SESSION_ID/apply/bootstrap"
+          --authorization-action open
           --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"phase\":\"bootstrap\"}"
           --github-output "$GITHUB_OUTPUT" --output-name database_bootstrap --timeout-seconds 1200 --deadline-utc "$WORK_DEADLINE"
 
@@ -445,8 +548,20 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION }}
       EXPECTED_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
       ALERT_TOPIC_ARN: ${{ vars.LIFECYCLE_ALERT_TOPIC_ARN }}
+      LIFECYCLE_TRUSTED_OPERATORS: ${{ vars.LIFECYCLE_TRUSTED_OPERATORS || '' }}
+      LIFECYCLE_CROSS_REPO_ACTOR: ${{ vars.LIFECYCLE_CROSS_REPO_ACTOR || '' }}
       SESSION_ID: ${{ needs.open.outputs.session_id || github.run_id }}
     steps:
+      - name: Require the triggering or scheduled dispatch actor before AWS credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+            python3 .github/scripts/require_trusted_lifecycle_operator.py --dispatch-only
+          else
+            python3 .github/scripts/require_trusted_lifecycle_operator.py
+          fi
+
       - name: Configure the lifecycle alert role
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -517,6 +632,7 @@ jobs:
           python3 .github/scripts/cross_repo_lifecycle.py
           --repository "$GITHUB_REPOSITORY" --workflow environment-stop.yml --ref develop
           --expected-title "lifecycle:hml:close:$SESSION_ID:$CLOSE_REQUEST_ID"
-          --inputs "{\"stage\":\"hml\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"close_request_id\":\"$CLOSE_REQUEST_ID\"}"
+          --authorization-action close
+          --inputs "{\"stage\":\"hml\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"close_request_id\":\"$CLOSE_REQUEST_ID\"}"
           --github-output "$GITHUB_OUTPUT" --output-name hml_close --timeout-seconds 3600
           --deadline-utc "$CLEANUP_END"

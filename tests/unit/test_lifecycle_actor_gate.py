@@ -66,5 +66,20 @@ def test_lifecycle_coordinators_bind_current_triggering_actor_before_aws_roles()
             if role_step not in job:
                 continue
             gate = "require_trusted_lifecycle_operator.py"
-            assert gate in job, f"{workflow_name} job lacks an actor gate before AWS credentials"
-            assert job.index(gate) < job.index(role_step), f"{workflow_name} gates the actor after AWS credentials"
+            role_index = job.index(role_step)
+            if gate in job:
+                assert job.index(gate) < role_index, f"{workflow_name} gates the actor after AWS credentials"
+                continue
+
+            actor_match = re.search(
+                r'\[\[\s*"?\$\{?GITHUB_ACTOR\}?"?\s*==\s*"?\$\{?LIFECYCLE_TRIGGERING_ACTOR\}?"?\s*\]\]',
+                job,
+            )
+            allowlist_match = re.search(
+                r'case\s+",\$\{?LIFECYCLE_TRUSTED_OPERATORS\}?,"\s+in',
+                job,
+            )
+            assert actor_match is not None, f"{workflow_name} job lacks a triggering-actor equality check"
+            assert allowlist_match is not None, f"{workflow_name} job lacks an operator allowlist check"
+            assert actor_match.end() < role_index, f"{workflow_name} checks the actor after AWS credentials"
+            assert allowlist_match.end() < role_index, f"{workflow_name} checks the allowlist after AWS credentials"
