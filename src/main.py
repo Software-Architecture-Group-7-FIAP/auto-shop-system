@@ -28,7 +28,7 @@ from src.domain.exceptions import DomainError
 from src.infrastructure import database
 from src.infrastructure.observability.json_logging import configure_json_logging, log_domain_error
 
-configure_json_logging(settings.app_env)
+configure_json_logging(settings.app_env, settings.app_version)
 
 
 @asynccontextmanager

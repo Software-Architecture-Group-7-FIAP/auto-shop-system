@@ -1,0 +1,15 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auto-shop-backend
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend-api
+          env:
+            - name: NEW_RELIC_LICENSE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: auto-shop-new-relic
+                  key: NEW_RELIC_LICENSE_KEY

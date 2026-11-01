@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "ownership": "auto-shop-owned-hml-service-order-v1",
+  "policy": {
+    "name": "auto-shop-owned::HML Service Order Failures",
+    "incident_preference": "PER_CONDITION_AND_TARGET"
+  },
+  "notification_route": {
+    "logical_name": "hml-sre-approved-workflow",
+    "attach_by_default": false,
+    "owner": "HML SRE on-call",
+    "runtime_secret": "NEW_RELIC_NOTIFICATION_DESTINATION_ID",
+    "payload_fields": [
+      "severity",
+      "condition_name",
+      "service_name",
+      "environment",
+      "incident_time_utc",
+      "runbook_url"
+    ]
+  },
+  "conditions": [
+    {
+      "id": "service-order-failure",
+      "name": "auto-shop-owned::HML Service-order processing failure",
+      "category": "service_order_failure",
+      "source": "Log",
+      "nrql": "FROM Log SELECT count(*) WHERE event = 'ServiceOrderProcessingFailure' AND event_version = 1 AND service = 'auto-shop-api' AND environment = 'staging'",
+      "signal": {
+        "aggregation_window_seconds": 300,
+        "aggregation_method": "EVENT_FLOW",
+        "aggregation_delay_seconds": 120,
+        "fill_option": "NONE"
+      },
+      "terms": [
+        {
+          "priority": "CRITICAL",
+          "operator": "ABOVE_OR_EQUALS",
+          "threshold": 1,
+          "threshold_duration_seconds": 300,
+          "threshold_occurrences": "AT_LEAST_ONCE"
+        }
+      ],
+      "loss_of_signal": {
+        "enabled": false
+      },
+      "enabled_during_hml_only": true,
+      "runbook_url": "https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/observability/new-relic-service-order-dashboard-alerts.md#failure-alert"
+    }
+  ]
+}

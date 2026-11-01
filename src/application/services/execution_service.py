@@ -15,6 +15,10 @@ from src.application.ports.events import (
     ServiceOrderEventPublisher,
     ServiceOrderProcessingFailed,
 )
+from src.application.ports.business_telemetry import (
+    ServiceOrderBusinessTelemetry,
+    ServiceOrderFailureTelemetry,
+)
 from src.application.ports.unit_of_work import UnitOfWork
 from src.domain.enums import ServiceOrderStatus, StockWithdrawalStatus
 from src.domain.exceptions import DomainError, NotFoundError, ValidationError
@@ -52,6 +56,7 @@ class ExecutionService:
         emails: ExecutionEmailSender,
         uow: UnitOfWork,
         event_publisher: ServiceOrderEventPublisher | None = None,
+        business_telemetry: ServiceOrderBusinessTelemetry | None = None,
     ):
         self.service_orders = service_orders
         self.withdrawals = withdrawals
@@ -62,6 +67,7 @@ class ExecutionService:
         self.emails = emails
         self.uow = uow
         self.event_publisher = event_publisher
+        self.business_telemetry = business_telemetry
 
     def enqueue(self, service_order_id: int, *, actor_id: int | None = None, request_id: str | None = None) -> ServiceOrder:
         correlation_id = self._normalize_request_id(request_id)
@@ -188,7 +194,26 @@ class ExecutionService:
                 event.service_order_id,
             )
 
+        self._record_failure(
+            ServiceOrderFailureTelemetry(
+                service_order_id=event.service_order_id,
+                failure_type="processing_error",
+                subsystem="service_order",
+                occurred_at=event.occurred_at,
+                event_id=event.event_id,
+            )
+        )
+
         if self.event_publisher is None:
+            self._record_failure(
+                ServiceOrderFailureTelemetry(
+                    event_id=event.event_id,
+                    occurred_at=event.occurred_at,
+                    service_order_id=event.service_order_id,
+                    failure_type="integration_error",
+                    subsystem="event_bus",
+                )
+            )
             logger.error(
                 "service_order_failure_event_publish_failed event_id=%s request_id=%s service_order_id=%s reason=publisher_not_configured",
                 event.event_id,
@@ -200,6 +225,15 @@ class ExecutionService:
         try:
             self.event_publisher.publish(event)
         except Exception:
+            self._record_failure(
+                ServiceOrderFailureTelemetry(
+                    event_id=event.event_id,
+                    occurred_at=event.occurred_at,
+                    service_order_id=event.service_order_id,
+                    failure_type="integration_error",
+                    subsystem="event_bus",
+                )
+            )
             logger.error(
                 "service_order_failure_event_publish_failed event_id=%s request_id=%s service_order_id=%s",
                 event.event_id,
@@ -215,6 +249,15 @@ class ExecutionService:
             event.service_order_id,
             event.event_type,
         )
+
+    def _record_failure(self, event: ServiceOrderFailureTelemetry) -> None:
+        if self.business_telemetry is None:
+            return
+        try:
+            self.business_telemetry.record_failure(event)
+        except Exception:
+            # Observability must never hide or replace the original failure.
+            return
 
     async def request_stock_withdrawal(
         self, service_order_id: int, product_id: int, quantity: int
