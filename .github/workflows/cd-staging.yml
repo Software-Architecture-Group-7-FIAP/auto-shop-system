@@ -231,7 +231,7 @@ jobs:
             echo "The EKS cluster name in SSM is invalid." >&2
             exit 1
           fi
-          if [[ ! "${migration_secret_arn}" =~ ^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@!-]+$ ]]; then
+          if [[ ! "${migration_secret_arn}" =~ ^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$ ]]; then
             echo "The migration secret ARN in SSM is invalid." >&2
             exit 1
           fi
