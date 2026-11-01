@@ -59,6 +59,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: auto-shop-config
+            - secretRef:
+                name: auto-shop-secrets
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
