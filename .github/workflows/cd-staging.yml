@@ -110,6 +110,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      packages: read
     env:
       IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
     steps:
