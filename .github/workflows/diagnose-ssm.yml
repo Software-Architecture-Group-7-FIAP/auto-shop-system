@@ -1,0 +1,53 @@
+name: Diagnose SSM and Secrets Manager State
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: hml
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN_HML }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Check SSM parameters under /auto-shop/staging
+        run: |
+          echo "::group::SSM parameters"
+          aws ssm get-parameters-by-path \
+            --path /auto-shop/staging \
+            --recursive \
+            --query 'Parameters[].Name' \
+            --output table || echo "Failed to list SSM parameters"
+          echo "::endgroup::"
+
+      - name: Check migrations-hml-arn parameter specifically
+        run: |
+          aws ssm get-parameter \
+            --name /auto-shop/staging/database/secrets/migrations-hml-arn \
+            --query 'Parameter.Value' \
+            --output text 2>&1 || echo "Parameter does not exist"
+
+      - name: List Secrets Manager secrets matching auto-shop/migrations/rds patterns
+        run: |
+          echo "::group::Secrets matching 'auto-shop'"
+          aws secretsmanager list-secrets \
+            --query "SecretList[?contains(Name, 'auto-shop')].{Name:Name,ARN:ARN}" \
+            --output table || echo "Failed"
+          echo "::endgroup::"
+          echo "::group::Secrets matching 'migrat'"
+          aws secretsmanager list-secrets \
+            --query "SecretList[?contains(Name, 'migrat')].{Name:Name,ARN:ARN}" \
+            --output table || echo "Failed"
+          echo "::endgroup::"
+          echo "::group::Secrets matching 'rds!'"
+          aws secretsmanager list-secrets \
+            --query "SecretList[?starts_with(Name, 'rds!')].{Name:Name,ARN:ARN}" \
+            --output table || echo "Failed"
+          echo "::endgroup::"
