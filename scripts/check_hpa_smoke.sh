@@ -76,24 +76,34 @@ echo "Waiting for metrics collection..."
 wait_for "CPU and memory metrics" 180 has_resource_metrics
 
 echo "::notice::Configuring HPA for scale test: max 3 replicas, CPU target 1%..."
-kubectl patch hpa "$hpa" --namespace "$namespace" --type=json \
-  -p='[{"op":"replace","path":"/spec/maxReplicas","value":3},{"op":"replace","path":"/spec/metrics/0/resource/target/averageUtilization","value":1},{"op":"replace","path":"/spec/behavior/scaleDown/stabilizationWindowSeconds","value":0}]'
+if ! kubectl patch hpa "$hpa" --namespace "$namespace" --type=json \
+  -p='[{"op":"replace","path":"/spec/maxReplicas","value":3},{"op":"replace","path":"/spec/metrics/0/resource/target/averageUtilization","value":1},{"op":"replace","path":"/spec/behavior/scaleDown/stabilizationWindowSeconds","value":0}]'; then
+  echo "::error::Failed to patch HPA configuration"
+  return 1
+fi
+
+echo "::notice::Verifying backend service exists..."
+if ! kubectl get service auto-shop-backend-service --namespace "$namespace" >/dev/null 2>&1; then
+  echo "::error::Backend service not found in $namespace"
+  return 1
+fi
 
 echo "::notice::Starting HTTP load generation (10 concurrent workers)..."
 # Generate HTTP load: 10 parallel wget workers making requests to backend service
-# This causes CPU load on backend pods, triggering HPA scaling
+# Each wget has 2s timeout to prevent hanging; requests cause CPU load on backend pods
 kubectl run "$load_pod" --namespace "$namespace" --restart=Never --image=busybox:1.36 -- \
-  sh -c 'for i in $(seq 1 10); do (while true; do wget -q -O /dev/null http://auto-shop-backend-service/health/live || true; done) & done; wait'
+  sh -c 'for i in $(seq 1 10); do (while true; do wget --timeout=2 -q -O /dev/null http://auto-shop-backend-service/health/live || true; done) & done; wait'
 
 echo "Waiting for HPA to scale up to three replicas (triggered by CPU load)..."
 wait_for "HPA scale up to three ready replicas" 240 has_ready_replicas 3
 
 echo "::notice::Load generation complete, scaling down..."
-kubectl delete pod "$load_pod" --namespace "$namespace" --wait=true
+kubectl delete pod "$load_pod" --namespace "$namespace" --wait=true --timeout=30s || true
 
 echo "::notice::Resetting HPA to normal thresholds..."
+# Reset all HPA parameters back to production values
 kubectl patch hpa "$hpa" --namespace "$namespace" --type=json \
-  -p='[{"op":"replace","path":"/spec/metrics/0/resource/target/averageUtilization","value":1000},{"op":"replace","path":"/spec/metrics/1/resource/target/averageUtilization","value":1000},{"op":"replace","path":"/spec/behavior/scaleDown/policies/0/value","value":100}]'
+  -p='[{"op":"replace","path":"/spec/maxReplicas","value":10},{"op":"replace","path":"/spec/metrics/0/resource/target/averageUtilization","value":70},{"op":"replace","path":"/spec/metrics/1/resource/target/averageUtilization","value":80},{"op":"replace","path":"/spec/behavior/scaleDown/stabilizationWindowSeconds","value":300},{"op":"replace","path":"/spec/behavior/scaleDown/policies/0/value","value":10}]'
 
 echo "Waiting for HPA to scale down to two replicas..."
 wait_for "HPA scale down to two ready replicas" 240 has_ready_replicas 2
