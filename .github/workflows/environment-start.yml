@@ -506,6 +506,34 @@ jobs:
           --inputs "{\"stage\":\"$STAGE\",\"started_at\":\"$STARTED_AT\",\"session_id\":\"$SESSION_ID\",\"session_mode\":\"$SESSION_MODE\"}"
           --github-output "$GITHUB_OUTPUT" --output-name health --timeout-seconds 900 --deadline-utc "$WORK_DEADLINE"
 
+      - name: Plan New Relic HML technical dashboards and alerts
+        if: steps.window.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE == 'full'
+        env:
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$GITHUB_REPOSITORY" --workflow new-relic-hml-technical.yml --ref develop
+          --expected-title "new-relic:hml-technical:plan:$SESSION_ID"
+          --inputs "{\"action\":\"plan\",\"region\":\"us\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"confirm_apply\":\"false\",\"confirm_aws_schema\":\"false\",\"confirm_notification_route\":\"false\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name new_relic_technical_plan --timeout-seconds 600 --deadline-utc "$WORK_DEADLINE"
+
+      - name: Plan New Relic HML service-order dashboards and alerts
+        if: steps.window.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE == 'full'
+        env:
+          SESSION_ID: ${{ steps.window.outputs.session_id }}
+          STARTED_AT: ${{ steps.window.outputs.started_at }}
+          SESSION_MODE: ${{ steps.window.outputs.session_mode }}
+          WORK_DEADLINE: ${{ steps.window.outputs.work_deadline_utc }}
+        run: >-
+          python3 .github/scripts/cross_repo_lifecycle.py
+          --repository "$GITHUB_REPOSITORY" --workflow new-relic-hml-service-order.yml --ref develop
+          --expected-title "new-relic:hml-service-order:plan:$SESSION_ID"
+          --inputs "{\"action\":\"plan\",\"region\":\"us\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"confirm_apply\":\"false\",\"confirm_business_telemetry\":\"false\",\"confirm_failure_threshold\":\"false\"}"
+          --github-output "$GITHUB_OUTPUT" --output-name new_relic_service_order_plan --timeout-seconds 600 --deadline-utc "$WORK_DEADLINE"
+
       - name: Record the successful opening boundary
         env:
           STAGE: ${{ steps.window.outputs.stage }}

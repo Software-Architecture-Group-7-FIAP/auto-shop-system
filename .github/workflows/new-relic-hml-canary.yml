@@ -1,5 +1,5 @@
 name: New Relic HML ingest canary
-run-name: new-relic:hml-canary:${{ inputs.session_id }}:${{ github.run_id }}
+run-name: new-relic:hml-canary:${{ inputs.session_id }}:${{ inputs.lifecycle_dispatch_id || github.run_id }}
 
 on:
   workflow_dispatch:
@@ -18,7 +18,11 @@ on:
         type: choice
         options: [hml]
       session_token:
-        description: Signed coordinator session capability; validation fails if missing.
+        description: Signed coordinator session capability
+        required: true
+        type: string
+      lifecycle_dispatch_id:
+        description: Coordinator-generated run correlation ID
         required: false
         type: string
       region:
@@ -61,6 +65,7 @@ jobs:
           STAGING_ACTIVE: ${{ vars.STAGING_ACTIVE || 'false' }}
           STAGING_SESSION_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
           AUTHORIZED_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
+          STAGING_SESSION_ALLOW_ANY_TIME: ${{ vars.STAGING_SESSION_ALLOW_ANY_TIME || 'false' }}
         shell: bash
         run: |
           set -euo pipefail
