@@ -98,6 +98,7 @@ jobs:
           LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
           STAGING_ACTIVE: ${{ vars.STAGING_ACTIVE || 'false' }}
           STAGING_SESSION_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
+          STAGING_SESSION_ALLOW_ANY_TIME: ${{ vars.STAGING_SESSION_ALLOW_ANY_TIME || 'false' }}
           AUTHORIZED_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
           REQUESTED_ACTION: ${{ inputs.action }}
         shell: bash

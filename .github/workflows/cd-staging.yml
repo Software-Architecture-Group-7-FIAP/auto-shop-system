@@ -67,6 +67,7 @@ jobs:
           LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
           STAGING_ACTIVE: ${{ vars.STAGING_ACTIVE || 'false' }}
           STAGING_SESSION_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
+          STAGING_SESSION_ALLOW_ANY_TIME: ${{ vars.STAGING_SESSION_ALLOW_ANY_TIME || 'false' }}
           AUTHORIZED_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
           DEPLOY_STAGING_ENABLED: ${{ vars.DEPLOY_STAGING_ENABLED || 'false' }}
         shell: bash
@@ -130,6 +131,7 @@ jobs:
           SESSION_MODE: ${{ inputs.session_mode }}
           LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
           LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+          STAGING_SESSION_ALLOW_ANY_TIME: ${{ vars.STAGING_SESSION_ALLOW_ANY_TIME || 'false' }}
         shell: bash
         run: python3 .github/scripts/validate_environment_window.py --action operate
 
