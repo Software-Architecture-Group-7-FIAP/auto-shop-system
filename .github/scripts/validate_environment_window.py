@@ -105,6 +105,7 @@ def validate_environment_window(
     now: datetime,
     emergency_teardown: bool = False,
     emergency_hml_teardown: bool = False,
+    allow_hml_any_time: bool = False,
 ) -> timedelta | None:
     if stage not in SUPPORTED_STAGES:
         raise EnvironmentWindowError("ENVIRONMENT_STAGE must be hml or prd.")
@@ -136,6 +137,19 @@ def validate_environment_window(
         raise EnvironmentWindowError("ENVIRONMENT_WINDOW_STARTED_AT is in the future.")
 
     if stage == "hml":
+        if allow_hml_any_time:
+            session_end = start + MAX_HML_DURATION
+            cleanup_end = session_end + timedelta(hours=1)
+            if action == "teardown":
+                if now < session_end:
+                    raise EnvironmentWindowError("HML teardown cannot start before the session ends.")
+                if now >= cleanup_end:
+                    raise EnvironmentWindowError("The HML cleanup window has expired.")
+                return cleanup_end - now
+            if now >= session_end:
+                raise EnvironmentWindowError("The HML session ends after five hours.")
+            return session_end - now
+
         local_now = now.astimezone(BRT)
         hml_cutoff = datetime.combine(HML_LAST_DAY, time(23, 0), tzinfo=BRT)
         local_start = start.astimezone(BRT)
@@ -216,6 +230,10 @@ def main() -> int:
                 session_mode=os.environ.get("SESSION_MODE", ""),
                 session_id=os.environ.get("ENVIRONMENT_SESSION_ID", ""),
                 started_at=os.environ.get("ENVIRONMENT_WINDOW_STARTED_AT", ""),
+                allow_hml_any_time=(
+                    os.environ.get("STAGING_SESSION_ALLOW_ANY_TIME", "").lower()
+                    == "true"
+                ),
             )
         remaining = validate_environment_window(
             active=os.environ.get("ENVIRONMENT_ACTIVE", ""),
@@ -227,6 +245,9 @@ def main() -> int:
             now=datetime.now(timezone.utc),
             emergency_teardown=arguments.emergency_teardown,
             emergency_hml_teardown=arguments.emergency_hml_teardown,
+            allow_hml_any_time=(
+                os.environ.get("STAGING_SESSION_ALLOW_ANY_TIME", "").lower() == "true"
+            ),
         )
     except (EnvironmentWindowError, LifecycleSessionAuthError) as error:
         print(f"::error::{error}", file=sys.stderr)

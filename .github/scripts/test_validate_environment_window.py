@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from validate_environment_window import (
@@ -128,6 +128,31 @@ class ValidateEnvironmentWindowTests(unittest.TestCase):
                 action="operate",
                 now=datetime(2026, 10, 30, 15, 0, tzinfo=timezone.utc),
                 started_at="2026-10-30T10:00:00Z",
+            )
+
+    def test_any_time_hml_keeps_expiring_session_without_calendar_cutoffs(self) -> None:
+        remaining = validate_environment_window(
+            active="true",
+            authorized="true",
+            session_id="hml-2026-10-31",
+            stage="hml",
+            action="operate",
+            started_at="2026-11-01T02:00:57Z",
+            now=datetime(2026, 11, 1, 2, 30, tzinfo=timezone.utc),
+            allow_hml_any_time=True,
+        )
+        self.assertEqual(remaining, timedelta(hours=4, minutes=30, seconds=57))
+
+        with self.assertRaisesRegex(EnvironmentWindowError, "five hours"):
+            validate_environment_window(
+                active="true",
+                authorized="true",
+                session_id="hml-2026-10-31",
+                stage="hml",
+                action="operate",
+                started_at="2026-11-01T02:00:57Z",
+                now=datetime(2026, 11, 1, 7, 0, 57, tzinfo=timezone.utc),
+                allow_hml_any_time=True,
             )
 
     def test_teardown_is_not_blocked_when_hml_session_expired(self) -> None:
