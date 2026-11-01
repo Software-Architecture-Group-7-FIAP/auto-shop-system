@@ -541,16 +541,22 @@ def dispatch_and_wait(arguments: argparse.Namespace) -> int:
         )
 
     repository, inputs = _validate_arguments(arguments)
-    session_token = os.environ.get("LIFECYCLE_SESSION_TOKEN", "").strip()
-    if not SESSION_TOKEN_PATTERN.fullmatch(session_token):
-        raise LifecycleDispatchError(
-            "LIFECYCLE_SESSION_TOKEN must be a valid coordinator-issued capability; no run was dispatched."
-        )
-    if "session_token" in inputs or "lifecycle_dispatch_id" in inputs:
-        raise LifecycleDispatchError(
-            "session_token and lifecycle_dispatch_id are injected by the coordinator and must not be supplied directly."
-        )
-    inputs["session_token"] = session_token
+    if getattr(arguments, "no_session_token", False):
+        if "session_token" in inputs or "lifecycle_dispatch_id" in inputs:
+            raise LifecycleDispatchError(
+                "lifecycle_dispatch_id is injected by the coordinator and must not be supplied directly."
+            )
+    else:
+        session_token = os.environ.get("LIFECYCLE_SESSION_TOKEN", "").strip()
+        if not SESSION_TOKEN_PATTERN.fullmatch(session_token):
+            raise LifecycleDispatchError(
+                "LIFECYCLE_SESSION_TOKEN must be a valid coordinator-issued capability; no run was dispatched."
+            )
+        if "session_token" in inputs or "lifecycle_dispatch_id" in inputs:
+            raise LifecycleDispatchError(
+                "session_token and lifecycle_dispatch_id are injected by the coordinator and must not be supplied directly."
+            )
+        inputs["session_token"] = session_token
     raw_run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1").strip()
     if not re.fullmatch(r"[1-9][0-9]*", raw_run_attempt):
         raise LifecycleDispatchError("GITHUB_RUN_ATTEMPT must be a positive integer.")
@@ -775,6 +781,7 @@ def main() -> int:
     parser.add_argument("--authorization-action", choices=tuple(sorted(AUTHORIZATION_ACTIONS)), default="")
     parser.add_argument("--cancel-active-workflow", default="")
     parser.add_argument("--cancel-title-prefix", default="")
+    parser.add_argument("--no-session-token", action="store_true")
     arguments = parser.parse_args()
 
     try:

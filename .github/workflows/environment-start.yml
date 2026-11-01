@@ -317,7 +317,7 @@ jobs:
           --repository "$K8S_INFRA_REPOSITORY" --workflow ci.yml --ref main
           --expected-title "$SESSION_ID-foundation-open"
           --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"foundation\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name foundation --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+          --github-output "$GITHUB_OUTPUT" --output-name foundation --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE" --no-session-token
 
       - name: Apply the exact K8s foundation opening plan
         env:
@@ -331,7 +331,7 @@ jobs:
           --repository "$K8S_INFRA_REPOSITORY" --workflow apply.yml --ref main
           --expected-title "$SESSION_ID-foundation-open-apply"
           --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"foundation\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name foundation_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+          --github-output "$GITHUB_OUTPUT" --output-name foundation_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE" --no-session-token
 
       - name: Plan the K8s platform opening
         id: k8s_platform
@@ -345,7 +345,7 @@ jobs:
           --repository "$K8S_INFRA_REPOSITORY" --workflow cluster-ci.yml --ref main
           --expected-title "$SESSION_ID-platform-open"
           --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"platform\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name platform --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+          --github-output "$GITHUB_OUTPUT" --output-name platform --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE" --no-session-token
 
       - name: Apply the exact K8s platform opening plan
         env:
@@ -359,7 +359,7 @@ jobs:
           --repository "$K8S_INFRA_REPOSITORY" --workflow cluster-apply.yml --ref main
           --expected-title "$SESSION_ID-platform-open-apply"
           --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"stack\":\"platform\",\"operation\":\"open\",\"enable_nat_gateway\":\"true\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name platform_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+          --github-output "$GITHUB_OUTPUT" --output-name platform_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE" --no-session-token
 
       - name: Provision the HML database role and SSM contract
         if: steps.window.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE == 'infra-only'
@@ -374,7 +374,7 @@ jobs:
           --expected-title "database/$SESSION_ID/apply/provision"
           --authorization-action open
           --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"phase\":\"provision\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name database_provision --timeout-seconds 1200 --deadline-utc "$WORK_DEADLINE"
+          --github-output "$GITHUB_OUTPUT" --output-name database_provision --timeout-seconds 1200 --deadline-utc "$WORK_DEADLINE" --no-session-token
 
       - name: Plan the isolated HML namespace opening
         if: steps.window.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE == 'infra-only'
@@ -389,7 +389,7 @@ jobs:
           --repository "$K8S_INFRA_REPOSITORY" --workflow cluster-ci.yml --ref main
           --expected-title "$SESSION_ID-hml-all-plan"
           --inputs "{\"operation\":\"plan\",\"stack\":\"hml\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"\",\"confirm\":\"\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name hml_namespace --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+          --github-output "$GITHUB_OUTPUT" --output-name hml_namespace --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE" --no-session-token
 
       - name: Apply the exact HML namespace opening plan
         if: steps.window.outputs.stage == 'hml' && vars.STAGING_SESSION_PROFILE == 'infra-only'
@@ -404,7 +404,7 @@ jobs:
           --repository "$K8S_INFRA_REPOSITORY" --workflow cluster-apply.yml --ref main
           --expected-title "$SESSION_ID-hml-all-apply"
           --inputs "{\"operation\":\"apply\",\"stack\":\"hml\",\"scope\":\"all\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"plan_id\":\"$PLAN_ID\",\"confirm\":\"apply\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name hml_namespace_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE"
+          --github-output "$GITHUB_OUTPUT" --output-name hml_namespace_apply --timeout-seconds 1800 --deadline-utc "$WORK_DEADLINE" --no-session-token
 
       - name: Bootstrap the synthetic lifecycle database
         env:
@@ -419,7 +419,7 @@ jobs:
           --expected-title "database/$SESSION_ID/apply/bootstrap"
           --authorization-action open
           --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"phase\":\"bootstrap\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name database_bootstrap --timeout-seconds 1200 --deadline-utc "$WORK_DEADLINE"
+          --github-output "$GITHUB_OUTPUT" --output-name database_bootstrap --timeout-seconds 1200 --deadline-utc "$WORK_DEADLINE" --no-session-token
 
       - name: Deploy the application and recreate its synthetic seed
         if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
@@ -451,7 +451,7 @@ jobs:
           --repository "$DATABASE_INFRA_REPOSITORY" --workflow apply.yml --ref "$DATABASE_INFRA_REF"
           --expected-title "database/$SESSION_ID/apply/grants"
           --inputs "{\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"phase\":\"grants\"}"
-          --github-output "$GITHUB_OUTPUT" --output-name database_grants --timeout-seconds 900 --deadline-utc "$WORK_DEADLINE"
+          --github-output "$GITHUB_OUTPUT" --output-name database_grants --timeout-seconds 900 --deadline-utc "$WORK_DEADLINE" --no-session-token
 
       - name: Configure the narrow public-edge lifecycle role
         if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
