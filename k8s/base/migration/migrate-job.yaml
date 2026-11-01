@@ -9,7 +9,7 @@ metadata:
     app.kubernetes.io/part-of: auto-shop-platform
 spec:
   backoffLimit: 1
-  activeDeadlineSeconds: 300
+  activeDeadlineSeconds: 600
   ttlSecondsAfterFinished: 600
   template:
     metadata:
