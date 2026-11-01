@@ -8,13 +8,15 @@ The canary implementation is merged to `develop` in [PR #154](https://github.com
 
 For the confirmed United States data region, New Relic's OTLP/HTTP endpoint is `https://otlp.nr-data.net`; New Relic requires the license key in the `api-key` header. See the [official OTLP endpoint documentation](https://docs.newrelic.com/docs/opentelemetry/best-practices/opentelemetry-otlp/).
 
-The latest [HML opening run #12](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/actions/runs/41226878721) passed its HML gates and cost preflight, then failed during “Plan the K8s foundation opening”; its apply and bootstrap steps did not run. It does not establish an active approved HML session. No New Relic canary has been sent.
+The previous fixed time-of-day HML schedule is obsolete. HML now uses explicit sessions identified by `session_id`, canonical UTC `started_at`, and `session_mode`. `STAGING_SESSION_ALLOW_ANY_TIME=true` removes calendar restrictions while the five-hour expiry, matching session metadata, signed capability, protected Environment gates, and explicit ingestion confirmation remain enforced. This does not enable a scheduled or automatic canary.
+
+The foundation plan [run 41263427810](https://github.com/Software-Architecture-Group-7-FIAP/k8s-infra/actions/runs/41263427810) and exact saved-plan apply [run 41263668416](https://github.com/Software-Architecture-Group-7-FIAP/k8s-infra/actions/runs/41263668416) succeeded for session `hml-2026-10-31`, started at `2026-11-01T02:00:57Z`, using commit `e783acca3705370719902e2c6731cf11aafc627b`. This supersedes the failed opening-run status previously recorded here. No New Relic canary evidence has been recorded yet.
 
 ## Why Issue 01 remains open
 
-PR #154 delivers the bounded New Relic sender, its develop-only manual workflow, secret wiring, and tests to `develop`. PR #155 registers only that workflow on `main`; it did not merge the divergent branches. Both promotion steps are complete, but code promotion is not live-ingestion evidence. HML opening run #12 failed before apply/bootstrap, and its annotation reports that the correlated run also failed. The underlying plan failure has not been diagnosed, so there is no evidence of a currently approved active HML session. The account's actual remaining ingest usage has also not been checked.
+PR #154 delivers the bounded New Relic sender, its develop-only manual workflow, secret wiring, and tests to `develop`. PR #155 registers only that workflow on `main`; it did not merge the divergent branches. Both promotion steps are complete, and the foundation provisioning evidence above is successful, but neither code promotion nor Terraform apply proves that New Relic accepted and indexed the metric. The account's actual remaining ingest usage has also not been checked.
 
-Issue 01 remains open until the HML foundation-plan failure is diagnosed and an active session is opened through the existing authorized lifecycle process. Check the account's remaining ingest allowance, dispatch the canary once during that approved session using the `develop` ref, and query New Relic for the run ID. Record the live evidence and keep the issue open until the metric is visible and the query result is recorded.
+Issue 01 remains open until the canary is dispatched once from `develop` during a non-expired authorized session and the resulting run ID is found in New Relic with the NRQL query below. Record the live evidence and keep the issue open until the metric is visible and the query result is recorded.
 
 ## Bounded signal and trigger
 
@@ -32,7 +34,7 @@ The request body is capped at 2 KiB. The operational volume guardrail is one man
 
 1. Plan and region were confirmed by the account owner on 2026-10-31: Free plan, United States region.
 2. The New Relic license key is stored in GitHub Environment `hml` as `NEW_RELIC_LICENSE_KEY`. Do not use a user API key for OTLP ingestion.
-3. The `hml` Environment is restricted to `develop`; the staging session variables are present. The latest HML opening attempt failed before apply/bootstrap, so wait for a separately approved, active session.
+3. The `hml` Environment is restricted to `develop`; the staging session variables are present. Use explicit session metadata from the successful guarded provisioning flow. The workflow prepares its signed capability inside the protected job; do not provide or expose the signing key or capability as a dispatch input.
 4. After the workflow is present on default branch `main` and the matching implementation is on `develop`, choose `develop` in the workflow's branch selector. During an approved HML session, dispatch **New Relic HML ingest canary**, select `us`, provide the coordinator session inputs, and set `confirm_hml_ingestion` to `true` once.
 
 The script sends the key only in the OTLP `api-key` HTTP header over HTTPS and rejects redirects so the header cannot be forwarded to another host. It does not print the key or the response body. The workflow's HTTP 200 result confirms the endpoint acknowledged the request; it does not prove the data is queryable.
