@@ -43,9 +43,9 @@ def test_ci_renders_seed_manifests_and_runs_seed_after_migrations() -> None:
     assert 's#__ALLOW_SYNTHETIC_SEED_IN_PRD__#"false"#g' in workflow
     assert 'demo_admin_password="$(openssl rand -hex 32)"' in workflow
     assert "DEMO_ADMIN_PASSWORD=%s\\n" in workflow
-    migration_wait = workflow.index('wait_for_job "auto-shop-migrate" 600')
+    migration_wait = workflow.index("bash k8s/scripts/wait-for-job.sh auto-shop-migrate auto-shop 600")
     seed_apply = workflow.index("kubectl apply -k k8s/overlays/local/seed")
-    seed_wait = workflow.index('wait_for_job "auto-shop-seed" 600')
+    seed_wait = workflow.index("bash k8s/scripts/wait-for-job.sh auto-shop-seed auto-shop 600")
     app_apply = workflow.index("kubectl apply -k k8s/overlays/local/app")
 
     assert migration_wait < seed_apply < seed_wait < app_apply
