@@ -190,7 +190,7 @@ jobs:
           SESSION_STAGE: ${{ steps.window.outputs.stage }}
           STARTED_AT: ${{ steps.window.outputs.started_at }}
           SESSION_MODE: ${{ steps.window.outputs.session_mode }}
-          SESSION_SCOPE: ${{ steps.window.outputs.stage == 'hml' && (vars.STAGING_SESSION_PROFILE == 'infra-only' && 'infrastructure-only' || 'full') || 'integrated' }}
+          SESSION_SCOPE: ${{ steps.window.outputs.stage == 'hml' && (vars.STAGING_SESSION_PROFILE == 'infra-only' && 'infrastructure-only' || 'integrated') || 'integrated' }}
           SAFE_RETRY_SOURCE_RUN_ID: ${{ steps.daily_unique.outputs.recovery_source_run_id || '' }}
         run: >-
           python3 .github/scripts/lifecycle_session_ledger.py authorize-open
