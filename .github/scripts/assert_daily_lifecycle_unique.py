@@ -19,14 +19,18 @@ BRT = ZoneInfo("America/Sao_Paulo")
 API_ROOT = "https://api.github.com"
 ACTIVE_STATUSES = {"queued", "requested", "waiting", "in_progress", "pending"}
 GUARD_STEP_NAME = "Reject a second opening run for the same HML date"
-FIRST_MUTATION_STEP_NAME = "Configure the narrow lifecycle start role"
 SESSION_RECORD_STEP_NAME = "Record the trusted operator and authorize the selected HML session profile"
+AUTH_PREFLIGHT_STEP_NAME = "Validate persistent customer auth Lambdas before opening session resources"
 FOUNDATION_PLAN_STEP_NAME = "Plan the K8s foundation opening"
-INFRASTRUCTURE_APPLY_STEP_NAMES = (
+MUTATING_DEPLOYMENT_STEP_NAMES = (
     "Apply the exact K8s foundation opening plan",
     "Apply the exact K8s platform opening plan",
     "Apply the exact HML namespace opening plan",
+    "Provision the HML database role and SSM contract",
     "Bootstrap the synthetic lifecycle database",
+    "Deploy the application and recreate its synthetic seed",
+    "Apply the database grants after application migrations",
+    "Reconcile the public API edge against the current ALB while preserving its URL",
 )
 
 
@@ -120,20 +124,32 @@ def _classify_prior_run(
             raise ValueError("A prior opening attempt has no readable step evidence")
 
         record_state = _step_conclusion(steps, SESSION_RECORD_STEP_NAME)
+        auth_preflight_state = _step_conclusion(steps, AUTH_PREFLIGHT_STEP_NAME)
         plan_state = _step_conclusion(steps, FOUNDATION_PLAN_STEP_NAME)
         guard_state = _step_conclusion(steps, GUARD_STEP_NAME)
-        mutation_state = _step_conclusion(steps, FIRST_MUTATION_STEP_NAME)
-        if guard_state == "failure" and mutation_state == "skipped":
-            continue
 
-        apply_states = [_step_conclusion(steps, name) for name in INFRASTRUCTURE_APPLY_STEP_NAMES]
-        if any(state is None for state in apply_states):
-            raise ValueError("A prior opening attempt is missing infrastructure apply evidence")
-        if any(state != "skipped" for state in apply_states):
+        deployment_states = [_step_conclusion(steps, name) for name in MUTATING_DEPLOYMENT_STEP_NAMES]
+        if any(state is None for state in deployment_states):
+            raise ValueError("A prior opening attempt is missing deployment mutation evidence")
+        if any(state != "skipped" for state in deployment_states):
             safe_to_retry = False
 
+        if guard_state == "failure":
+            continue
+
+        # A recorded session whose read-only auth preflight failed before planning
+        # has an owner that may be handed off when every deployment mutation stayed skipped.
+        if (
+            record_state == "success"
+            and auth_preflight_state == "failure"
+            and plan_state == "skipped"
+            and guard_state == "success"
+        ):
+            verified_owner = True
+            continue
+
         # A recorded session whose foundation plan failed is an authorized handoff,
-        # provided every mutating apply step stayed skipped in every attempt.
+        # provided every mutating deployment step stayed skipped in every attempt.
         if record_state == "success" and plan_state == "failure":
             verified_owner = True
             continue
