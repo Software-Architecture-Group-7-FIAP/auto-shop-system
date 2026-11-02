@@ -45,7 +45,7 @@ concurrency:
 
 jobs:
   canary:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop' && inputs.confirm_hml_ingestion == true
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: hml
     timeout-minutes: 5
@@ -57,6 +57,7 @@ jobs:
       - name: Validate coordinator inputs and HML session gates
         env:
           SOURCE_REF: ${{ github.ref }}
+          CONFIRM_HML_INGESTION: ${{ inputs.confirm_hml_ingestion }}
           SESSION_ID: ${{ inputs.session_id }}
           STARTED_AT: ${{ inputs.started_at }}
           SESSION_MODE: ${{ inputs.session_mode }}
@@ -69,6 +70,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          [[ "$CONFIRM_HML_INGESTION" == "true" ]] || {
+            echo "::error::Set confirm_hml_ingestion=true to run the ingest canary."
+            exit 1
+          }
           [[ "$SOURCE_REF" == "refs/heads/develop" ]] || {
             echo "::error::The HML canary must run from develop."
             exit 1

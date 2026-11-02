@@ -182,21 +182,11 @@ jobs:
           cluster_name="$(aws ssm get-parameter \
             --name "${SSM_PARAMETER_PREFIX}/eks/cluster-name" \
             --query 'Parameter.Value' --output text)"
-          # Attempt to get migration parameter; if missing, create it with RDS secret
-          if migration_secret_arn="$(aws ssm get-parameter \
+          # Migration credentials are published by the reviewed database Terraform contract.
+          # The deploy role is read-only for SSM, so fail closed if that contract is missing.
+          migration_secret_arn="$(aws ssm get-parameter \
             --name "${SSM_PARAMETER_PREFIX}/database/secrets/migrations-hml-arn" \
-            --query 'Parameter.Value' --output text 2>&1)"; then
-            :
-          else
-            echo "⚠ Migration parameter not found; creating from RDS secret..."
-            RDS_SECRET_ARN="arn:aws:secretsmanager:${AWS_REGION}:$(aws sts get-caller-identity --query Account --output text):secret:rds!db-cbe0cdd5-5c60-4a11-ba48-d0b4d18c4de2"
-            aws ssm put-parameter \
-              --name "${SSM_PARAMETER_PREFIX}/database/secrets/migrations-hml-arn" \
-              --value "${RDS_SECRET_ARN}" \
-              --type String \
-              --overwrite 2>/dev/null || true
-            migration_secret_arn="${RDS_SECRET_ARN}"
-          fi
+            --query 'Parameter.Value' --output text)"
           # EventBridge and its SSM contracts are provisioned by reviewed Terraform.
           service_order_event_bus_name="$(aws ssm get-parameter \
             --name "${SSM_PARAMETER_PREFIX}/events/service-order-bus-name" \
