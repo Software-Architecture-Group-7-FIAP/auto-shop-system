@@ -32,9 +32,15 @@ Modelo de dados: [`docs/database/database-schema.mermaid`](../database/database-
 
 ADRs aceitos são imutáveis; novas decisões geram novo número.
 
+## Observabilidade
+
+Índice de logs, APM, dashboards e checklist da issue #92: [`docs/observability/README.md`](../observability/README.md).
+
+Runbooks: [`docs/runbooks/README.md`](../runbooks/README.md).
+
 ## RFCs
 
-Propostas técnicas aceitas e implementadas: [`docs/rfc/`](../rfc/README.md).
+Propostas técnicas aceitas e implementadas: [`docs/rfc/`](../rfc/README.md) (inclui RFC-0004 a RFC-0006 — observabilidade, deploy multi-repo e Gateway).
 
 ## Repositórios relacionados
 

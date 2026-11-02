@@ -41,6 +41,9 @@ Documentação da trilha [#88–#95](https://github.com/Software-Architecture-Gr
 | CD / OIDC / deploy | [.github/CD.md](.github/CD.md) |
 | Proteção de branches | [.github/BRANCH_PROTECTION.md](.github/BRANCH_PROTECTION.md) |
 | Templates CI outros repos | [.github/ecosystem-templates/README.md](.github/ecosystem-templates/README.md) |
+| Observabilidade (índice #92–#94) | [docs/observability/README.md](docs/observability/README.md) |
+| Runbooks operacionais | [docs/runbooks/README.md](docs/runbooks/README.md) |
+| RFCs operacionais (Gateway, deploy, NR) | [docs/rfc/README.md](docs/rfc/README.md) |
 | API Gateway (Terraform AWS) | [infra/aws/README.md](infra/aws/README.md) |
 | Deploy K8s | [k8s/scripts/deploy.sh](k8s/scripts/deploy.sh) |
 
