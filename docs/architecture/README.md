@@ -7,7 +7,7 @@ Documentação de arquitetura da Fase 2 (Kubernetes local) e Fase 3 (operacional
 | Fase | Fonte Mermaid | Export |
 | --- | --- | --- |
 | Fase 2 — app no cluster local | [fase2-architecture.mmd](./fase2-architecture.mmd) | [PNG](./fase2-architecture.png), [SVG](./fase2-architecture.svg) |
-| Fase 3 — operacional ponta a ponta | [fase-operacional.mmd](./fase-operacional.mmd) | Exportar PNG/SVG localmente com `@mermaid-js/mermaid-cli` (fatia 2 da #95) |
+| Fase 3 — operacional ponta a ponta | [fase-operacional.mmd](./fase-operacional.mmd) | [PNG](./fase-operacional.png), [SVG](./fase-operacional.svg) |
 | Fase 3 — componentes (nuvem, APIs, banco, monitoramento) | [diagrams/componentes-fase-3.mmd](./diagrams/componentes-fase-3.mmd) | [PNG](./diagrams/componentes-fase-3.png), [SVG](./diagrams/componentes-fase-3.svg) |
 | Sequência — autenticação do cliente (CPF → JWT → API) | [diagrams/autenticacao-cliente.mmd](./diagrams/autenticacao-cliente.mmd) | [PNG](./diagrams/autenticacao-cliente.png), [SVG](./diagrams/autenticacao-cliente.svg) |
 | Sequência — abertura de OS | [diagrams/abertura-os.mmd](./diagrams/abertura-os.mmd) | [PNG](./diagrams/abertura-os.png), [SVG](./diagrams/abertura-os.svg) |
