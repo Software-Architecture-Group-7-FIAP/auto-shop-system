@@ -316,7 +316,36 @@ jobs:
           set -euo pipefail
           kubectl wait --for=condition=available deployment/postgres --namespace auto-shop --timeout=180s
           kubectl apply -k k8s/overlays/local/migration
-          kubectl wait --for=condition=complete job/auto-shop-migrate --namespace auto-shop --timeout=600s
+          migration_diagnostics() {
+            echo "::group::Migration job diagnostics"
+            kubectl describe job auto-shop-migrate --namespace auto-shop || true
+            kubectl get pods --namespace auto-shop --selector job-name=auto-shop-migrate --output wide || true
+            migration_pod="$(kubectl get pods --namespace auto-shop --selector job-name=auto-shop-migrate --output jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+            if [[ -n "$migration_pod" ]]; then
+              kubectl describe pod "$migration_pod" --namespace auto-shop || true
+              kubectl logs "$migration_pod" --namespace auto-shop --all-containers=true --prefix=true || true
+              kubectl logs "$migration_pod" --namespace auto-shop --all-containers=true --previous --prefix=true || true
+            fi
+            kubectl get events --namespace auto-shop --sort-by=.lastTimestamp | tail -n 40 || true
+            echo "::endgroup::"
+          }
+          for attempt in $(seq 1 120); do
+            complete="$(kubectl get job auto-shop-migrate --namespace auto-shop --output jsonpath='{.status.conditions[?(@.type=="Complete")].status}')"
+            if [[ "$complete" == "True" ]]; then
+              break
+            fi
+            failed="$(kubectl get job auto-shop-migrate --namespace auto-shop --output jsonpath='{.status.conditions[?(@.type=="Failed")].status}')"
+            if [[ "$failed" == "True" ]]; then
+              migration_diagnostics
+              exit 1
+            fi
+            if [[ "$attempt" == "120" ]]; then
+              echo "::error::Migration job did not complete within 10 minutes."
+              migration_diagnostics
+              exit 1
+            fi
+            sleep 5
+          done
           kubectl apply -k k8s/overlays/local/seed
           kubectl wait --for=condition=complete job/auto-shop-seed --namespace auto-shop --timeout=600s
           kubectl apply -k k8s/overlays/local/app

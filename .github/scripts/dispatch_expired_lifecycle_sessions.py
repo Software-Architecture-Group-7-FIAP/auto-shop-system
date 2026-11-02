@@ -13,6 +13,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+if str(SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIRECTORY))
+
+from lifecycle_session_auth import LifecycleSessionAuthError, sign_lifecycle_session
+
 
 SESSION_PATTERN = re.compile(r"^(hml|prd)-(\d{4}-\d{2}-\d{2})$")
 UTC_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -91,6 +97,13 @@ def main() -> int:
                 "session_scope": "infrastructure-only",
                 "close_request_id": close_request_id,
             }
+            session_token = sign_lifecycle_session(
+                os.environ.get("LIFECYCLE_SESSION_SIGNING_KEY", ""),
+                session_mode,
+                session_id,
+                started_at,
+                allow_hml_any_time=os.environ.get("STAGING_SESSION_ALLOW_ANY_TIME", "").lower() == "true",
+            )
             index = len(results) + 1
             command = [
                 sys.executable,
@@ -119,7 +132,10 @@ def main() -> int:
             command[command.index("${GITHUB_REPOSITORY}")] = os.environ.get("GITHUB_REPOSITORY", "")
             if not command[command.index("--repository") + 1]:
                 raise ValueError("GITHUB_REPOSITORY is required for cleanup dispatch.")
-            completed = subprocess.run(command, check=False)
+            child_environment = os.environ.copy()
+            child_environment.pop("LIFECYCLE_SESSION_SIGNING_KEY", None)
+            child_environment["LIFECYCLE_SESSION_TOKEN"] = session_token
+            completed = subprocess.run(command, check=False, env=child_environment)
             status = "success" if completed.returncode == 0 else "failure"
             failures += completed.returncode != 0
             results.append({"session_id": session_id, "stage": stage, "status": status})
@@ -129,7 +145,7 @@ def main() -> int:
             f"excluded={excluded}; failures={failures}."
         )
         return 1 if failures else 0
-    except (OSError, ValueError) as error:
+    except (LifecycleSessionAuthError, OSError, ValueError) as error:
         print(f"::error::{error}", file=sys.stderr)
         return 1
 

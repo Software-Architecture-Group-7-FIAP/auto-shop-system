@@ -1,5 +1,5 @@
 name: New Relic HML ingest canary
-run-name: new-relic:hml-canary:${{ inputs.session_id }}:${{ github.run_id }}
+run-name: new-relic:hml-canary:${{ inputs.session_id }}:${{ inputs.lifecycle_dispatch_id || github.run_id }}
 
 on:
   workflow_dispatch:
@@ -18,7 +18,11 @@ on:
         type: choice
         options: [hml]
       session_token:
-        description: Signed coordinator session capability; validation fails if missing.
+        description: Signed coordinator session capability
+        required: true
+        type: string
+      lifecycle_dispatch_id:
+        description: Coordinator-generated run correlation ID
         required: false
         type: string
       region:
@@ -41,7 +45,7 @@ concurrency:
 
 jobs:
   canary:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop' && inputs.confirm_hml_ingestion == true
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: hml
     timeout-minutes: 5
@@ -53,6 +57,7 @@ jobs:
       - name: Validate coordinator inputs and HML session gates
         env:
           SOURCE_REF: ${{ github.ref }}
+          CONFIRM_HML_INGESTION: ${{ inputs.confirm_hml_ingestion }}
           SESSION_ID: ${{ inputs.session_id }}
           STARTED_AT: ${{ inputs.started_at }}
           SESSION_MODE: ${{ inputs.session_mode }}
@@ -61,9 +66,14 @@ jobs:
           STAGING_ACTIVE: ${{ vars.STAGING_ACTIVE || 'false' }}
           STAGING_SESSION_AUTHORIZED: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
           AUTHORIZED_SESSION_MODE: ${{ vars.STAGING_SESSION_MODE || '' }}
+          STAGING_SESSION_ALLOW_ANY_TIME: ${{ vars.STAGING_SESSION_ALLOW_ANY_TIME || 'false' }}
         shell: bash
         run: |
           set -euo pipefail
+          [[ "$CONFIRM_HML_INGESTION" == "true" ]] || {
+            echo "::error::Set confirm_hml_ingestion=true to run the ingest canary."
+            exit 1
+          }
           [[ "$SOURCE_REF" == "refs/heads/develop" ]] || {
             echo "::error::The HML canary must run from develop."
             exit 1

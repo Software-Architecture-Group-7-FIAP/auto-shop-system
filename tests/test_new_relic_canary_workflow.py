@@ -16,7 +16,9 @@ class NewRelicCanaryWorkflowTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:", content)
         self.assertIn("confirm_hml_ingestion:", content)
         self.assertIn("default: false", content)
-        self.assertIn("inputs.confirm_hml_ingestion == true", content)
+        self.assertIn('CONFIRM_HML_INGESTION: ${{ inputs.confirm_hml_ingestion }}', content)
+        self.assertIn('[[ "$CONFIRM_HML_INGESTION" == "true" ]]', content)
+        self.assertIn("if: github.event_name == 'workflow_dispatch'", content)
         self.assertIn("options: [us]", content)
         self.assertNotIn("options: [us, eu, jp]", content)
         self.assertNotIn("schedule:", content)
@@ -24,7 +26,8 @@ class NewRelicCanaryWorkflowTests(unittest.TestCase):
 
     def test_workflow_reuses_the_hml_session_gate_without_aws_permissions(self) -> None:
         content = WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("github.ref == 'refs/heads/develop'", content)
+        self.assertIn('SOURCE_REF: ${{ github.ref }}', content)
+        self.assertIn('[[ "$SOURCE_REF" == "refs/heads/develop" ]]', content)
         self.assertIn("environment: hml", content)
         self.assertIn("secrets.LIFECYCLE_SESSION_SIGNING_KEY", content)
         self.assertIn("validate_environment_window.py --action operate", content)
