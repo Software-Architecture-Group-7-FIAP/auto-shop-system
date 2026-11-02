@@ -44,7 +44,7 @@ jobs:
     needs: [source-guard, build-push]
     runs-on:
       group: k8s-private-eks
-      labels: codebuild-auto-shop-k8s-private-${{ github.run_id }}-${{ github.run_attempt }}
+      labels: codebuild-auto-shop-hml-private-runner-${{ github.run_id }}-${{ github.run_attempt }}
     timeout-minutes: 30
     environment: hml
     permissions:
