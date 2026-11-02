@@ -250,6 +250,8 @@ jobs:
 
       - name: Deploy backend to HML
         env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          EKS_CLUSTER_NAME: ${{ steps.targets.outputs.cluster_name }}
           IMAGE_REFERENCE: ${{ steps.resolve-image.outputs.image_reference }}
           NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
           MIGRATION_DATABASE_SECRET_ARN: ${{ steps.targets.outputs.migration_secret_arn }}

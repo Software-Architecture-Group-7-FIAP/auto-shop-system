@@ -230,6 +230,8 @@ jobs:
 
       - name: Deploy to staging
         env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          EKS_CLUSTER_NAME: ${{ steps.eks.outputs.cluster_name }}
           IMAGE_REFERENCE: ${{ steps.ecr_image.outputs.image_reference }}
           NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
           MIGRATION_DATABASE_SECRET_ARN: ${{ steps.eks.outputs.migration_secret_arn }}
