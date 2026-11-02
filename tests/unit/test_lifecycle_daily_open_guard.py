@@ -357,7 +357,9 @@ def test_recorded_auth_preflight_failure_is_a_safe_recovery_owner(
     _set_github_context(monkeypatch)
     failed_run = _run(PRIOR_RUN_ID)
     current_run = _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")
-    with tempfile.TemporaryDirectory(prefix="lifecycle-guard-auth-preflight-recovery-test-") as temporary_directory:
+    with tempfile.TemporaryDirectory(
+        prefix="lifecycle-guard-auth-preflight-recovery-test-"
+    ) as temporary_directory:
         output_path = Path(temporary_directory) / "github-output.txt"
         monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
         _stub_api(
@@ -376,7 +378,7 @@ def test_recorded_auth_preflight_failure_is_a_safe_recovery_owner(
         )
 
         assert GUARD.main() == 0
-        assert output_path.read_text(encoding="utf-8") == f"recovery_source_run_id={PRIOR_RUN_ID}\n"
+        assert output_path.read_text(encoding="utf-8") == f"recovery_source_run_id={PRIOR_RUN_ID}\\n"
 
 
 def test_recorded_auth_preflight_failure_is_not_recoverable_after_a_deployment_mutation(
