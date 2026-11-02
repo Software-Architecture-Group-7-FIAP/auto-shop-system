@@ -21,11 +21,12 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           SOURCE_REF: ${{ github.ref }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$EVENT_NAME" == "workflow_dispatch" && "$SOURCE_REF" == "refs/heads/develop" ]] || {
-            echo "::error::The minimal HML deploy can run only by manual dispatch from develop."
+          [[ "$EVENT_NAME" == "workflow_dispatch" && "$SOURCE_REF" == "refs/heads/develop" && "$SOURCE_REPOSITORY" == "Software-Architecture-Group-7-FIAP/auto-shop-system" ]] || {
+            echo "::error::The minimal HML deploy can run only by manual dispatch from auto-shop-system/develop."
             exit 1
           }
 
@@ -41,7 +42,9 @@ jobs:
   deploy-hml:
     name: Deploy backend to HML EKS
     needs: [source-guard, build-push]
-    runs-on: ubuntu-latest
+    runs-on:
+      group: k8s-private-eks
+      labels: codebuild-auto-shop-k8s-private-${{ github.run_id }}-${{ github.run_attempt }}
     timeout-minutes: 30
     environment: hml
     permissions:
