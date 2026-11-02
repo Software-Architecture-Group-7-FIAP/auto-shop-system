@@ -6,7 +6,14 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 
 
-def test_start_is_limited_to_a_gated_infrastructure_only_hml_session() -> None:
+def _assert_profile_aware_ledger_scope(workflow: str) -> None:
+    scope_line = next(line for line in workflow.splitlines() if "SESSION_SCOPE:" in line)
+    assert "steps.window.outputs.stage == 'hml'" in scope_line
+    assert "vars.STAGING_SESSION_PROFILE == 'infra-only'" in scope_line
+    assert "'infrastructure-only' || 'integrated'" in scope_line
+
+
+def test_start_is_limited_to_a_gated_hml_session_with_profile_aware_scope() -> None:
     workflow = (WORKFLOWS / "environment-start.yml").read_text(encoding="utf-8")
 
     hml_gate = workflow.split("  hml-gates:", 1)[1].split("  open:", 1)[0]
@@ -16,7 +23,7 @@ def test_start_is_limited_to_a_gated_infrastructure_only_hml_session() -> None:
         encoding="utf-8"
     )
     assert "HML_LAST_DAY = date(2026, 11, 5)" in resolver
-    assert "SESSION_SCOPE: ${{ steps.window.outputs.stage == 'hml' && 'infrastructure-only' || 'integrated' }}" in workflow
+    _assert_profile_aware_ledger_scope(workflow)
     assert '--session-scope "$SESSION_SCOPE"' in workflow
     assert "environment: operations" in workflow
     role = workflow.index("Configure the narrow lifecycle start role")
@@ -93,7 +100,7 @@ def test_start_provisions_database_before_hml_identity_then_bootstraps_credentia
         assert set(dispatch_inputs) == {"session_id", "started_at", "session_mode", "phase"}
         assert dispatch_inputs["phase"] == phase
         assert f"--output-name {output}" in step
-    assert "SESSION_SCOPE: ${{ steps.window.outputs.stage == 'hml' && 'infrastructure-only' || 'integrated' }}" in workflow
+    _assert_profile_aware_ledger_scope(workflow)
     assert '--session-scope "$SESSION_SCOPE"' in workflow
 
 
