@@ -378,7 +378,7 @@ def test_recorded_auth_preflight_failure_is_a_safe_recovery_owner(
         )
 
         assert GUARD.main() == 0
-        assert output_path.read_text(encoding="utf-8") == f"recovery_source_run_id={PRIOR_RUN_ID}\\n"
+        assert output_path.read_text(encoding="utf-8") == f"recovery_source_run_id={PRIOR_RUN_ID}\n"
 
 
 def test_recorded_auth_preflight_failure_is_not_recoverable_after_a_deployment_mutation(
