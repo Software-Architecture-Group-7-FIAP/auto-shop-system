@@ -102,6 +102,8 @@ jobs:
         if: steps.expired.outputs.count != '0'
         env:
           CLEANUP_DEADLINE_UTC: ${{ steps.expired.outputs.deadline_utc }}
+          LIFECYCLE_SESSION_SIGNING_KEY: ${{ secrets.LIFECYCLE_SESSION_SIGNING_KEY }}
+          STAGING_SESSION_ALLOW_ANY_TIME: ${{ vars.STAGING_SESSION_ALLOW_ANY_TIME || 'false' }}
         run: |
           set -euo pipefail
           python3 .github/scripts/dispatch_expired_lifecycle_sessions.py \

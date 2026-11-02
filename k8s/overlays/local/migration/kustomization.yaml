@@ -13,8 +13,14 @@ patches:
       kind: Job
       name: auto-shop-migrate
     patch: |-
+      - op: replace
+        path: /spec/backoffLimit
+        value: 0
+      - op: replace
+        path: /spec/template/spec/restartPolicy
+        value: Never
       - op: add
-        path: /spec/template/spec/containers/0/envFrom/-
+        path: /spec/template/spec/containers/0/env
         value:
-          secretRef:
-            name: auto-shop-secrets
+          - name: MIGRATION_DIAGNOSTICS
+            value: "true"

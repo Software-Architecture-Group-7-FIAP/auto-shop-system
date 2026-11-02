@@ -195,6 +195,11 @@ ensure_redis_credentials() {
 }
 
 wait_migration() {
+  if [[ "${ENVIRONMENT}" == "staging" ]]; then
+    bash "${REPO_ROOT}/k8s/scripts/wait-for-job.sh" "${MIGRATION_JOB}" "${NAMESPACE}" 300
+    return
+  fi
+
   if ! kubectl wait --for=condition=complete "job/${MIGRATION_JOB}" \
     --namespace "${NAMESPACE}" --timeout=300s; then
     kubectl logs "job/${MIGRATION_JOB}" --namespace "${NAMESPACE}" --tail=100 2>&1 \
@@ -204,6 +209,11 @@ wait_migration() {
 }
 
 wait_seed() {
+  if [[ "${ENVIRONMENT}" == "staging" ]]; then
+    bash "${REPO_ROOT}/k8s/scripts/wait-for-job.sh" "${SEED_JOB}" "${NAMESPACE}" 300
+    return
+  fi
+
   if ! kubectl wait --for=condition=complete "job/${SEED_JOB}" \
     --namespace "${NAMESPACE}" --timeout=300s; then
     kubectl logs "job/${SEED_JOB}" --namespace "${NAMESPACE}" --tail=100 2>&1 \
