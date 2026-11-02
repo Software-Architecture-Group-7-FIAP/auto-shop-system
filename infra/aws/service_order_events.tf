@@ -337,9 +337,9 @@ data "aws_iam_policy_document" "service_order_publisher" {
   for_each = local.api_stages
 
   statement {
-    sid       = "PublishServiceOrderFailureEvents"
-    effect    = "Allow"
-    actions   = ["events:PutEvents"]
+    sid     = "PublishServiceOrderFailureEvents"
+    effect  = "Allow"
+    actions = ["events:PutEvents"]
     resources = [
       "arn:${data.aws_partition.current.partition}:events:${var.aws_region}:${data.aws_caller_identity.current.account_id}:event-bus/${local.service_order_bus_names[each.key]}"
     ]
