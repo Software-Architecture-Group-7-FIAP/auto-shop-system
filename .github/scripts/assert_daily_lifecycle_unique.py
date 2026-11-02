@@ -20,7 +20,7 @@ API_ROOT = "https://api.github.com"
 ACTIVE_STATUSES = {"queued", "requested", "waiting", "in_progress", "pending"}
 GUARD_STEP_NAME = "Reject a second opening run for the same HML date"
 FIRST_MUTATION_STEP_NAME = "Configure the narrow lifecycle start role"
-SESSION_RECORD_STEP_NAME = "Record the trusted operator and authorize an infrastructure-only session"
+SESSION_RECORD_STEP_NAME = "Record the trusted operator and authorize the selected HML session profile"
 FOUNDATION_PLAN_STEP_NAME = "Plan the K8s foundation opening"
 INFRASTRUCTURE_APPLY_STEP_NAMES = (
     "Apply the exact K8s foundation opening plan",
