@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -150,9 +151,17 @@ def _read_network_contract(by_name: dict[str, dict[str, Any]]) -> tuple[str, set
     return vpc_parameter["Value"], set(subnet_ids), {security_group_parameter["Value"]}
 
 
-def validate_auth_lambda_contract(expected_account_id: str) -> None:
+def validate_auth_lambda_contract(expected_account_id: str, stage: str | None = None) -> None:
     if not ACCOUNT_ID_PATTERN.fullmatch(expected_account_id):
         raise AuthLambdaPreflightError("EXPECTED_AWS_ACCOUNT_ID must contain exactly 12 digits.")
+    if stage is not None and stage not in SSM_PARAMETER_NAMES:
+        raise AuthLambdaPreflightError("The auth preflight stage must be hml or prd.")
+
+    stages = tuple(SSM_PARAMETER_NAMES) if stage is None else (stage,)
+    parameter_names = (
+        *(SSM_PARAMETER_NAMES[current_stage] for current_stage in stages),
+        *NETWORK_PARAMETER_NAMES.values(),
+    )
 
     identity = _aws_json("sts", "get-caller-identity", "--output", "json")
     if not isinstance(identity, dict) or identity.get("Account") != expected_account_id:
@@ -162,14 +171,14 @@ def validate_auth_lambda_contract(expected_account_id: str) -> None:
         "ssm",
         "get-parameters",
         "--names",
-        *ALL_PARAMETER_NAMES,
+        *parameter_names,
         "--region",
         AWS_REGION,
         "--output",
         "json",
     )
     if not isinstance(parameters, dict) or parameters.get("InvalidParameters"):
-        raise AuthLambdaPreflightError("One or more required auth Lambda SSM contracts are absent.")
+        raise AuthLambdaPreflightError("One or more required stage auth Lambda SSM contracts are absent.")
 
     parameter_items = parameters.get("Parameters")
     if not isinstance(parameter_items, list):
@@ -179,20 +188,23 @@ def validate_auth_lambda_contract(expected_account_id: str) -> None:
         for item in parameter_items
         if isinstance(item, dict) and isinstance(item.get("Name"), str)
     }
-    if len(by_name) != len(ALL_PARAMETER_NAMES):
+    if len(by_name) != len(parameter_names):
         raise AuthLambdaPreflightError("The auth and network SSM response is incomplete or ambiguous.")
 
     expected_vpc_id, expected_subnet_ids, expected_security_group_ids = _read_network_contract(by_name)
 
-    for stage, parameter_name in SSM_PARAMETER_NAMES.items():
+    for current_stage in stages:
+        parameter_name = SSM_PARAMETER_NAMES[current_stage]
         parameter = by_name.get(parameter_name)
         if (
             not isinstance(parameter, dict)
             or parameter.get("Type") != "String"
-            or not _expected_function_arn(parameter.get("Value"), stage=stage, account_id=expected_account_id)
+            or not _expected_function_arn(
+                parameter.get("Value"), stage=current_stage, account_id=expected_account_id
+            )
         ):
             raise AuthLambdaPreflightError(
-                f"{stage.upper()} auth SSM contract is invalid for this account and region."
+                f"{current_stage.upper()} auth SSM contract is invalid for this account and region."
             )
 
         function_arn = parameter["Value"]
@@ -210,7 +222,7 @@ def validate_auth_lambda_contract(expected_account_id: str) -> None:
         )
         _verify_function_configuration(
             configuration,
-            stage=stage,
+            stage=current_stage,
             function_arn=function_arn,
             expected_vpc_id=expected_vpc_id,
             expected_subnet_ids=expected_subnet_ids,
@@ -219,13 +231,24 @@ def validate_auth_lambda_contract(expected_account_id: str) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--stage", choices=tuple(SSM_PARAMETER_NAMES))
+    arguments = parser.parse_args()
+
     try:
-        validate_auth_lambda_contract(os.environ.get("EXPECTED_AWS_ACCOUNT_ID", ""))
+        validate_auth_lambda_contract(
+            os.environ.get("EXPECTED_AWS_ACCOUNT_ID", ""),
+            stage=arguments.stage,
+        )
     except AuthLambdaPreflightError as error:
         print(f"::error::{error}", file=sys.stderr)
         return 1
 
-    print("Persistent HML and PRD customer-auth Lambdas match the approved private network contract.")
+    stages = (arguments.stage,) if arguments.stage else tuple(SSM_PARAMETER_NAMES)
+    stage_label = " and ".join(current_stage.upper() for current_stage in stages)
+    lambda_label = "Lambda" if len(stages) == 1 else "Lambdas"
+    verb = "matches" if len(stages) == 1 else "match"
+    print(f"Persistent {stage_label} customer-auth {lambda_label} {verb} the approved private network contract.")
     return 0
 
 

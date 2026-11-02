@@ -184,13 +184,13 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-duration-seconds: 900
 
-      - name: Record the trusted operator and authorize an infrastructure-only session
+      - name: Record the trusted operator and authorize the selected HML session profile
         env:
           SESSION_ID: ${{ steps.window.outputs.session_id }}
           SESSION_STAGE: ${{ steps.window.outputs.stage }}
           STARTED_AT: ${{ steps.window.outputs.started_at }}
           SESSION_MODE: ${{ steps.window.outputs.session_mode }}
-          SESSION_SCOPE: ${{ steps.window.outputs.stage == 'hml' && 'infrastructure-only' || 'integrated' }}
+          SESSION_SCOPE: ${{ steps.window.outputs.stage == 'hml' && (vars.STAGING_SESSION_PROFILE == 'infra-only' && 'infrastructure-only' || 'integrated') || 'integrated' }}
           SAFE_RETRY_SOURCE_RUN_ID: ${{ steps.daily_unique.outputs.recovery_source_run_id || '' }}
         run: >-
           python3 .github/scripts/lifecycle_session_ledger.py authorize-open
@@ -250,7 +250,8 @@ jobs:
         if: steps.window.outputs.stage == 'prd' || vars.STAGING_SESSION_PROFILE != 'infra-only'
         env:
           EXPECTED_AWS_ACCOUNT_ID: ${{ env.EXPECTED_AWS_ACCOUNT_ID }}
-        run: python3 .github/scripts/validate_auth_lambda_preflight.py
+          STAGE: ${{ steps.window.outputs.stage }}
+        run: python3 .github/scripts/validate_auth_lambda_preflight.py --stage "$STAGE"
 
       - name: Create a cost evidence placeholder before requesting AWS credentials
         env:

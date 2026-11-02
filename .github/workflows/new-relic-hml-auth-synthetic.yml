@@ -1,5 +1,5 @@
 name: New Relic HML authentication synthetic
-run-name: new-relic:hml-auth:${{ inputs.session_id }}:${{ github.run_id }}
+run-name: new-relic:hml-auth:${{ inputs.session_id }}:${{ inputs.lifecycle_dispatch_id || github.run_id }}
 
 on:
   workflow_dispatch:
@@ -19,6 +19,10 @@ on:
         options: [hml]
       session_token:
         description: Signed coordinator session capability
+        required: false
+        type: string
+      lifecycle_dispatch_id:
+        description: Coordinator-generated run correlation ID
         required: false
         type: string
       confirm_privacy_contract:

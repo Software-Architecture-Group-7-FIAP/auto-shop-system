@@ -26,7 +26,7 @@ from assert_lifecycle_close_needed import (
 API_ROOT = "https://api.github.com"
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 BRT = ZoneInfo("America/Sao_Paulo")
-HML_LAST_DAY = date(2026, 10, 31)
+HML_LAST_DAY = date(2026, 11, 5)
 MAX_RUNS = 1000
 ACTIVE_STATUSES = {"queued", "requested", "waiting", "in_progress", "pending", "canceling"}
 OPENING_APPLY_JOB_NAME = "apply reviewed saved plan"
