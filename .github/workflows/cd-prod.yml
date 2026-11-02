@@ -235,6 +235,8 @@ jobs:
 
       - name: Deploy to production (rolling via Deployment rollout)
         env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          EKS_CLUSTER_NAME: ${{ steps.eks.outputs.cluster_name }}
           IMAGE_REFERENCE: ${{ steps.ecr_image.outputs.image_reference }}
           MIGRATION_DATABASE_SECRET_ARN: ${{ steps.eks.outputs.migration_secret_arn }}
           SERVICE_ORDER_EVENT_BUS_NAME: ${{ steps.eks.outputs.service_order_event_bus_name }}
