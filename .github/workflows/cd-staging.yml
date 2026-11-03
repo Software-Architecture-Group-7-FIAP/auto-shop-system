@@ -223,11 +223,6 @@ jobs:
           EKS_CLUSTER_NAME: ${{ steps.eks.outputs.cluster_name }}
         run: aws eks update-kubeconfig --name "${EKS_CLUSTER_NAME}" --region "${AWS_REGION}"
 
-      - name: Install the pinned Helm client
-        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
-        with:
-          version: v3.19.0
-
       - name: Deploy to staging
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}

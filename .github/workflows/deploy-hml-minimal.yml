@@ -249,10 +249,6 @@ jobs:
             }
           done
 
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
-        with:
-          version: v3.19.0
-
       - name: Deploy backend to HML
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
