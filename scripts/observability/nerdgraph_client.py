@@ -269,6 +269,25 @@ query OwnedConditions($accountId: Int!, $policyId: ID!) {
   } } }
 }
 """
+CONDITION_GET = """
+query OwnedCondition($accountId: Int!, $conditionId: ID!) {
+  actor { account(id: $accountId) { alerts {
+    nrqlCondition(id: $conditionId) {
+      id name description enabled
+      nrql { query }
+      runbookUrl
+      signal {
+        aggregationWindow aggregationMethod aggregationDelay fillOption
+      }
+      terms {
+        priority operator threshold thresholdDuration thresholdOccurrences
+      }
+      violationTimeLimitSeconds
+      ... on AlertsNrqlStaticCondition { valueFunction }
+    }
+  } } }
+}
+"""
 CONDITION_CREATE = """
 mutation CreateCondition($accountId: Int!, $policyId: ID!, $condition: AlertsNrqlConditionStaticInput!) {
   alertsNrqlConditionStaticCreate(accountId: $accountId, policyId: $policyId, condition: $condition) { id name }
