@@ -1,5 +1,5 @@
 name: Minimal HML Deploy
-run-name: HML ${{ inputs.operation || 'deploy' }} ${{ github.sha }}
+run-name: HML deploy ${{ github.sha }}
 
 on:
   workflow_dispatch:
