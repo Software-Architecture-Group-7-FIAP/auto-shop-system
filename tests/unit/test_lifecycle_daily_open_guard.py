@@ -11,6 +11,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / ".github" / "scripts" / "assert_daily_lifecycle_unique.py"
+FAILED_OPEN_JOB_FIXTURE_PATH = Path(__file__).with_name("github_hml_open_job_126063129291.json")
 SPEC = importlib.util.spec_from_file_location("assert_daily_lifecycle_unique", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
 GUARD = importlib.util.module_from_spec(SPEC)
@@ -254,6 +255,93 @@ def test_rerun_after_an_infrastructure_apply_blocks_duplicate_mutation(
     _stub_api(
         monkeypatch,
         [_listing(current_run), _jobs_payload(open_conclusion="failure", steps=steps)],
+    )
+
+    assert GUARD.main() == 1
+
+
+def test_failed_hml_foundation_plan_waiter_allows_exact_no_mutation_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    prior_run = _run(41677810761)
+    prior_run["created_at"] = _brt_created_at(-1)
+    current_run = _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")
+    current_run["created_at"] = _brt_created_at(0)
+    steps = json.loads(FAILED_OPEN_JOB_FIXTURE_PATH.read_text(encoding="utf-8"))["steps"]
+
+    with tempfile.TemporaryDirectory(prefix="lifecycle-guard-foundation-plan-recovery-test-") as temporary_directory:
+        output_path = Path(temporary_directory) / "github-output.txt"
+        monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+        _stub_api(
+            monkeypatch,
+            [
+                _listing(prior_run, current_run),
+                _jobs_payload(open_conclusion="failure", steps=steps),
+            ],
+        )
+
+        assert GUARD.main() == 0
+        assert output_path.read_text(encoding="utf-8") == f"recovery_source_run_id={prior_run['id']}\n"
+
+
+def test_foundation_plan_recovery_rejects_an_additional_failed_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    prior_run = _run(41677810761)
+    prior_run["created_at"] = _brt_created_at(-1)
+    current_run = _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")
+    current_run["created_at"] = _brt_created_at(0)
+    steps = json.loads(FAILED_OPEN_JOB_FIXTURE_PATH.read_text(encoding="utf-8"))["steps"]
+    steps[31]["conclusion"] = "failure"
+    _stub_api(
+        monkeypatch,
+        [
+            _listing(prior_run, current_run),
+            _jobs_payload(open_conclusion="failure", steps=steps),
+        ],
+    )
+
+    assert GUARD.main() == 1
+
+
+def test_foundation_plan_recovery_rejects_a_skipped_earlier_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    prior_run = _run(41677810761)
+    prior_run["created_at"] = _brt_created_at(-1)
+    current_run = _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")
+    current_run["created_at"] = _brt_created_at(0)
+    steps = json.loads(FAILED_OPEN_JOB_FIXTURE_PATH.read_text(encoding="utf-8"))["steps"]
+    steps[10]["conclusion"] = "skipped"
+    _stub_api(
+        monkeypatch,
+        [
+            _listing(prior_run, current_run),
+            _jobs_payload(open_conclusion="failure", steps=steps),
+        ],
+    )
+
+    assert GUARD.main() == 1
+
+
+def test_foundation_plan_recovery_requires_a_completed_failed_open_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    prior_run = _run(41677810761)
+    prior_run["created_at"] = _brt_created_at(-1)
+    current_run = _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")
+    current_run["created_at"] = _brt_created_at(0)
+    steps = json.loads(FAILED_OPEN_JOB_FIXTURE_PATH.read_text(encoding="utf-8"))["steps"]
+    _stub_api(
+        monkeypatch,
+        [
+            _listing(prior_run, current_run),
+            _jobs_payload(open_status="in_progress", open_conclusion="failure", steps=steps),
+        ],
     )
 
     assert GUARD.main() == 1

@@ -99,6 +99,39 @@ def _step_conclusion(steps: list[object], name: str) -> str | None:
     return conclusion if isinstance(conclusion, str) else None
 
 
+def _failed_foundation_plan_waiter(open_job: dict[str, object], steps: list[object]) -> bool:
+    if open_job.get("status") != "completed" or open_job.get("conclusion") != "failure":
+        return False
+    plan_indexes = [
+        index
+        for index, step in enumerate(steps)
+        if isinstance(step, dict) and step.get("name") == FOUNDATION_PLAN_STEP_NAME
+    ]
+    if len(plan_indexes) != 1:
+        return False
+
+    plan_index = plan_indexes[0]
+    plan_step = steps[plan_index]
+    if not isinstance(plan_step, dict):
+        return False
+    if plan_step.get("status") != "completed" or plan_step.get("conclusion") != "failure":
+        return False
+
+    preceding_steps_succeeded = all(
+        isinstance(step, dict)
+        and step.get("status") == "completed"
+        and step.get("conclusion") == "success"
+        for step in steps[:plan_index]
+    )
+    following_steps_are_non_mutating = all(
+        isinstance(step, dict)
+        and step.get("status") == "completed"
+        and step.get("conclusion") in {"success", "skipped"}
+        for step in steps[plan_index + 1 :]
+    )
+    return preceding_steps_succeeded and following_steps_are_non_mutating
+
+
 def _open_failed_at_guard(open_job: dict[str, object], steps: list[object]) -> bool:
     if open_job.get("status") != "completed" or open_job.get("conclusion") != "failure":
         return False
@@ -211,9 +244,11 @@ def _classify_prior_run(
             verified_owner = True
             continue
 
-        # A recorded session whose foundation plan failed is an authorized handoff,
-        # provided every mutating deployment step stayed skipped in every attempt.
+        # Hand off a recorded owner only when the open job failed in its read-only
+        # foundation-plan waiter and all other steps completed or were skipped.
         if record_state == "success" and plan_state == "failure":
+            if guard_state != "success" or not _failed_foundation_plan_waiter(open_job, steps):
+                raise ValueError("A foundation plan failure lacks exact non-mutating recovery evidence")
             verified_owner = True
             continue
         if record_state in {"failure", "skipped"} and plan_state == "skipped":
