@@ -20,7 +20,12 @@ API_ROOT = "https://api.github.com"
 ACTIVE_STATUSES = {"queued", "requested", "waiting", "in_progress", "pending"}
 GUARD_STEP_NAME = "Reject a second opening run for the same HML date"
 SESSION_RECORD_STEP_NAME = "Record the trusted operator and authorize the selected HML session profile"
+ALL_INPUTS_PREFLIGHT_STEP_NAME = "Validate all credentials, repositories, deploy gates, alerting, and cost evidence inputs"
+AUTH_PREFLIGHT_ROLE_STEP_NAME = "Configure the read-only persistent auth preflight role"
 AUTH_PREFLIGHT_STEP_NAME = "Validate persistent customer auth Lambdas before opening session resources"
+COST_EVIDENCE_PLACEHOLDER_STEP_NAME = "Create a cost evidence placeholder before requesting AWS credentials"
+COST_READER_IDENTITY_STEP_NAME = "Configure read-only Cost Explorer identity"
+COST_OBSERVATION_STEP_NAME = "Verify the account and record observed pre-cycle billing"
 FOUNDATION_PLAN_STEP_NAME = "Plan the K8s foundation opening"
 MUTATING_DEPLOYMENT_STEP_NAMES = (
     "Apply the exact K8s foundation opening plan",
@@ -97,6 +102,7 @@ def _classify_prior_run(
     run: dict[str, object],
     token: str,
     *,
+    stage: str,
     last_attempt: int | None = None,
 ) -> tuple[bool, bool]:
     """Return (safe_to_retry, verified_ledger_owner), failing closed on ambiguity."""
@@ -124,7 +130,12 @@ def _classify_prior_run(
             raise ValueError("A prior opening attempt has no readable step evidence")
 
         record_state = _step_conclusion(steps, SESSION_RECORD_STEP_NAME)
+        all_inputs_state = _step_conclusion(steps, ALL_INPUTS_PREFLIGHT_STEP_NAME)
+        auth_role_state = _step_conclusion(steps, AUTH_PREFLIGHT_ROLE_STEP_NAME)
         auth_preflight_state = _step_conclusion(steps, AUTH_PREFLIGHT_STEP_NAME)
+        cost_placeholder_state = _step_conclusion(steps, COST_EVIDENCE_PLACEHOLDER_STEP_NAME)
+        cost_reader_identity_state = _step_conclusion(steps, COST_READER_IDENTITY_STEP_NAME)
+        cost_observation_state = _step_conclusion(steps, COST_OBSERVATION_STEP_NAME)
         plan_state = _step_conclusion(steps, FOUNDATION_PLAN_STEP_NAME)
         guard_state = _step_conclusion(steps, GUARD_STEP_NAME)
 
@@ -144,6 +155,23 @@ def _classify_prior_run(
             and auth_preflight_state == "failure"
             and plan_state == "skipped"
             and guard_state == "success"
+        ):
+            verified_owner = True
+            continue
+
+        # A Cost Explorer role failure can hand off the recorded HML owner only
+        # when every preceding read-only gate completed and no later work started.
+        if (
+            stage == "hml"
+            and record_state == "success"
+            and guard_state == "success"
+            and all_inputs_state == "success"
+            and auth_role_state == "success"
+            and auth_preflight_state == "success"
+            and cost_placeholder_state == "success"
+            and cost_reader_identity_state == "failure"
+            and cost_observation_state == "skipped"
+            and plan_state == "skipped"
         ):
             verified_owner = True
             continue
@@ -201,6 +229,7 @@ def main() -> int:
                 repository,
                 current_run,
                 token,
+                stage=arguments.stage,
                 last_attempt=current_attempt - 1,
             )
             if not safe:
@@ -218,7 +247,7 @@ def main() -> int:
 
         verified_owners: list[tuple[datetime, int]] = []
         for run in prior_runs:
-            safe, verified = _classify_prior_run(repository, run, token)
+            safe, verified = _classify_prior_run(repository, run, token, stage=arguments.stage)
             if not safe:
                 raise ValueError("A prior opening attempt may have started infrastructure mutation")
             if verified:
@@ -244,3 +273,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
