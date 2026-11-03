@@ -312,6 +312,7 @@ data "aws_iam_policy_document" "github_lifecycle_cost_reader_assume" {
   count = var.enable_github_oidc ? 1 : 0
 
   statement {
+    sid     = "AllowHmlLifecycleClose"
     actions = ["sts:AssumeRoleWithWebIdentity"]
 
     principals {
@@ -329,6 +330,46 @@ data "aws_iam_policy_document" "github_lifecycle_cost_reader_assume" {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
       values   = ["${local.github_oidc_subject_prefix}:environment:hml-lifecycle"]
+    }
+  }
+
+  statement {
+    sid     = "AllowEnvironmentStartOnMain"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [data.aws_iam_openid_connect_provider.github.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["${local.github_oidc_subject_prefix}:environment:operations"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:workflow"
+      values   = ["Coordinated environment start"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:ref"
+      values   = ["refs/heads/main"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:environment"
+      values   = ["operations"]
     }
   }
 }
