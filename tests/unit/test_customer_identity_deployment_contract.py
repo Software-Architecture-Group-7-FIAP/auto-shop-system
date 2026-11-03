@@ -150,7 +150,8 @@ def test_deploy_script_requires_complete_arn_values():
     assert "secret:[A-Za-z0-9/_+=.@-]+$" in deploy_script
     assert "role/[A-Za-z0-9+=,.@_/-]+$" in deploy_script
     assert "assert_pod_identity_agent_ready" in deploy_script
-    assert "assert_pod_identity_agent_ready\nkubectl create namespace" in deploy_script
+    assert "assert_pod_identity_agent_ready\nensure_secret" in deploy_script
+    assert "kubectl create namespace" not in deploy_script
 
 
 def test_pod_identity_agent_guard_uses_eks_addon_api():
@@ -259,3 +260,13 @@ def test_terraform_block_addresses_are_unique():
     assert not duplicate_addresses, (
         f"Duplicate Terraform block addresses: {duplicate_addresses}"
     )
+
+
+def test_application_foundation_bundle_does_not_manage_namespaces():
+    base_kustomization = (ROOT / "k8s/base/foundation/kustomization.yaml").read_text(
+        encoding="utf-8"
+    )
+    deploy_script = (ROOT / "k8s/scripts/deploy.sh").read_text(encoding="utf-8")
+
+    assert "namespace.yaml" not in base_kustomization
+    assert "kubectl create namespace" not in deploy_script
