@@ -111,7 +111,11 @@ jobs:
       vars.DEPLOY_PRODUCTION_ENABLED == 'true' &&
       needs.build-push.result == 'success' &&
       needs.lifecycle-authorization.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on:
+      group: k8s-private-eks
+      labels:
+        - "codebuild-auto-shop-hml-private-runner-${{ github.run_id }}-${{ github.run_attempt }}"
+        - "buildspec-override:true"
     environment: prd
     permissions:
       contents: read
@@ -235,13 +239,15 @@ jobs:
 
       - name: Deploy to production (rolling via Deployment rollout)
         env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          EKS_CLUSTER_NAME: ${{ steps.eks.outputs.cluster_name }}
           IMAGE_REFERENCE: ${{ steps.ecr_image.outputs.image_reference }}
           MIGRATION_DATABASE_SECRET_ARN: ${{ steps.eks.outputs.migration_secret_arn }}
           SERVICE_ORDER_EVENT_BUS_NAME: ${{ steps.eks.outputs.service_order_event_bus_name }}
           SERVICE_ORDER_PUBLISHER_ROLE_ARN: ${{ steps.eks.outputs.service_order_publisher_role_arn }}
           ALLOW_SYNTHETIC_SEED_IN_PRD: ${{ env.ALLOW_SYNTHETIC_SEED_IN_PRD }}
           LIFECYCLE_SESSION_ID: ${{ env.LIFECYCLE_SESSION_ID }}
-        run: ./k8s/scripts/deploy.sh production "${IMAGE_REFERENCE}" yes
+        run: bash ./k8s/scripts/deploy.sh production "${IMAGE_REFERENCE}" yes
 
   deploy-production-frontend:
     needs: deploy-production

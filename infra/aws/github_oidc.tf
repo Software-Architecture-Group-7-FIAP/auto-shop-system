@@ -172,6 +172,25 @@ data "aws_iam_policy_document" "github_deploy_eks" {
   }
 }
 
+data "aws_iam_policy_document" "github_pod_identity_addon_read" {
+  for_each = var.enable_github_oidc ? toset(["staging", "production"]) : toset([])
+
+  statement {
+    sid     = "InspectPodIdentityAgentAddon"
+    effect  = "Allow"
+    actions = ["eks:DescribeAddon"]
+    resources = [
+      format(
+        "arn:%s:eks:%s:%s:addon/%s/eks-pod-identity-agent/*",
+        data.aws_partition.current.partition,
+        var.aws_region,
+        data.aws_caller_identity.current.account_id,
+        data.aws_ssm_parameter.upstream["eks_cluster_name"].value,
+      ),
+    ]
+  }
+}
+
 data "aws_iam_policy_document" "github_frontend_deploy" {
   for_each = var.enable_github_oidc ? toset(["staging", "production"]) : toset([])
 
@@ -219,6 +238,14 @@ resource "aws_iam_role_policy" "github_deploy_eks" {
   name   = "${each.key}-deploy"
   role   = aws_iam_role.github_deploy[each.key].id
   policy = data.aws_iam_policy_document.github_deploy_eks[each.key].json
+}
+
+resource "aws_iam_role_policy" "github_pod_identity_addon_read" {
+  for_each = var.enable_github_oidc ? toset(["staging", "production"]) : toset([])
+
+  name   = "${each.key}-pod-identity-addon-read"
+  role   = aws_iam_role.github_deploy[each.key].id
+  policy = data.aws_iam_policy_document.github_pod_identity_addon_read[each.key].json
 }
 
 resource "aws_iam_role_policy" "github_frontend_deploy" {

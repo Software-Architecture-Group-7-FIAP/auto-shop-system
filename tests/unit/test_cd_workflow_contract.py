@@ -24,6 +24,22 @@ def test_staging_and_production_deploy_require_coordinator_dispatch() -> None:
         assert "validate_environment_window.py --action" in deployment
 
 
+def test_kubernetes_deploys_use_the_private_codebuild_eks_runner_contract() -> None:
+    # The minimal HML path intentionally runs on a hosted runner, so the
+    # private-runner contract is asserted directly on the CD workflows.
+    for filename, deploy_job, next_job in (
+        ("cd-staging.yml", "deploy-staging", "deploy-staging-frontend"),
+        ("cd-prod.yml", "deploy-production", "deploy-production-frontend"),
+    ):
+        workflow = (WORKFLOWS / filename).read_text(encoding="utf-8")
+        deployment = workflow.split(f"  {deploy_job}:\n", 1)[1].split(
+            f"\n  {next_job}:", 1
+        )[0]
+
+        assert "group: k8s-private-eks" in deployment
+        assert "buildspec-override:true" in deployment
+
+
 def test_frontend_deploy_gate_is_independent_from_backend_deploy_gate() -> None:
     for filename, backend_job, frontend_job, next_job, gate in (
         (

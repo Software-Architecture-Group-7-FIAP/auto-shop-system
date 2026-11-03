@@ -150,7 +150,45 @@ def test_deploy_script_requires_complete_arn_values():
     assert "secret:[A-Za-z0-9/_+=.@-]+$" in deploy_script
     assert "role/[A-Za-z0-9+=,.@_/-]+$" in deploy_script
     assert "assert_pod_identity_agent_ready" in deploy_script
-    assert "assert_pod_identity_agent_ready\nkubectl create namespace" in deploy_script
+    assert "assert_pod_identity_agent_ready\nensure_secret" in deploy_script
+    assert "kubectl create namespace" not in deploy_script
+
+
+def test_pod_identity_agent_guard_uses_eks_addon_api():
+    deploy_script = (ROOT / "k8s/scripts/deploy.sh").read_text(encoding="utf-8")
+
+    assert "aws eks describe-addon" in deploy_script
+    assert "--addon-name eks-pod-identity-agent" in deploy_script
+    assert "--query 'addon.status'" in deploy_script
+    assert "--query 'length(addon.health.issues)'" in deploy_script
+    assert "kubectl get daemonset eks-pod-identity-agent" not in deploy_script
+
+
+def test_github_deploy_roles_can_describe_only_the_pod_identity_addon():
+    terraform = (ROOT / "infra/aws/github_oidc.tf").read_text(encoding="utf-8")
+    addon_policy = terraform.split(
+        'data "aws_iam_policy_document" "github_pod_identity_addon_read"', maxsplit=1
+    )[1].split('data "aws_iam_policy_document" "github_frontend_deploy"', maxsplit=1)[0]
+
+    assert '"eks:DescribeAddon"' in addon_policy
+    assert "addon/%s/eks-pod-identity-agent/*" in addon_policy
+    assert 'name   = "${each.key}-pod-identity-addon-read"' in terraform
+
+
+def test_deploy_workflows_pass_the_resolved_cluster_name_to_deploy_script():
+    workflows = {
+        ".github/workflows/deploy-hml-minimal.yml": "steps.targets.outputs.cluster_name",
+        ".github/workflows/cd-staging.yml": "steps.eks.outputs.cluster_name",
+        ".github/workflows/cd-prod.yml": "steps.eks.outputs.cluster_name",
+    }
+
+    for workflow_path, output_name in workflows.items():
+        workflow = (ROOT / workflow_path).read_text(encoding="utf-8")
+        deploy_index = workflow.index("run: bash ./k8s/scripts/deploy.sh")
+        step_start = workflow.rfind("      - name:", 0, deploy_index)
+        step_end = workflow.find("\n      - name:", deploy_index)
+        deploy_step = workflow[step_start:step_end]
+        assert f"EKS_CLUSTER_NAME: ${{{{ {output_name} }}}}" in deploy_step
 
 
 def test_cd_workflows_mirror_authenticated_ghcr_images_into_deployable_ecr_tags():
@@ -222,3 +260,30 @@ def test_terraform_block_addresses_are_unique():
     assert not duplicate_addresses, (
         f"Duplicate Terraform block addresses: {duplicate_addresses}"
     )
+
+
+def test_application_foundation_bundle_keeps_namespace_only_in_local():
+    base_kustomization = (ROOT / "k8s/base/foundation/kustomization.yaml").read_text(
+        encoding="utf-8"
+    )
+    local_kustomization = (
+        ROOT / "k8s/overlays/local/foundation/kustomization.yaml"
+    ).read_text(encoding="utf-8")
+    local_namespace = (
+        ROOT / "k8s/overlays/local/foundation/namespace.yaml"
+    ).read_text(encoding="utf-8")
+    staging_kustomization = (
+        ROOT / "k8s/overlays/staging/foundation/kustomization.yaml"
+    ).read_text(encoding="utf-8")
+    production_kustomization = (
+        ROOT / "k8s/overlays/production/foundation/kustomization.yaml"
+    ).read_text(encoding="utf-8")
+    deploy_script = (ROOT / "k8s/scripts/deploy.sh").read_text(encoding="utf-8")
+
+    assert "namespace.yaml" not in base_kustomization
+    assert "namespace.yaml" in local_kustomization
+    assert "kind: Namespace" in local_namespace
+    assert "name: auto-shop" in local_namespace
+    assert "namespace.yaml" not in staging_kustomization
+    assert "namespace.yaml" not in production_kustomization
+    assert "kubectl create namespace" not in deploy_script
