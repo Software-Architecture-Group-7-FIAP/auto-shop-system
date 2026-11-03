@@ -50,7 +50,7 @@ jobs:
   build-push:
     name: Build immutable commit image
     needs: source-guard
-    if: needs.source-guard.result == 'success'
+    if: needs.source-guard.result == 'success' && inputs.operation != 'prepare-newrelic-secret'
     permissions:
       contents: read
       packages: write
