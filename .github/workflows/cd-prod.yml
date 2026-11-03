@@ -243,7 +243,7 @@ jobs:
           SERVICE_ORDER_PUBLISHER_ROLE_ARN: ${{ steps.eks.outputs.service_order_publisher_role_arn }}
           ALLOW_SYNTHETIC_SEED_IN_PRD: ${{ env.ALLOW_SYNTHETIC_SEED_IN_PRD }}
           LIFECYCLE_SESSION_ID: ${{ env.LIFECYCLE_SESSION_ID }}
-        run: ./k8s/scripts/deploy.sh production "${IMAGE_REFERENCE}" yes
+        run: bash ./k8s/scripts/deploy.sh production "${IMAGE_REFERENCE}" yes
 
   deploy-production-frontend:
     needs: deploy-production
