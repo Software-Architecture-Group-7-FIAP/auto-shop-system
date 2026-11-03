@@ -266,18 +266,18 @@ def test_application_foundation_bundle_keeps_namespace_only_in_local():
     base_kustomization = (ROOT / "k8s/base/foundation/kustomization.yaml").read_text(
         encoding="utf-8"
     )
-    local_kustomization = (ROOT / "k8s/overlays/local/foundation/kustomization.yaml").read_text(
-        encoding="utf-8"
-    )
-    local_namespace = (ROOT / "k8s/overlays/local/foundation/namespace.yaml").read_text(
-        encoding="utf-8"
-    )
-    staging_kustomization = (ROOT / "k8s/overlays/staging/foundation/kustomization.yaml").read_text(
-        encoding="utf-8"
-    )
-    production_kustomization = (ROOT / "k8s/overlays/production/foundation/kustomization.yaml").read_text(
-        encoding="utf-8"
-    )
+    local_kustomization = (
+        ROOT / "k8s/overlays/local/foundation/kustomization.yaml"
+    ).read_text(encoding="utf-8")
+    local_namespace = (
+        ROOT / "k8s/overlays/local/foundation/namespace.yaml"
+    ).read_text(encoding="utf-8")
+    staging_kustomization = (
+        ROOT / "k8s/overlays/staging/foundation/kustomization.yaml"
+    ).read_text(encoding="utf-8")
+    production_kustomization = (
+        ROOT / "k8s/overlays/production/foundation/kustomization.yaml"
+    ).read_text(encoding="utf-8")
     deploy_script = (ROOT / "k8s/scripts/deploy.sh").read_text(encoding="utf-8")
 
     assert "namespace.yaml" not in base_kustomization
