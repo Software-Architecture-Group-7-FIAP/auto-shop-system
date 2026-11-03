@@ -8,6 +8,13 @@ O deploy é do backend no namespace Kubernetes `auto-shop-hml`; não implica pub
 
 O workflow deve primeiro ser integrado à branch padrão `main` para que `workflow_dispatch` esteja disponível no GitHub Actions. Ao executar, selecione `develop` como branch de origem. Este caminho mínimo cobre backend e integração Kubernetes do New Relic. O frontend fica fora: o workflow reutilizável atual de publicação exige autorização do lifecycle, então esta execução não publica o frontend.
 
+## Ordem durante a abertura de HML
+
+Depois que o EKS e o namespace/RBAC `auto-shop-hml` existirem pelo bootstrap autorizado, execute este workflow a partir de `develop` com `operation=prepare-newrelic-secret`. O título do run permanece `HML deploy <SHA>` para ser aceito pelo filtro existente do runner; a operação real aparece no resumo do workflow. O job usa o Environment `hml` e o runner privado de EKS para ler a secret existente `NEW_RELIC_LICENSE_KEY` e criar/atualizar `auto-shop-new-relic` no cluster, sem imprimir nem passar o valor em argumentos.
+
+A preparação precisa terminar antes de aplicar a stack `platform` em [k8s-infra/cluster-apply.yml](https://github.com/Software-Architecture-Group-7-FIAP/k8s-infra/blob/main/.github/workflows/cluster-apply.yml). O preflight de infraestrutura confirma a presença da chave e falha fechado se estiver ausente. Depois aplique `platform` e execute novamente este workflow no modo `deploy` (padrão). O dispatch deste workflow deve estar integrado à branch padrão `main`; a branch selecionada ao iniciar deve ser `develop`.
+
+
 ## Antes de iniciar
 
 Confirme estes itens com quem administra o repositório e a AWS. Configure os nomes e valores nos escopos indicados sem colocar credenciais em arquivos, inputs, issues ou logs.
