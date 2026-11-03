@@ -2,7 +2,6 @@
 # infrastructure and state-metrics components required by the acceptance criteria.
 global:
   cluster: "auto-shop-hml"
-  provider: "aws"
   lowDataMode: true
   customSecretName: "auto-shop-new-relic"
   customSecretLicenseKey: "NEW_RELIC_LICENSE_KEY"
