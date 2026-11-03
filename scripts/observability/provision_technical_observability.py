@@ -73,8 +73,8 @@ FORBIDDEN_QUERY_TERMS = (
     "email",
 )
 
-SERVICE_ORDER_OWNERSHIP = "auto-shop-owned-hml-service-order-v1"
-SERVICE_ORDER_DASHBOARD_NAME = "auto-shop-owned::HML Service Order Operations"
+SERVICE_ORDER_OWNERSHIP = "auto-shop-owned-hml-service-order-v2"
+SERVICE_ORDER_DASHBOARD_NAME = "auto-shop-owned::HML Service Order Operations v2"
 SERVICE_ORDER_POLICY_NAME = "auto-shop-owned::HML Service Order Failures"
 SOURCE_COVERAGE_STATUS = {
     "Transaction": "verified",

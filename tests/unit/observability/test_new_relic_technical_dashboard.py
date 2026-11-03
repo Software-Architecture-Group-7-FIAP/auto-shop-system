@@ -66,6 +66,16 @@ def test_dashboard_has_required_aggregate_widgets_and_metadata():
         assert " since 30 minutes ago" in query
 
 
+def test_dashboard_replacement_uses_v2_identity_and_keeps_alert_policy_name():
+    dashboard = _load(DASHBOARD_PATH)
+    alerts = _load(ALERTS_PATH)
+
+    assert dashboard["name"] == "auto-shop-owned::HML Technical Health v2"
+    assert dashboard["ownership"] == "auto-shop-owned-hml-technical-v2"
+    assert alerts["ownership"] == dashboard["ownership"]
+    assert alerts["policy"]["name"] == "auto-shop-owned::HML Technical Alerts"
+
+
 def test_validate_reports_dashboard_and_alert_counts(capsys):
     result = main(
         [
@@ -244,7 +254,7 @@ def test_dashboard_discovery_fails_closed_when_nerdgraph_response_is_malformed()
 
 
 def test_dashboard_ownership_requires_an_exact_structured_tag_value():
-    ownership = "auto-shop-owned-hml-technical-v1"
+    ownership = "auto-shop-owned-hml-technical-v2"
 
     assert _has_ownership_tag(
         {

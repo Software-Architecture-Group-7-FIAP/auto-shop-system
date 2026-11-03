@@ -44,6 +44,16 @@ def test_dashboard_covers_volume_durations_and_failures_with_source_metadata():
     assert "FACET failure_type, subsystem" in failure_query
 
 
+def test_dashboard_replacement_uses_v2_identity_and_keeps_alert_policy_name():
+    dashboard = _load(DASHBOARD_PATH)
+    alerts = _load(ALERTS_PATH)
+
+    assert dashboard["name"] == "auto-shop-owned::HML Service Order Operations v2"
+    assert dashboard["ownership"] == "auto-shop-owned-hml-service-order-v2"
+    assert alerts["ownership"] == dashboard["ownership"]
+    assert alerts["policy"]["name"] == "auto-shop-owned::HML Service Order Failures"
+
+
 def test_failure_alert_has_threshold_route_evaluation_and_runbook():
     alerts = _load(ALERTS_PATH)
     condition = alerts["conditions"][0]

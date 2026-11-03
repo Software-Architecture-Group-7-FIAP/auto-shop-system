@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "ownership": "auto-shop-owned-hml-service-order-v1",
-  "name": "auto-shop-owned::HML Service Order Operations",
+  "ownership": "auto-shop-owned-hml-service-order-v2",
+  "name": "auto-shop-owned::HML Service Order Operations v2",
   "description": "Aggregate service-order throughput, completed lifecycle duration, and HML processing failures. The one-event HML drill is operator-triggered and documented in the runbook.",
   "permissions": "PRIVATE",
   "pages": [
