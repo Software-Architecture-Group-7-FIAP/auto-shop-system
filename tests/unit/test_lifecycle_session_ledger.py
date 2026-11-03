@@ -501,8 +501,10 @@ def test_open_retry_aliases_reserved_operator_attribute_in_update_condition(
     assert "#operator = :actor" in str(updates[0]["ConditionExpression"])
 
 
+@pytest.mark.parametrize("session_scope", ["infrastructure-only", "integrated"])
 def test_safe_retry_handoff_transfers_only_the_matching_active_hml_owner(
     monkeypatch: pytest.MonkeyPatch,
+    session_scope: str,
 ) -> None:
     started_at = "2026-10-30T12:00:00Z"
     now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
@@ -514,7 +516,7 @@ def test_safe_retry_handoff_transfers_only_the_matching_active_hml_owner(
         "started_at": started_at,
         "stage": "hml",
         "session_mode": "hml",
-        "session_scope": "infrastructure-only",
+        "session_scope": session_scope,
         "expires_at": now + 60,
     }
     updates: list[dict[str, object]] = []
@@ -542,7 +544,7 @@ def test_safe_retry_handoff_transfers_only_the_matching_active_hml_owner(
         "hml",
         started_at,
         "hml",
-        session_scope="infrastructure-only",
+        session_scope=session_scope,
         safe_retry_source_run_id="123",
     )
 
@@ -666,8 +668,17 @@ def test_safe_retry_handoff_does_not_reopen_a_coordinator_closed_session(
     assert writes == []
 
 
-def test_safe_retry_handoff_is_restricted_to_the_exact_start_workflow(
+@pytest.mark.parametrize(
+    ("workflow_name", "session_scope"),
+    [
+        ("Other lifecycle start", "infrastructure-only"),
+        ("Coordinated environment start", "release-validation"),
+    ],
+)
+def test_safe_retry_handoff_is_restricted_to_the_guarded_hml_lifecycle_profiles(
     monkeypatch: pytest.MonkeyPatch,
+    workflow_name: str,
+    session_scope: str,
 ) -> None:
     now = int(datetime(2026, 10, 30, 13, 0, tzinfo=timezone.utc).timestamp())
     monkeypatch.setattr(LEDGER, "_require_main_branch", lambda: None)
@@ -685,15 +696,15 @@ def test_safe_retry_handoff_is_restricted_to_the_exact_start_workflow(
     )
     monkeypatch.setattr(LEDGER.time, "time", lambda: now)
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
-    monkeypatch.setenv("GITHUB_WORKFLOW", "Other lifecycle start")
+    monkeypatch.setenv("GITHUB_WORKFLOW", workflow_name)
 
-    with pytest.raises(LEDGER.LedgerError, match="limited to the guarded HML infrastructure-only start"):
+    with pytest.raises(LEDGER.LedgerError, match="limited to the guarded HML lifecycle start"):
         LEDGER.authorize_open(
             "hml-2026-10-30",
             "hml",
             "2026-10-30T12:00:00Z",
             "hml",
-            session_scope="infrastructure-only",
+            session_scope=session_scope,
             safe_retry_source_run_id="123",
         )
 

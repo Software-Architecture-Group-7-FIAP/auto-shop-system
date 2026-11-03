@@ -81,7 +81,7 @@ wait_for() {
       echo "::error::Timed out waiting for $description"
       report_hpa_progress "$((SECONDS - started_at))"
       kubectl describe hpa "$hpa" --namespace "$namespace" 2>&1 || true
-      return 1
+      exit 1
     fi
     local elapsed_seconds=$((SECONDS - started_at))
     if (( elapsed_seconds >= next_report_seconds )); then
@@ -93,7 +93,7 @@ wait_for() {
 }
 
 has_resource_metrics() {
-  kubectl top pods --namespace "$namespace" --selector app=auto-shop-backend >/dev/null 2>&1 || return 1
+  kubectl top pods --namespace "$namespace" --selector app=auto-shop-backend >/dev/null 2>&1 || exit 1
   kubectl get hpa "$hpa" --namespace "$namespace" --output json \
     | jq -e '[.status.currentMetrics[]? | select(.resource.current.averageUtilization != null) | .resource.name] | sort == ["cpu", "memory"]' >/dev/null
 }
@@ -119,7 +119,7 @@ echo "::notice::Configuring HPA for scale test: max 3 replicas, CPU target 1%...
 if ! kubectl patch hpa "$hpa" --namespace "$namespace" --type=json \
   -p='[{"op":"replace","path":"/spec/maxReplicas","value":3},{"op":"replace","path":"/spec/metrics/0/resource/target/averageUtilization","value":1},{"op":"replace","path":"/spec/behavior/scaleDown/stabilizationWindowSeconds","value":0}]'; then
   echo "::error::Failed to patch HPA configuration"
-  return 1
+  exit 1
 fi
 
 echo "::notice::Starting CPU load directly inside backend pods (bypasses network path entirely)..."
@@ -131,7 +131,7 @@ backend_pods="$(kubectl get pods --namespace "$namespace" --selector app=auto-sh
   --output=jsonpath='{.items[*].metadata.name}')"
 if [[ -z "$backend_pods" ]]; then
   echo "::error::No backend pods found to load"
-  return 1
+  exit 1
 fi
 for pod in $backend_pods; do
   kubectl exec --namespace "$namespace" "$pod" -- python -c "

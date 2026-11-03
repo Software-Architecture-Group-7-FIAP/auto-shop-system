@@ -18,15 +18,26 @@ from zoneinfo import ZoneInfo
 BRT = ZoneInfo("America/Sao_Paulo")
 API_ROOT = "https://api.github.com"
 ACTIVE_STATUSES = {"queued", "requested", "waiting", "in_progress", "pending"}
+HML_AUTO_STOP_WAIT_JOB_NAME = "hml-auto-stop-wait"
 GUARD_STEP_NAME = "Reject a second opening run for the same HML date"
-FIRST_MUTATION_STEP_NAME = "Configure the narrow lifecycle start role"
+LIFECYCLE_START_ROLE_STEP_NAME = "Configure the narrow lifecycle start role"
 SESSION_RECORD_STEP_NAME = "Record the trusted operator and authorize the selected HML session profile"
+ALL_INPUTS_PREFLIGHT_STEP_NAME = "Validate all credentials, repositories, deploy gates, alerting, and cost evidence inputs"
+AUTH_PREFLIGHT_ROLE_STEP_NAME = "Configure the read-only persistent auth preflight role"
+AUTH_PREFLIGHT_STEP_NAME = "Validate persistent customer auth Lambdas before opening session resources"
+COST_EVIDENCE_PLACEHOLDER_STEP_NAME = "Create a cost evidence placeholder before requesting AWS credentials"
+COST_READER_IDENTITY_STEP_NAME = "Configure read-only Cost Explorer identity"
+COST_OBSERVATION_STEP_NAME = "Verify the account and record observed pre-cycle billing"
 FOUNDATION_PLAN_STEP_NAME = "Plan the K8s foundation opening"
-INFRASTRUCTURE_APPLY_STEP_NAMES = (
+MUTATING_DEPLOYMENT_STEP_NAMES = (
     "Apply the exact K8s foundation opening plan",
     "Apply the exact K8s platform opening plan",
     "Apply the exact HML namespace opening plan",
+    "Provision the HML database role and SSM contract",
     "Bootstrap the synthetic lifecycle database",
+    "Deploy the application and recreate its synthetic seed",
+    "Apply the database grants after application migrations",
+    "Reconcile the public API edge against the current ALB while preserving its URL",
 )
 
 
@@ -88,14 +99,72 @@ def _step_conclusion(steps: list[object], name: str) -> str | None:
     return conclusion if isinstance(conclusion, str) else None
 
 
+def _failed_foundation_plan_waiter(open_job: dict[str, object], steps: list[object]) -> bool:
+    if open_job.get("status") != "completed" or open_job.get("conclusion") != "failure":
+        return False
+    plan_indexes = [
+        index
+        for index, step in enumerate(steps)
+        if isinstance(step, dict) and step.get("name") == FOUNDATION_PLAN_STEP_NAME
+    ]
+    if len(plan_indexes) != 1:
+        return False
+
+    plan_index = plan_indexes[0]
+    plan_step = steps[plan_index]
+    if not isinstance(plan_step, dict):
+        return False
+    if plan_step.get("status") != "completed" or plan_step.get("conclusion") != "failure":
+        return False
+
+    preceding_steps_succeeded = all(
+        isinstance(step, dict)
+        and step.get("status") == "completed"
+        and step.get("conclusion") == "success"
+        for step in steps[:plan_index]
+    )
+    following_steps_are_non_mutating = all(
+        isinstance(step, dict)
+        and step.get("status") == "completed"
+        and step.get("conclusion") in {"success", "skipped"}
+        for step in steps[plan_index + 1 :]
+    )
+    return preceding_steps_succeeded and following_steps_are_non_mutating
+
+
+def _open_failed_at_guard(open_job: dict[str, object], steps: list[object]) -> bool:
+    if open_job.get("status") != "completed" or open_job.get("conclusion") != "failure":
+        return False
+    guard_indexes = [
+        index
+        for index, step in enumerate(steps)
+        if isinstance(step, dict) and step.get("name") == GUARD_STEP_NAME
+    ]
+    if len(guard_indexes) != 1:
+        return False
+    guard_index = guard_indexes[0]
+    preceding_steps_succeeded = all(
+        isinstance(step, dict) and step.get("conclusion") == "success"
+        for step in steps[:guard_index]
+    )
+    return (
+        preceding_steps_succeeded
+        and _step_conclusion(steps, GUARD_STEP_NAME) == "failure"
+        and _step_conclusion(steps, LIFECYCLE_START_ROLE_STEP_NAME) == "skipped"
+        and _step_conclusion(steps, SESSION_RECORD_STEP_NAME) == "skipped"
+        and _step_conclusion(steps, FOUNDATION_PLAN_STEP_NAME) == "skipped"
+    )
+
+
 def _classify_prior_run(
     repository: str,
     run: dict[str, object],
     token: str,
     *,
+    stage: str,
     last_attempt: int | None = None,
-) -> tuple[bool, bool]:
-    """Return (safe_to_retry, verified_ledger_owner), failing closed on ambiguity."""
+) -> tuple[bool, bool, bool]:
+    """Return retry safety, verified ownership, and the narrow active-wait exception."""
     run_id = run.get("id")
     run_attempt = run.get("run_attempt")
     if not isinstance(run_id, int) or not isinstance(run_attempt, int) or run_attempt < 1:
@@ -107,6 +176,7 @@ def _classify_prior_run(
 
     verified_owner = False
     safe_to_retry = True
+    active_job_evidence: list[tuple[str, bool]] = []
     for attempt in range(1, last_attempt + 1):
         jobs = _attempt_jobs(repository, run_id, attempt, token)
         open_jobs = [job for job in jobs if job.get("name") == "open"]
@@ -119,29 +189,79 @@ def _classify_prior_run(
         if not isinstance(steps, list):
             raise ValueError("A prior opening attempt has no readable step evidence")
 
+        attempt_active_jobs = [job for job in jobs if job.get("status") in ACTIVE_STATUSES]
+        if attempt_active_jobs:
+            guard_failure_is_terminal = _open_failed_at_guard(open_job, steps)
+            active_job_evidence.extend(
+                (str(job.get("name", "")), guard_failure_is_terminal)
+                for job in attempt_active_jobs
+            )
+
         record_state = _step_conclusion(steps, SESSION_RECORD_STEP_NAME)
+        all_inputs_state = _step_conclusion(steps, ALL_INPUTS_PREFLIGHT_STEP_NAME)
+        auth_role_state = _step_conclusion(steps, AUTH_PREFLIGHT_ROLE_STEP_NAME)
+        auth_preflight_state = _step_conclusion(steps, AUTH_PREFLIGHT_STEP_NAME)
+        cost_placeholder_state = _step_conclusion(steps, COST_EVIDENCE_PLACEHOLDER_STEP_NAME)
+        cost_reader_identity_state = _step_conclusion(steps, COST_READER_IDENTITY_STEP_NAME)
+        cost_observation_state = _step_conclusion(steps, COST_OBSERVATION_STEP_NAME)
         plan_state = _step_conclusion(steps, FOUNDATION_PLAN_STEP_NAME)
         guard_state = _step_conclusion(steps, GUARD_STEP_NAME)
-        mutation_state = _step_conclusion(steps, FIRST_MUTATION_STEP_NAME)
-        if guard_state == "failure" and mutation_state == "skipped":
-            continue
 
-        apply_states = [_step_conclusion(steps, name) for name in INFRASTRUCTURE_APPLY_STEP_NAMES]
-        if any(state is None for state in apply_states):
-            raise ValueError("A prior opening attempt is missing infrastructure apply evidence")
-        if any(state != "skipped" for state in apply_states):
+        deployment_states = [_step_conclusion(steps, name) for name in MUTATING_DEPLOYMENT_STEP_NAMES]
+        if any(state is None for state in deployment_states):
+            raise ValueError("A prior opening attempt is missing deployment mutation evidence")
+        if any(state != "skipped" for state in deployment_states):
             safe_to_retry = False
 
-        # A recorded session whose foundation plan failed is an authorized handoff,
-        # provided every mutating apply step stayed skipped in every attempt.
+        if guard_state == "failure":
+            continue
+
+        # A recorded session whose read-only auth preflight failed before planning
+        # has an owner that may be handed off when every deployment mutation stayed skipped.
+        if (
+            record_state == "success"
+            and auth_preflight_state == "failure"
+            and plan_state == "skipped"
+            and guard_state == "success"
+        ):
+            verified_owner = True
+            continue
+
+        # A Cost Explorer role failure can hand off the recorded HML owner only
+        # when every preceding read-only gate completed and no later work started.
+        if (
+            stage == "hml"
+            and record_state == "success"
+            and guard_state == "success"
+            and all_inputs_state == "success"
+            and auth_role_state == "success"
+            and auth_preflight_state == "success"
+            and cost_placeholder_state == "success"
+            and cost_reader_identity_state == "failure"
+            and cost_observation_state == "skipped"
+            and plan_state == "skipped"
+        ):
+            verified_owner = True
+            continue
+
+        # Hand off a recorded owner only when the open job failed in its read-only
+        # foundation-plan waiter and all other steps completed or were skipped.
         if record_state == "success" and plan_state == "failure":
+            if guard_state != "success" or not _failed_foundation_plan_waiter(open_job, steps):
+                raise ValueError("A foundation plan failure lacks exact non-mutating recovery evidence")
             verified_owner = True
             continue
         if record_state in {"failure", "skipped"} and plan_state == "skipped":
             continue
         raise ValueError("A prior opening attempt has ambiguous pre-mutation evidence")
 
-    return safe_to_retry, verified_owner and safe_to_retry
+    active_wait_only = (
+        safe_to_retry
+        and not verified_owner
+        and len(active_job_evidence) == 1
+        and active_job_evidence[0] == (HML_AUTO_STOP_WAIT_JOB_NAME, True)
+    )
+    return safe_to_retry, verified_owner and safe_to_retry, active_wait_only
 
 
 def main() -> int:
@@ -181,10 +301,11 @@ def main() -> int:
             run_attempt = current_run.get("run_attempt")
             if not isinstance(run_attempt, int) or run_attempt < current_attempt:
                 raise ValueError("The current rerun has incomplete attempt evidence")
-            safe, verified = _classify_prior_run(
+            safe, verified, _ = _classify_prior_run(
                 repository,
                 current_run,
                 token,
+                stage=arguments.stage,
                 last_attempt=current_attempt - 1,
             )
             if not safe:
@@ -195,14 +316,32 @@ def main() -> int:
                 )
 
         prior_runs = [run for run in matching_runs if str(run.get("id")) != current_run_id]
-        if any(str(run.get("status", "")) in ACTIVE_STATUSES for run in prior_runs):
-            raise ValueError("A prior opening run is still active; refusing a second opening")
+        active_prior_runs = [
+            run for run in prior_runs if str(run.get("status", "")) in ACTIVE_STATUSES
+        ]
+        active_wait_run_id: str | None = None
+        if active_prior_runs:
+            if arguments.stage != "hml" or len(active_prior_runs) != 1:
+                raise ValueError("A prior opening run is still active; refusing a second opening")
+            active_run = active_prior_runs[0]
+            safe, verified, active_wait_only = _classify_prior_run(
+                repository,
+                active_run,
+                token,
+                stage=arguments.stage,
+            )
+            if active_run.get("conclusion") == "success" or not safe or verified or not active_wait_only:
+                raise ValueError("A prior opening run is still active; refusing a second opening")
+            active_wait_run_id = str(active_run.get("id"))
+
         if any(run.get("conclusion") == "success" for run in prior_runs):
             raise ValueError(f"A successful {arguments.stage.upper()} opening run already exists today.")
 
         verified_owners: list[tuple[datetime, int]] = []
         for run in prior_runs:
-            safe, verified = _classify_prior_run(repository, run, token)
+            if str(run.get("id")) == active_wait_run_id:
+                continue
+            safe, verified, _ = _classify_prior_run(repository, run, token, stage=arguments.stage)
             if not safe:
                 raise ValueError("A prior opening attempt may have started infrastructure mutation")
             if verified:
@@ -228,3 +367,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

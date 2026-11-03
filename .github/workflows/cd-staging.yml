@@ -182,12 +182,9 @@ jobs:
           cluster_name="$(aws ssm get-parameter \
             --name "${SSM_PARAMETER_PREFIX}/eks/cluster-name" \
             --query 'Parameter.Value' --output text)"
-          # Migration credentials are published by the reviewed database Terraform contract.
-          # The deploy role is read-only for SSM, so fail closed if that contract is missing.
           migration_secret_arn="$(aws ssm get-parameter \
             --name "${SSM_PARAMETER_PREFIX}/database/secrets/migrations-hml-arn" \
             --query 'Parameter.Value' --output text)"
-          # EventBridge and its SSM contracts are provisioned by reviewed Terraform.
           service_order_event_bus_name="$(aws ssm get-parameter \
             --name "${SSM_PARAMETER_PREFIX}/events/service-order-bus-name" \
             --query 'Parameter.Value' --output text)"

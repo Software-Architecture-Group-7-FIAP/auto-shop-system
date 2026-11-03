@@ -4,5 +4,45 @@ resources:
   - ../../../base/foundation
   - postgres.yaml
   - mailhog.yaml
+  - allow-postgres-ingress.yaml
 patches:
   - path: configmap-patch.yaml
+  - target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: allow-dns
+    patch: |-
+      - op: replace
+        path: /spec/egress
+        value:
+          - to:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: kube-system
+            ports:
+              - protocol: UDP
+                port: 53
+              - protocol: TCP
+                port: 53
+  - target:
+      group: networking.k8s.io
+      version: v1
+      kind: NetworkPolicy
+      name: allow-rds-egress
+    patch: |-
+      - op: replace
+        path: /spec/podSelector
+        value:
+          matchExpressions:
+            - key: app.kubernetes.io/component
+              operator: In
+              values:
+                - backend
+                - migrate
+                - seed
+      - op: replace
+        path: /spec/egress/0/to/0/podSelector
+        value:
+          matchLabels:
+            app.kubernetes.io/component: database

@@ -174,7 +174,18 @@ def test_automatic_hml_close_dispatch_binds_the_session_mode_for_ledger_authoriz
 
 
 
-def test_authenticated_ghcr_images_are_mirrored_to_ecr_before_eks_deploy() -> None:
+def test_hml_auto_stop_wait_requires_a_successful_open() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "environment-start.yml").read_text(encoding="utf-8")
+    wait_job = workflow.split("  hml-auto-stop-wait:\n", 1)[1].split(
+        "\n  hml-auto-stop-close:", 1
+    )[0]
+    assert "needs.open.result == 'success'" in wait_job
+    assert "needs.open.outputs.stage == 'hml'" in wait_job
+    assert "needs.open.outputs.session_id != ''" in wait_job
+    assert "always()" not in wait_job
+
+
+def test_public_ghcr_images_are_verified_anonymously_before_eks_deploy() -> None:
     for workflow_name, deploy_command, role_reference in (
         (
             "cd-staging.yml",
