@@ -1,0 +1,42 @@
+{
+    "ApiEndpoint": "https://p6poa9bozi.execute-api.us-east-1.amazonaws.com",
+    "ApiId": "p6poa9bozi",
+    "ApiKeySelectionExpression": "$request.header.x-api-key",
+    "CorsConfiguration": {
+        "AllowCredentials": false,
+        "AllowHeaders": [
+            "authorization",
+            "content-type",
+            "x-correlation-id"
+        ],
+        "AllowMethods": [
+            "GET",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+            "OPTIONS"
+        ],
+        "AllowOrigins": [
+            "https://app-hml.oficina-workshop.com.br",
+            "http://localhost:4200"
+        ],
+        "ExposeHeaders": [
+            "x-correlation-id"
+        ],
+        "MaxAge": 600
+    },
+    "CreatedDate": "2026-11-01T12:04:40+00:00",
+    "Description": "HML public API for Auto Shop with CPF auth Lambda and private ALB integration",
+    "DisableExecuteApiEndpoint": false,
+    "IpAddressType": "ipv4",
+    "Name": "auto-shop-staging-hml-api",
+    "ProtocolType": "HTTP",
+    "RouteSelectionExpression": "$request.method $request.path",
+    "Tags": {
+        "Project": "auto-shop",
+        "Environment": "staging",
+        "Stage": "hml",
+        "Purpose": "video-demo-api"
+    }
+}

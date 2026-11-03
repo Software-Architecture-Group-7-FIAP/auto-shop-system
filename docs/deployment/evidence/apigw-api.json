@@ -1,0 +1,7 @@
+{
+    "ApiId": "p6poa9bozi",
+    "Name": "auto-shop-staging-hml-api",
+    "ProtocolType": "HTTP",
+    "ApiEndpoint": "https://p6poa9bozi.execute-api.us-east-1.amazonaws.com",
+    "CreatedDate": "2026-11-01T12:04:40+00:00"
+}
