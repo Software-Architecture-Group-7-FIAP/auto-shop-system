@@ -256,7 +256,7 @@ jobs:
           SERVICE_ORDER_EVENT_BUS_NAME: ${{ steps.targets.outputs.service_order_event_bus_name }}
           SERVICE_ORDER_PUBLISHER_ROLE_ARN: ${{ steps.targets.outputs.service_order_publisher_role_arn }}
         shell: bash
-        run: ./k8s/scripts/deploy.sh staging "${IMAGE_REFERENCE}"
+        run: bash ./k8s/scripts/deploy.sh staging "${IMAGE_REFERENCE}"
 
       - name: Confirm HML deployment uses the requested digest
         env:
