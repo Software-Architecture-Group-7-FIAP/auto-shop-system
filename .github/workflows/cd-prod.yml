@@ -111,7 +111,11 @@ jobs:
       vars.DEPLOY_PRODUCTION_ENABLED == 'true' &&
       needs.build-push.result == 'success' &&
       needs.lifecycle-authorization.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on:
+      group: k8s-private-eks
+      labels:
+        - "codebuild-auto-shop-hml-private-runner-${{ github.run_id }}-${{ github.run_attempt }}"
+        - "buildspec-override:true"
     environment: prd
     permissions:
       contents: read
