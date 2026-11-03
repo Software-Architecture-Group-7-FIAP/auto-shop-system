@@ -337,7 +337,13 @@ def test_nerdgraph_graphql_errors_are_sanitized():
             return None
 
         def read(self, _size):
-            return b'{"errors":[{"message":"echo NRAK-secret and query"}]}'
+            return (
+                b'{"errors":[{"message":"Field \'expirationDuration\' is not '
+                b'defined by type \'AlertsNrqlConditionStaticInput\'. Value '
+                b'\'NRAK-secret-value\' came from account 123456789 and '
+                b'entity 123e4567-e89b-12d3-a456-426614174000.","path":'
+                b'["actor","account","alerts","alertsNrqlConditionStaticCreate"]}]}'
+            )
 
     client = NerdGraphClient(
         api_key="NRAK-secret",
@@ -345,9 +351,15 @@ def test_nerdgraph_graphql_errors_are_sanitized():
         opener=lambda *_args, **_kwargs: _Response(),
     )
     with pytest.raises(ProvisioningError, match="NerdGraph rejected the operation") as error:
-        client.execute("query Fixed{actor{user{id}}}", {})
+        client.execute("mutation CreateCondition{actor{account{id}}}", {})
 
-    assert "secret" not in str(error.value).lower()
+    diagnostic = str(error.value)
+    assert "expirationDuration" in diagnostic
+    assert "AlertsNrqlConditionStaticInput" in diagnostic
+    assert "actor.account.alerts.alertsNrqlConditionStaticCreate" in diagnostic
+    assert "NRAK-secret-value" not in diagnostic
+    assert "123456789" not in diagnostic
+    assert "123e4567-e89b-12d3-a456-426614174000" not in diagnostic
 
 
 def test_workflow_is_manual_gated_and_does_not_version_notification_destination():
