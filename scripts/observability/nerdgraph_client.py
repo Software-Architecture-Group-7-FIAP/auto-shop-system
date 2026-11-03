@@ -17,6 +17,65 @@ REQUEST_TIMEOUT_SECONDS = 10
 MAX_RESPONSE_BYTES = 1_048_576
 _GRAPHQL_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 _OPERATION_NAME = re.compile(r"^\s*(?:query|mutation|subscription)\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+_GRAPHQL_ERROR_CATEGORIES = (
+    (
+        "authorization",
+        (
+            "unauthorized",
+            "unauthorised",
+            "not authorized",
+            "not authorised",
+            "forbidden",
+            "permission denied",
+            "access denied",
+            "insufficient permission",
+            "insufficient privilege",
+        ),
+    ),
+    (
+        "not-found",
+        ("not found", "does not exist", "doesn't exist", "could not find", "no such "),
+    ),
+    (
+        "validation",
+        (
+            "invalid",
+            "validation",
+            "bad input",
+            "unknown argument",
+            "not defined by type",
+            "cannot query field",
+            "required",
+            "must be provided",
+            "unsupported",
+            "limit exceeded",
+        ),
+    ),
+)
+_GRAPHQL_ERROR_CODES = frozenset(
+    {
+        "BAD_USER_INPUT",
+        "FORBIDDEN",
+        "GRAPHQL_VALIDATION_FAILED",
+        "INTERNAL_SERVER_ERROR",
+        "NOT_FOUND",
+        "RESOURCE_NOT_FOUND",
+        "UNAUTHENTICATED",
+        "UNAUTHORIZED",
+        "VALIDATION_ERROR",
+    }
+)
+_GRAPHQL_ERROR_TYPES = frozenset(
+    {
+        "ACCESS_DENIED",
+        "AUTHENTICATION_ERROR",
+        "INTERNAL_SERVER_ERROR",
+        "NOT_FOUND",
+        "PERMISSION_DENIED",
+        "RESOURCE_NOT_FOUND",
+        "VALIDATION_ERROR",
+    }
+)
 _GRAPHQL_DIAGNOSTIC_PATTERNS = (
     (
         re.compile(
@@ -71,6 +130,27 @@ def _graphql_error_path(error: Mapping[str, object]) -> str | None:
     return ".".join(segments).replace(".[", "[")
 
 
+def _graphql_message_category(message: object) -> str | None:
+    if not isinstance(message, str):
+        return None
+    normalized = message.casefold()
+    return next(
+        (
+            category
+            for category, markers in _GRAPHQL_ERROR_CATEGORIES
+            if any(marker in normalized for marker in markers)
+        ),
+        None,
+    )
+
+
+def _allowlisted_graphql_identifier(value: object, allowed: frozenset[str]) -> str | None:
+    if not isinstance(value, str):
+        return None
+    identifier = value.upper()
+    return identifier if identifier in allowed else None
+
+
 def _graphql_error_detail(errors: object, document: str) -> str:
     if not isinstance(errors, list):
         return " (GraphQL details redacted)"
@@ -80,21 +160,41 @@ def _graphql_error_detail(errors: object, document: str) -> str:
         if not isinstance(error, Mapping):
             continue
         message = error.get("message")
+        error_details = []
+        category = _graphql_message_category(message)
+        if category:
+            error_details.append(f"category={category}")
         if isinstance(message, str):
             for pattern, template in _GRAPHQL_DIAGNOSTIC_PATTERNS:
                 match = pattern.search(message)
                 if match:
-                    details.append(template.format(*match.groups()))
+                    error_details.append(template.format(*match.groups()))
                     break
+
+        extensions = error.get("extensions")
+        if isinstance(extensions, Mapping):
+            code = _allowlisted_graphql_identifier(
+                extensions.get("code"), _GRAPHQL_ERROR_CODES
+            )
+            error_type = _allowlisted_graphql_identifier(
+                extensions.get("errorType"), _GRAPHQL_ERROR_TYPES
+            )
+            if code:
+                error_details.append(f"code={code}")
+            if error_type:
+                error_details.append(f"errorType={error_type}")
+
         path = _graphql_error_path(error)
         if path:
-            details.append(f"path: {path}")
+            error_details.append(f"path: {path}")
+        if error_details:
+            details.append("; ".join(error_details))
 
     if not details:
         details.append("GraphQL details redacted")
     operation_name = _graphql_operation_name(document)
     prefix = f"{operation_name}: " if operation_name else ""
-    return f" ({prefix}{'; '.join(details[:4])})"
+    return f" ({prefix}{'; '.join(details[:3])})"
 
 DASHBOARD_SEARCH = """
 query OwnedDashboard($query: String!) {
