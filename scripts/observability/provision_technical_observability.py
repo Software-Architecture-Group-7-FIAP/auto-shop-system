@@ -756,6 +756,7 @@ def _condition_input(condition: dict, *, enabled: bool) -> dict[str, object]:
         "enabled": enabled,
         "nrql": {"query": condition["nrql"]},
         "runbookUrl": condition["runbook_url"],
+        "valueFunction": "SINGLE_VALUE",
         "signal": {
             "aggregationWindow": signal["aggregation_window_seconds"],
             "aggregationMethod": signal["aggregation_method"],
@@ -773,11 +774,6 @@ def _condition_input(condition: dict, *, enabled: bool) -> dict[str, object]:
             for term in condition["terms"]
         ],
         "violationTimeLimitSeconds": 86_400,
-        "expiration": {
-            "closeViolationsOnExpiration": True,
-            "expirationDuration": None,
-            "openViolationOnExpiration": False,
-        },
     }
 
 

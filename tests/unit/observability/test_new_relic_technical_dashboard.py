@@ -745,8 +745,9 @@ def test_dashboard_update_preserves_page_widget_ids_and_uses_current_input_shape
 def test_alert_expiration_shape_and_dashboard_business_errors_fail_closed():
     alerts = _load(ALERTS_PATH)
     rendered = _condition_input(alerts["conditions"][0], enabled=True)
-    assert "expiration" in rendered
-    assert "closeViolationsOnExpiration" not in rendered
+    assert rendered["valueFunction"] == "SINGLE_VALUE"
+    assert rendered["violationTimeLimitSeconds"] == 86_400
+    assert "expiration" not in rendered
 
     with pytest.raises(ProvisioningError, match="mutation was rejected"):
         _dashboard_mutation_guid(
