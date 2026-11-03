@@ -204,7 +204,21 @@ query OwnedDashboard($query: String!) {
 DASHBOARD_GET = """
 query OwnedDashboardStructure($guid: EntityGuid!) {
   actor { entity(guid: $guid) { ... on DashboardEntity {
-    guid name accountId pages { guid name widgets { id title } }
+    guid name accountId description permissions
+    pages {
+      guid name description
+      widgets {
+        id title visualization { id } layout { row column height width }
+        linkedEntities { guid }
+        rawConfiguration
+      }
+    }
+    variables {
+      name title type nrqlQuery { accountIds query }
+      defaultValues { value { string } }
+      options { excluded ignoreTimeRange showApplyAction hiddenOnVariablesBar }
+      isMultiSelection replacementStrategy
+    }
   } } }
 }
 """
