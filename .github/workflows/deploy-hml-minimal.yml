@@ -3,6 +3,15 @@ run-name: HML deploy ${{ github.sha }}
 
 on:
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Deploy HML or prepare the New Relic Secret before the platform apply
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - prepare-newrelic-secret
 
 permissions:
   contents: read
@@ -21,13 +30,22 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           SOURCE_REF: ${{ github.ref }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          OPERATION: ${{ inputs.operation || 'deploy' }}
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$EVENT_NAME" == "workflow_dispatch" && "$SOURCE_REF" == "refs/heads/develop" ]] || {
-            echo "::error::The minimal HML deploy can run only by manual dispatch from develop."
+          [[ "$EVENT_NAME" == "workflow_dispatch" && "$SOURCE_REF" == "refs/heads/develop" && "$SOURCE_REPOSITORY" == "Software-Architecture-Group-7-FIAP/auto-shop-system" ]] || {
+            echo "::error::The minimal HML workflow can run only by manual dispatch from auto-shop-system/develop."
             exit 1
           }
+          case "$OPERATION" in
+            deploy|prepare-newrelic-secret) ;;
+            *)
+              echo "::error::Unsupported HML operation."
+              exit 1
+              ;;
+          esac
 
   build-push:
     name: Build immutable commit image
@@ -38,9 +56,141 @@ jobs:
       packages: write
     uses: ./.github/workflows/reusable-build-push.yml
 
+  prepare-hml-newrelic-secret:
+    name: Prepare HML New Relic Kubernetes Secret
+    needs: source-guard
+    if: needs.source-guard.result == 'success' && inputs.operation == 'prepare-newrelic-secret'
+    runs-on:
+      group: k8s-private-eks
+      labels:
+        - "codebuild-auto-shop-hml-private-runner-${{ github.run_id }}-${{ github.run_attempt }}"
+        - "buildspec-override:true"
+    timeout-minutes: 15
+    environment: hml
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Require the HML New Relic license secret
+        env:
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$NEW_RELIC_LICENSE_KEY" ]] || {
+            echo "::error::The HML New Relic license secret is required before platform apply."
+            exit 1
+          }
+
+      - name: Validate the HML AWS role and region
+        env:
+          DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN_HML || '' }}
+          AWS_REGION: ${{ vars.AWS_REGION || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_ROLE_ARN" == "arn:aws:iam::035611741563:role/auto-shop-staging-github-staging" ]] || {
+            echo "::error::AWS_DEPLOY_ROLE_ARN_HML must identify the reviewed HML deploy role."
+            exit 1
+          }
+          [[ "$AWS_REGION" == "us-east-1" ]] || {
+            echo "::error::HML secret preparation requires AWS_REGION=us-east-1."
+            exit 1
+          }
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN_HML }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: "035611741563"
+          role-session-name: HmlNewRelicSecret${{ github.run_id }}
+
+      - name: Require the staging AWS account
+        env:
+          EXPECTED_AWS_ACCOUNT_ID: "035611741563"
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_account_id="$(aws sts get-caller-identity --query Account --output text --no-cli-pager)"
+          [[ "$actual_account_id" == "$EXPECTED_AWS_ACCOUNT_ID" ]] || {
+            echo "::error::The assumed role is outside the approved HML AWS account."
+            exit 1
+          }
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.37.1
+
+      - name: Resolve the approved HML EKS cluster
+        id: targets
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          SSM_PARAMETER_PREFIX: /auto-shop/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          cluster_name="$(aws ssm get-parameter \
+            --name "${SSM_PARAMETER_PREFIX}/eks/cluster-name" \
+            --query 'Parameter.Value' --output text --no-cli-pager)"
+          [[ "$cluster_name" == "auto-shop-staging" ]] || {
+            echo "::error::The HML SSM contract must resolve to the approved staging EKS cluster."
+            exit 1
+          }
+          echo "cluster_name=$cluster_name" >> "$GITHUB_OUTPUT"
+
+      - name: Connect to the approved HML EKS cluster
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          EKS_CLUSTER_NAME: ${{ steps.targets.outputs.cluster_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --no-cli-pager
+          expected_context="arn:aws:eks:us-east-1:035611741563:cluster/auto-shop-staging"
+          actual_context="$(kubectl config view --minify -o 'jsonpath={.contexts[0].context.cluster}')"
+          [[ "$actual_context" == "$expected_context" ]] || {
+            echo "::error::kubectl context is not the approved HML EKS cluster."
+            exit 1
+          }
+
+      - name: Materialize the HML New Relic Kubernetes Secret
+        env:
+          HML_NAMESPACE: auto-shop-hml
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$NEW_RELIC_LICENSE_KEY" ]] || {
+            echo "::error::The HML New Relic license secret is required before platform apply."
+            exit 1
+          }
+          namespace="$(kubectl get namespace "$HML_NAMESPACE" --output=name)"
+          [[ "$namespace" == "namespace/$HML_NAMESPACE" ]] || {
+            echo "::error::The HML namespace must exist before New Relic secret preparation."
+            exit 1
+          }
+
+          umask 077
+          license_file="$(mktemp)"
+          trap 'rm -f "$license_file"' EXIT
+          printf '%s' "$NEW_RELIC_LICENSE_KEY" > "$license_file"
+          unset NEW_RELIC_LICENSE_KEY
+          kubectl create secret generic auto-shop-new-relic \
+            --namespace "$HML_NAMESPACE" \
+            --from-file=NEW_RELIC_LICENSE_KEY="$license_file" \
+            --dry-run=client \
+            --output=yaml | kubectl apply --filename=-
+          echo "HML New Relic Secret is ready for the k8s-infra platform apply." >> "$GITHUB_STEP_SUMMARY"
+
   deploy-hml:
     name: Deploy backend to HML EKS
     needs: [source-guard, build-push]
+    if: needs.source-guard.result == 'success' && inputs.operation != 'prepare-newrelic-secret'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: hml
@@ -276,7 +426,7 @@ jobs:
   summary:
     name: Report HML deployment result
     if: always()
-    needs: [source-guard, build-push, deploy-hml]
+    needs: [source-guard, build-push, deploy-hml, prepare-hml-newrelic-secret]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -284,6 +434,8 @@ jobs:
       SOURCE_GUARD_RESULT: ${{ needs.source-guard.result }}
       BUILD_RESULT: ${{ needs.build-push.result }}
       DEPLOY_RESULT: ${{ needs.deploy-hml.result }}
+      PREPARE_RESULT: ${{ needs.prepare-hml-newrelic-secret.result }}
+      ACTION: ${{ inputs.operation || 'deploy' }}
       SOURCE_IMAGE: ${{ needs.build-push.outputs.ghcr_image_reference }}
       ECR_TAG_IMAGE: ${{ needs.deploy-hml.outputs.ecr_tag_reference }}
       ECR_IMAGE: ${{ needs.deploy-hml.outputs.ecr_image_reference }}
@@ -293,12 +445,19 @@ jobs:
         run: |
           set -euo pipefail
           final_result=success
-          if [[ "$SOURCE_GUARD_RESULT" != "success" || "$BUILD_RESULT" != "success" || "$DEPLOY_RESULT" != "success" ]]; then
+          if [[ "$SOURCE_GUARD_RESULT" != "success" ]]; then
+            final_result=failure
+          elif [[ "$ACTION" == "prepare-newrelic-secret" ]]; then
+            if [[ "$PREPARE_RESULT" != "success" ]]; then
+              final_result=failure
+            fi
+          elif [[ "$BUILD_RESULT" != "success" || "$DEPLOY_RESULT" != "success" ]]; then
             final_result=failure
           fi
           {
-            echo "## Minimal HML deployment"
+            echo "## HML operation: $ACTION"
             echo
+            printf '| Operation | %s |\n' "$ACTION"
             printf '| Commit | [`%s`](%s/%s/commit/%s) |\n' "${GITHUB_SHA:0:7}" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_SHA"
             printf '| GHCR image | `%s` |\n' "${SOURCE_IMAGE:-not published}"
             printf '| ECR tag | `%s` |\n' "${ECR_TAG_IMAGE:-not mirrored}"
@@ -306,6 +465,7 @@ jobs:
             printf '| Source guard | %s |\n' "$SOURCE_GUARD_RESULT"
             printf '| Build | %s |\n' "$BUILD_RESULT"
             printf '| Deploy | %s |\n' "$DEPLOY_RESULT"
+            printf '| Secret preparation | %s |\n' "$PREPARE_RESULT"
             printf '| Result | **%s** |\n' "$final_result"
             echo
             printf '%s\n' '> The deploy script applies resources in phases and runs migrations; it does not provide an atomic full rollback. This workflow does not attempt `kubectl rollout undo`.'
