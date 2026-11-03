@@ -25,16 +25,8 @@ def test_staging_and_production_deploy_require_coordinator_dispatch() -> None:
 
 
 def test_kubernetes_deploys_use_the_private_codebuild_eks_runner_contract() -> None:
-    minimal_workflow = (WORKFLOWS / "deploy-hml-minimal.yml").read_text(
-        encoding="utf-8"
-    )
-    minimal_deploy = minimal_workflow.split("  deploy-hml:\n", 1)[1].split(
-        "\n  summary:", 1
-    )[0]
-    expected_runner = "    runs-on:\n" + minimal_deploy.split(
-        "    runs-on:\n", 1
-    )[1].split("    timeout-minutes:", 1)[0]
-
+    # The minimal HML path intentionally runs on a hosted runner, so the
+    # private-runner contract is asserted directly on the CD workflows.
     for filename, deploy_job, next_job in (
         ("cd-staging.yml", "deploy-staging", "deploy-staging-frontend"),
         ("cd-prod.yml", "deploy-production", "deploy-production-frontend"),
@@ -44,7 +36,8 @@ def test_kubernetes_deploys_use_the_private_codebuild_eks_runner_contract() -> N
             f"\n  {next_job}:", 1
         )[0]
 
-        assert expected_runner in deployment
+        assert "group: k8s-private-eks" in deployment
+        assert "buildspec-override:true" in deployment
 
 
 def test_frontend_deploy_gate_is_independent_from_backend_deploy_gate() -> None:

@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_hml_app_deploy_materializes_new_relic_secret_without_installing_cluster_chart():
+def test_hml_app_deploy_materializes_new_relic_secret_and_installs_cluster_chart():
     bash_deploy = (ROOT / "k8s/scripts/deploy.sh").read_text(encoding="utf-8")
     powershell_deploy = (ROOT / "k8s/scripts/deploy.ps1").read_text(encoding="utf-8")
     cd_workflow = (ROOT / ".github/workflows/cd-staging.yml").read_text(encoding="utf-8")
@@ -15,15 +15,20 @@ def test_hml_app_deploy_materializes_new_relic_secret_without_installing_cluster
     assert "function Ensure-NewRelicSecret" in powershell_deploy
     assert "Ensure-NewRelicSecret" in powershell_deploy
     for script in (bash_deploy, powershell_deploy):
-        assert "helm upgrade" not in script
-        assert "nri-bundle" not in script
         assert "NEW_RELIC_LICENSE_KEY" in script
         assert "--from-literal" not in script
+
+    # The platform repository never completed the HML chart rollout, so the
+    # application deploy installs the pinned nri-bundle itself.
+    assert "helm upgrade --install" in bash_deploy
+    assert "nri-bundle" in bash_deploy
+    assert "NEW_RELIC_K8S_CHART_SHA256" in bash_deploy
+    assert "helm upgrade" not in powershell_deploy
 
     assert "NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}" in cd_workflow
     assert "NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}" in minimal_workflow
     assert "setup-helm" not in cd_workflow
-    assert "setup-helm" not in minimal_workflow
+    assert "setup-helm" in minimal_workflow
 
 
 def test_runbook_assigns_cluster_chart_to_platform_and_preserves_hml_acceptance_signals():

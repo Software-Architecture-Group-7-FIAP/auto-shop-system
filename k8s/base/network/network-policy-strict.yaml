@@ -116,3 +116,73 @@ spec:
           port: 443
         - protocol: TCP
           port: 80
+---
+# The managed PostgreSQL instance lives outside the cluster, so pod selectors
+# cannot reach it. Allow 5432 towards the VPC range that holds the RDS ENIs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-managed-rds-egress
+  namespace: auto-shop
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - backend
+          - migrate
+          - seed
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.80.0.0/20
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# Observability agents and the external CPF/CNPJ validators call endpoints
+# outside the VPC, which namespaceSelector-only egress rules never match.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-internet-egress
+  namespace: auto-shop
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+---
+# The ALB targets pods from its own ENIs, which live outside the cluster and
+# never match a podSelector. Allow the VPC range to reach the backend ports.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-alb-vpc-ingress
+  namespace: auto-shop
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 10.80.0.0/20
+      ports:
+        - protocol: TCP
+          port: 8000
+        - protocol: TCP
+          port: 8080

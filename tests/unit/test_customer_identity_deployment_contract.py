@@ -184,7 +184,7 @@ def test_deploy_workflows_pass_the_resolved_cluster_name_to_deploy_script():
 
     for workflow_path, output_name in workflows.items():
         workflow = (ROOT / workflow_path).read_text(encoding="utf-8")
-        deploy_index = workflow.index("run: ./k8s/scripts/deploy.sh")
+        deploy_index = workflow.index("run: bash ./k8s/scripts/deploy.sh")
         step_start = workflow.rfind("      - name:", 0, deploy_index)
         step_end = workflow.find("\n      - name:", deploy_index)
         deploy_step = workflow[step_start:step_end]

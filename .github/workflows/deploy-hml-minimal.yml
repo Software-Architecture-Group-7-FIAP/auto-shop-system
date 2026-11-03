@@ -184,11 +184,7 @@ jobs:
     name: Deploy backend to HML EKS
     needs: [source-guard, build-push]
     if: needs.source-guard.result == 'success' && inputs.operation != 'prepare-newrelic-secret'
-    runs-on:
-      group: k8s-private-eks
-      labels:
-        - "codebuild-auto-shop-hml-private-runner-${{ github.run_id }}-${{ github.run_attempt }}"
-        - "buildspec-override:true"
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: hml
     permissions:
@@ -390,6 +386,10 @@ jobs:
               exit 1
             }
           done
+
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.19.0
 
       - name: Deploy backend to HML
         env:

@@ -20,6 +20,9 @@ AWS_REGION="${AWS_REGION:-}"
 LIFECYCLE_SESSION_ID="${LIFECYCLE_SESSION_ID:-${GITHUB_RUN_ID:-local-$(date -u +%Y%m%dT%H%M%SZ)}}"
 ALLOW_SYNTHETIC_SEED_IN_PRD="${ALLOW_SYNTHETIC_SEED_IN_PRD:-false}"
 NEW_RELIC_LICENSE_KEY="${NEW_RELIC_LICENSE_KEY:-}"
+NEW_RELIC_K8S_CHART_VERSION="8.0.39"
+NEW_RELIC_K8S_CHART_SHA256="96eb019f7c78e1e746e0ba170b7e656e437ae3f7bfe7203f812e750511db108f"
+NEW_RELIC_K8S_RELEASE="auto-shop-new-relic"
 
 case "${ENVIRONMENT}" in
   staging) NAMESPACE="auto-shop-hml" ;;
@@ -239,6 +242,22 @@ ensure_new_relic_secret() {
   unset NEW_RELIC_LICENSE_KEY
 }
 
+install_new_relic_kubernetes() {
+  [[ "${ENVIRONMENT}" == "staging" ]] || return 0
+  command -v helm >/dev/null
+
+  local values_file="${REPO_ROOT}/k8s/observability/new-relic/values-staging.yaml"
+  local chart_file
+  chart_file="$(mktemp --suffix=.tgz)"
+  TEMP_FILES+=("${chart_file}")
+  kubectl get secret auto-shop-new-relic --namespace "${NAMESPACE}"     --output='jsonpath={.data.NEW_RELIC_LICENSE_KEY}' | grep -q .
+
+  curl --fail --location --silent --show-error     --output "${chart_file}"     "https://github.com/newrelic/helm-charts/releases/download/nri-bundle-${NEW_RELIC_K8S_CHART_VERSION}/nri-bundle-${NEW_RELIC_K8S_CHART_VERSION}.tgz"
+  printf '%s  %s
+' "${NEW_RELIC_K8S_CHART_SHA256}" "${chart_file}" | sha256sum --check --status
+  helm upgrade --install "${NEW_RELIC_K8S_RELEASE}" "${chart_file}"     --namespace "${NAMESPACE}"     --values "${values_file}"     --atomic     --wait     --timeout 10m
+}
+
 wait_migration() {
   bash "${REPO_ROOT}/k8s/scripts/wait-for-job.sh" "${MIGRATION_JOB}" "${NAMESPACE}" 300
 }
@@ -279,5 +298,6 @@ wait_seed
 apply_phase app
 kubectl rollout status deployment/auto-shop-redis --namespace "${NAMESPACE}" --timeout=180s
 kubectl rollout status deployment/auto-shop-backend --namespace "${NAMESPACE}" --timeout=300s
+install_new_relic_kubernetes
 smoke_test
 echo "Auto Shop ${ENVIRONMENT} deployment completed successfully."
