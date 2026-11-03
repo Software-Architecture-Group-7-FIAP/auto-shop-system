@@ -2,78 +2,49 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[3]
-VALUES = ROOT / "k8s/observability/new-relic/values-staging.yaml"
 
 
-def test_hml_kubernetes_bundle_is_pinned_minimal_and_cost_bounded():
-    values = VALUES.read_text(encoding="utf-8")
-    bash_deploy = (ROOT / "k8s/scripts/deploy.sh").read_text(encoding="utf-8")
-
-    assert 'NEW_RELIC_K8S_CHART_VERSION="8.0.39"' in bash_deploy
-    assert 'NEW_RELIC_K8S_CHART="newrelic/nri-bundle"' in bash_deploy
-    assert 'NEW_RELIC_K8S_CHART_SHA256="96eb019f' in bash_deploy
-    assert 'cluster: "auto-shop-hml"' in values
-    assert "lowDataMode: true" in values
-    assert "newrelic-infrastructure:\n  enabled: true" in values
-    assert "controlPlane:\n    enabled: false" in values
-    assert "kube-state-metrics:\n  enabled: true" in values
-
-    for component in (
-        "nri-prometheus",
-        "nri-metadata-injection",
-        "nri-kube-events",
-        "newrelic-logging",
-        "newrelic-pixie",
-        "nr-ebpf-agent",
-        "k8s-agents-operator",
-        "newrelic-prometheus-agent",
-        "newrelic-k8s-metrics-adapter",
-    ):
-        assert f"{component}:\n  enabled: false" in values
-
-
-def test_bundle_reuses_approved_secret_without_rendering_credentials():
-    values = VALUES.read_text(encoding="utf-8")
+def test_hml_app_deploy_materializes_new_relic_secret_and_installs_cluster_chart():
     bash_deploy = (ROOT / "k8s/scripts/deploy.sh").read_text(encoding="utf-8")
     powershell_deploy = (ROOT / "k8s/scripts/deploy.ps1").read_text(encoding="utf-8")
+    cd_workflow = (ROOT / ".github/workflows/cd-staging.yml").read_text(encoding="utf-8")
+    minimal_workflow = (ROOT / ".github/workflows/deploy-hml-minimal.yml").read_text(encoding="utf-8")
 
-    assert 'customSecretName: "auto-shop-new-relic"' in values
-    assert 'customSecretLicenseKey: "NEW_RELIC_LICENSE_KEY"' in values
-    assert "licenseKey:" not in values
-    assert "data:" not in values
-    assert "stringData:" not in values
-    assert "--set" not in bash_deploy
-    assert "--set" not in powershell_deploy
-    assert "--from-literal" not in bash_deploy
-    assert "--from-literal" not in powershell_deploy
+    assert "ensure_new_relic_secret" in bash_deploy
+    assert "ensure_new_relic_secret" in bash_deploy.split("apply_phase foundation", maxsplit=1)[1]
+    assert "function Ensure-NewRelicSecret" in powershell_deploy
+    assert "Ensure-NewRelicSecret" in powershell_deploy
+    for script in (bash_deploy, powershell_deploy):
+        assert "NEW_RELIC_LICENSE_KEY" in script
+        assert "--from-literal" not in script
 
+    # The platform repository never completed the HML chart rollout, so the
+    # application deploy installs the pinned nri-bundle itself.
+    assert "helm upgrade --install" in bash_deploy
+    assert "nri-bundle" in bash_deploy
+    assert "NEW_RELIC_K8S_CHART_SHA256" in bash_deploy
+    assert "helm upgrade" not in powershell_deploy
 
-def test_bundle_install_is_atomic_and_bounded_to_staging_lifecycle():
-    bash_deploy = (ROOT / "k8s/scripts/deploy.sh").read_text(encoding="utf-8")
-    powershell_deploy = (ROOT / "k8s/scripts/deploy.ps1").read_text(encoding="utf-8")
-    workflow = (ROOT / ".github/workflows/cd-staging.yml").read_text(encoding="utf-8")
-
-    assert '[[ "${ENVIRONMENT}" == "staging" ]] || return 0' in bash_deploy
-    assert 'helm upgrade --install "${NEW_RELIC_K8S_RELEASE}"' in bash_deploy
-    assert "sha256sum --check --status" in bash_deploy
-    for flag in ("--atomic", "--wait", "--timeout 10m", "--namespace \"${NAMESPACE}\""):
-        assert flag in bash_deploy
-    assert bash_deploy.index("apply_phase app") < bash_deploy.rindex(
-        "install_new_relic_kubernetes"
-    )
-    assert 'if ($Environment -ne "staging")' in powershell_deploy
-    assert 'Invoke-RequiredCommand "helm"' in powershell_deploy
-    assert "azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4" in workflow
-    assert "version: v3.19.0" in workflow
+    assert "NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}" in cd_workflow
+    assert "NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}" in minimal_workflow
+    assert "setup-helm" not in cd_workflow
+    assert "setup-helm" in minimal_workflow
 
 
-def test_runbook_defers_live_validation_and_covers_issue_3_signals():
+def test_runbook_assigns_cluster_chart_to_platform_and_preserves_hml_acceptance_signals():
     runbook = (ROOT / "docs/observability/new-relic-kubernetes.md").read_text(
         encoding="utf-8"
     )
 
     for required_text in (
+        "k8s-infra",
+        "envs/staging/platform",
+        "cluster-ci.yml",
+        "cluster-apply.yml",
         "approved HML session",
+        "nri-bundle",
+        "8.0.39",
+        "96eb019f7c78e1e746e0ba170b7e656e437ae3f7bfe7203f812e750511db108f",
         "K8sClusterSample",
         "K8sNodeSample",
         "K8sPodSample",

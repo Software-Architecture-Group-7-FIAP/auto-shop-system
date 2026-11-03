@@ -15,10 +15,11 @@ CONFIRM_PRODUCTION="${3:-}"
 MIGRATION_DATABASE_SECRET_ARN="${MIGRATION_DATABASE_SECRET_ARN:-}"
 SERVICE_ORDER_EVENT_BUS_NAME="${SERVICE_ORDER_EVENT_BUS_NAME:-}"
 SERVICE_ORDER_PUBLISHER_ROLE_ARN="${SERVICE_ORDER_PUBLISHER_ROLE_ARN:-}"
+EKS_CLUSTER_NAME="${EKS_CLUSTER_NAME:-}"
+AWS_REGION="${AWS_REGION:-}"
 LIFECYCLE_SESSION_ID="${LIFECYCLE_SESSION_ID:-${GITHUB_RUN_ID:-local-$(date -u +%Y%m%dT%H%M%SZ)}}"
 ALLOW_SYNTHETIC_SEED_IN_PRD="${ALLOW_SYNTHETIC_SEED_IN_PRD:-false}"
 NEW_RELIC_LICENSE_KEY="${NEW_RELIC_LICENSE_KEY:-}"
-NEW_RELIC_K8S_CHART="newrelic/nri-bundle"
 NEW_RELIC_K8S_CHART_VERSION="8.0.39"
 NEW_RELIC_K8S_CHART_SHA256="96eb019f7c78e1e746e0ba170b7e656e437ae3f7bfe7203f812e750511db108f"
 NEW_RELIC_K8S_RELEASE="auto-shop-new-relic"
@@ -81,18 +82,41 @@ if [[ ! -d "${OVERLAY_ROOT}" ]]; then
 fi
 
 assert_pod_identity_agent_ready() {
-  local agent_status ready desired
-  if ! agent_status="$(kubectl get daemonset eks-pod-identity-agent \
-    --namespace kube-system \
-    --output='jsonpath={.status.numberReady} {.status.desiredNumberScheduled}' \
-    2>/dev/null)"; then
-    echo "The EKS Pod Identity Agent is missing; install the EKS add-on before deploying."
+  local agent_status health_issue_count
+  if [[ -z "${EKS_CLUSTER_NAME}" || -z "${AWS_REGION}" ]]; then
+    echo "The approved EKS cluster and region are required to check the Pod Identity Agent."
     exit 1
   fi
 
-  read -r ready desired <<< "${agent_status}"
-  if [[ -z "${desired}" || "${desired}" == "0" || "${ready}" != "${desired}" ]]; then
-    echo "The EKS Pod Identity Agent is not ready on every worker node."
+  if ! agent_status="$(aws eks describe-addon \
+    --cluster-name "${EKS_CLUSTER_NAME}" \
+    --addon-name eks-pod-identity-agent \
+    --region "${AWS_REGION}" \
+    --query 'addon.status' \
+    --output text \
+    --no-cli-pager 2>/dev/null)"; then
+    echo "The EKS Pod Identity Agent add-on could not be inspected."
+    exit 1
+  fi
+
+  if [[ "${agent_status}" != "ACTIVE" ]]; then
+    echo "The EKS Pod Identity Agent add-on is not active (status: ${agent_status})."
+    exit 1
+  fi
+
+  if ! health_issue_count="$(aws eks describe-addon \
+    --cluster-name "${EKS_CLUSTER_NAME}" \
+    --addon-name eks-pod-identity-agent \
+    --region "${AWS_REGION}" \
+    --query 'length(addon.health.issues)' \
+    --output text \
+    --no-cli-pager 2>/dev/null)"; then
+    echo "The EKS Pod Identity Agent health could not be inspected."
+    exit 1
+  fi
+
+  if [[ "${health_issue_count}" != "0" ]]; then
+    echo "The EKS Pod Identity Agent add-on reports health issues."
     exit 1
   fi
 }
@@ -226,19 +250,12 @@ install_new_relic_kubernetes() {
   local chart_file
   chart_file="$(mktemp --suffix=.tgz)"
   TEMP_FILES+=("${chart_file}")
-  kubectl get secret auto-shop-new-relic --namespace "${NAMESPACE}" \
-    --output='jsonpath={.data.NEW_RELIC_LICENSE_KEY}' | grep -q .
+  kubectl get secret auto-shop-new-relic --namespace "${NAMESPACE}"     --output='jsonpath={.data.NEW_RELIC_LICENSE_KEY}' | grep -q .
 
-  curl --fail --location --silent --show-error \
-    --output "${chart_file}" \
-    "https://github.com/newrelic/helm-charts/releases/download/nri-bundle-${NEW_RELIC_K8S_CHART_VERSION}/nri-bundle-${NEW_RELIC_K8S_CHART_VERSION}.tgz"
-  printf '%s  %s\n' "${NEW_RELIC_K8S_CHART_SHA256}" "${chart_file}" | sha256sum --check --status
-  helm upgrade --install "${NEW_RELIC_K8S_RELEASE}" "${chart_file}" \
-    --namespace "${NAMESPACE}" \
-    --values "${values_file}" \
-    --atomic \
-    --wait \
-    --timeout 10m
+  curl --fail --location --silent --show-error     --output "${chart_file}"     "https://github.com/newrelic/helm-charts/releases/download/nri-bundle-${NEW_RELIC_K8S_CHART_VERSION}/nri-bundle-${NEW_RELIC_K8S_CHART_VERSION}.tgz"
+  printf '%s  %s
+' "${NEW_RELIC_K8S_CHART_SHA256}" "${chart_file}" | sha256sum --check --status
+  helm upgrade --install "${NEW_RELIC_K8S_RELEASE}" "${chart_file}"     --namespace "${NAMESPACE}"     --values "${values_file}"     --atomic     --wait     --timeout 10m
 }
 
 wait_migration() {
@@ -270,7 +287,6 @@ smoke_test() {
 }
 
 assert_pod_identity_agent_ready
-kubectl create namespace "${NAMESPACE}" --dry-run=client --output=yaml | kubectl apply --filename=-
 ensure_secret
 ensure_redis_credentials
 apply_phase foundation
