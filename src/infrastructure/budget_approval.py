@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import quote
 
 from sqlalchemy.exc import IntegrityError
@@ -27,6 +27,10 @@ from src.infrastructure.database import (
     ServiceOrderProductLineModel,
     ServiceOrderServiceLineModel,
     VehicleModel,
+)
+from src.infrastructure.observability.business_telemetry import (
+    ServiceOrderCreatedEvent,
+    queue_business_event,
 )
 from src.infrastructure.persistence.service_order_repository import SqlAlchemyServiceOrderRepository
 from src.infrastructure.email.service import send_email
@@ -149,6 +153,14 @@ class SqlAlchemyApprovedBudgetServiceOrderCreator:
             raise ConflictError(
                 "O veículo já possui uma OS ativa; aguarde a entrega da OS atual"
             ) from exc
+
+        queue_business_event(
+            self.db,
+            ServiceOrderCreatedEvent(
+                occurred_at=service_order.created_at.replace(tzinfo=timezone.utc),
+                status=service_order.status,
+            ),
+        )
 
         for line in budget.service_lines:
             self.db.add(

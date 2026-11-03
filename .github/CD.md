@@ -14,11 +14,15 @@ The audit guard polls every 15 seconds for up to 60 seconds after the reserved w
 
 ## Deploy workflow behavior
 
-O script de deploy usa o namespace `auto-shop-hml` em staging e `auto-shop-prd` em produção. No primeiro deploy de cada namespace, gera uma senha Redis aleatória e grava `REDIS_PASSWORD` e `REDIS_URL` em `auto-shop-redis-credentials`, sem incluí-los em logs ou artefatos. O Redis é efêmero, sem persistência, e aceita conexões somente dos Pods da API. O NGINX Ingress segue restrito ao ambiente local; em AWS, o API Gateway encaminha o tráfego ao ALB interno. O GHCR usa `GITHUB_TOKEN`, sem access key AWS.
+O script de deploy usa o namespace `auto-shop-hml` em staging e `auto-shop-prd` em produção. No primeiro deploy de cada namespace, gera uma senha Redis aleatória e grava `REDIS_PASSWORD` e `REDIS_URL` em `auto-shop-redis-credentials`, sem incluí-los em logs ou artefatos. O Redis é efêmero, sem persistência, e aceita conexões somente dos Pods da API. O NGINX Ingress segue restrito ao ambiente local; em AWS, o API Gateway encaminha o tráfego ao ALB interno. O job de deploy usa `GITHUB_TOKEN` apenas para ler a imagem GHCR e OIDC para obter credenciais AWS temporárias; nenhum access key AWS fica no repositório.
 
 ## Pré-requisitos do cluster para migrations
 
-O `GITHUB_TOKEN` autentica o runner ao publicar no GHCR; ele não configura credenciais de pull nos nós EKS. Os manifests atuais não definem `imagePullSecrets`, então os nós precisam aceitar pull anônimo. Em 2026-10-29, Gustavo decidiu manter público o package `ghcr.io/software-architecture-group-7-fiap/auto-shop-system` para permitir esse acesso sem credencial persistente no cluster. As imagens publicadas ficam acessíveis a qualquer pessoa; essa mudança de visibilidade é irreversível no GitHub, então não inclua segredos ou dados confidenciais na imagem. Os workflows CD validam o pull anônimo antes de configurar credenciais AWS. Em 2026-10-29, esse pull retornou 401; mantenha o gate de deploy desligado até o package estar público e o check passar.
+O build publica tags imutáveis `sha-<7>` no GHCR. Após a validação da janela de lifecycle e a autenticação OIDC, o job de deploy usa `GITHUB_TOKEN` com `packages: read` para ler a imagem exata do commit atual, valida o rótulo OCI de revisão e a espelha para o repositório privado ECR `auto-shop-system`. O helper exige que o repositório exista na conta e região configuradas, valide URI e imutabilidade de tags e confirma que a imagem no ECR é idêntica à origem. `deploy.sh` recebe a referência ECR com tag `sha-<7>`.
+
+Os nós EKS precisam de `ecr:GetAuthorizationToken`, `ecr:BatchGetImage`, `ecr:BatchCheckLayerAvailability` e `ecr:GetDownloadUrlForLayer` na role de instância (ou na role de execução do Fargate). A ação do token exige escopo Resource *. Os nós também precisam de acesso de rede à API ECR, ao registry Docker ECR e ao S3 que hospeda as camadas da imagem; use NAT ou os endpoints VPC correspondentes. Com permissão da role do nó, não é necessário configurar credenciais do registry no Kubernetes.
+
+O Terraform desta aplicação limita as permissões de mirror da role de deploy ao ARN do repositório `auto-shop-system`; a permissions boundary é externa e precisa permitir as mesmas ações ECR. Antes de habilitar um gate de deploy, confirme externamente que a role dos nós e a boundary permitem essas ações, que o repositório ECR existe com tags imutáveis e que o package GHCR concede leitura ao `GITHUB_TOKEN` deste repositório. Esses settings externos não foram alterados nem verificados.
 
 O Job de migrations usa EKS Pod Identity para ler o segredo do banco. A infraestrutura do cluster precisa instalar e manter pronto o add-on `eks-pod-identity-agent`; `deploy.sh` verifica o DaemonSet antes de alterar o namespace. Os nós de trabalho também precisam acessar a API EKS Auth, usada pelo agente, e o Secrets Manager, usado pelo Job. Se as sub-redes não tiverem NAT, configure VPC interface endpoints com DNS privado e regras de Security Group que permitam HTTPS na porta 443.
 Pushes to `main` and `develop` continue to build and publish the backend image. They do not change a running environment. Deployments require `workflow_dispatch` with the coordinator-provided `session_id`, `started_at`, and `session_mode`; the CD workflows validate those fields against the BRT date and authorized window. HML frontend deployment follows the backend and also requires `DEPLOY_STAGING_FRONTEND_ENABLED=true`. PRD synthetic seed requires `ALLOW_SYNTHETIC_SEED_IN_PRD=true`.
@@ -36,8 +40,10 @@ All gates below must be explicitly configured before an opening. Missing values 
 |---|---|
 | PRD | `ENVIRONMENT_SCHEDULE_ENABLED=true`, `PRD_LIFECYCLE_AUTOMATION_READY=true`, `PRD_COST_EXCEPTION_APPROVED=true`, `ENVIRONMENT_ACTIVE=true`, `ENVIRONMENT_WINDOW_AUTHORIZED=true` |
 | HML | `STAGING_ACTIVE=true`, `STAGING_SESSION_AUTHORIZED=true`, `STAGING_SESSION_MODE=hml` |
-| PRD deploy | `DEPLOY_PRODUCTION_ENABLED=true`, `ALLOW_SYNTHETIC_SEED_IN_PRD=true` |
-| HML deploy | `DEPLOY_STAGING_ENABLED=true`, `DEPLOY_STAGING_FRONTEND_ENABLED=true` |
+| PRD backend deploy | `DEPLOY_PRODUCTION_ENABLED=true`, `ALLOW_SYNTHETIC_SEED_IN_PRD=true` |
+| PRD frontend deploy | `DEPLOY_PRODUCTION_ENABLED=true`, `DEPLOY_PRODUCTION_FRONTEND_ENABLED=true`, `ALLOW_SYNTHETIC_SEED_IN_PRD=true` |
+| HML backend deploy | `DEPLOY_STAGING_ENABLED=true` |
+| HML frontend deploy | `DEPLOY_STAGING_ENABLED=true`, `DEPLOY_STAGING_FRONTEND_ENABLED=true` |
 
 The central workflows also require repository variables for AWS account/region, lifecycle alert topic, K8s and database repository/ref, edge settings, and the reviewed PRD/HML daily cost estimate. Refs must be `main` for infrastructure repositories. The app dispatch uses `main` for PRD and `develop` for HML. The explicit secret `LIFECYCLE_CROSS_REPO_TOKEN` must have Actions dispatch/read/cancel access on the app, K8s, and database repositories. There is no `GITHUB_TOKEN` fallback.
 

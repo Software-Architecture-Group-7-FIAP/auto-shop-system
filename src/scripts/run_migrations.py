@@ -8,9 +8,8 @@ from pathlib import Path
 import boto3
 import psycopg2
 from botocore.exceptions import BotoCoreError, ClientError
-from sqlalchemy.exc import ArgumentError
 from sqlalchemy.engine import URL, make_url
-
+from sqlalchemy.exc import ArgumentError
 
 MIGRATION_LOCK_KEY = 7_349_841
 ALLOWED_PG_QUERY_PARAMETERS = frozenset({"sslmode", "sslrootcert"})
@@ -38,15 +37,14 @@ def _load_migration_database_url() -> str:
         raise RuntimeError("Migration database credentials are unavailable") from None
 
     if not isinstance(secret, dict):
-        raise RuntimeError("Migration database credentials are invalid")
+        raise TypeError("Migration database credentials are invalid")
 
     username = secret.get("username")
     password = secret.get("password")
     host = secret.get("host")
     port = secret.get("port")
     if not all(
-        isinstance(value, str) and value
-        for value in (username, password, host, port)
+        isinstance(value, str) and value for value in (username, password, host, port)
     ):
         raise RuntimeError("Migration database credentials are invalid")
 
@@ -183,11 +181,20 @@ def _log_migration_connection_failure(error: Exception) -> bool:
 
 
 def run_migrations() -> int:
-    database_url, connect_timeout, use_migration_identity = _migration_config()
+    try:
+        database_url, connect_timeout, use_migration_identity = _migration_config()
+        connection_arguments = _psycopg2_connection_arguments(database_url)
+    except (ArgumentError, RuntimeError, TypeError) as error:
+        print(
+            f"migration preflight: invalid database configuration ({type(error).__name__})",
+            file=sys.stderr,
+            flush=True,
+        )
+        return 20
 
     try:
         connection = psycopg2.connect(
-            **_psycopg2_connection_arguments(database_url),
+            **connection_arguments,
             connect_timeout=connect_timeout,
         )
     except (ArgumentError, OSError, RuntimeError, psycopg2.Error) as error:
@@ -199,7 +206,19 @@ def run_migrations() -> int:
     try:
         with connection:
             with connection.cursor() as cursor:
-                cursor.execute("SELECT pg_advisory_lock(%s)", (MIGRATION_LOCK_KEY,))
+                cursor.execute("SELECT pg_try_advisory_lock(%s)", (MIGRATION_LOCK_KEY,))
+                lock_acquired = bool(cursor.fetchone()[0])
+            if not lock_acquired:
+                print(
+                    "migration failed: another migration is already holding the database advisory lock",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return 20
+            print(
+                "migration preflight: database connected and advisory lock acquired; applying Alembic revisions",
+                flush=True,
+            )
             if use_migration_identity:
                 migration_env = os.environ.copy()
                 migration_env.update(

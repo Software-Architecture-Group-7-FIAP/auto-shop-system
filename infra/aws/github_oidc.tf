@@ -50,6 +50,7 @@ variable "github_oidc_thumbprint" {
 locals {
   github_oidc_subject_prefix             = "repo:${split("/", var.github_repository)[0]}@${var.github_repository_owner_id}/${split("/", var.github_repository)[1]}@${var.github_repository_id}"
   github_deploy_permissions_boundary_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/auto-shop/auto-shop-boundary"
+  github_ecr_repository_arn              = "arn:aws:ecr:${var.aws_region}:${data.aws_caller_identity.current.account_id}:repository/auto-shop-system"
   github_environment_api_stage = {
     staging    = "hml"
     production = "prd"
@@ -145,6 +146,29 @@ data "aws_iam_policy_document" "github_deploy_eks" {
       [data.aws_ssm_parameter.upstream["eks_cluster_name"].arn],
       local.github_deploy_parameter_arns[each.key],
     )
+  }
+
+  statement {
+    sid    = "MirrorAndPullApplicationImage"
+    effect = "Allow"
+    actions = [
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:BatchGetImage",
+      "ecr:CompleteLayerUpload",
+      "ecr:DescribeRepositories",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:InitiateLayerUpload",
+      "ecr:PutImage",
+      "ecr:UploadLayerPart",
+    ]
+    resources = [local.github_ecr_repository_arn]
+  }
+
+  statement {
+    sid       = "AuthenticateToECR"
+    effect    = "Allow"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
   }
 }
 

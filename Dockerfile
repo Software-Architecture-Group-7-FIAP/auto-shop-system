@@ -46,6 +46,7 @@ COPY --chown=10001:10001 src/ ./src
 COPY --chown=10001:10001 alembic/ ./alembic
 COPY --chown=10001:10001 alembic.ini ./
 COPY --chown=10001:10001 pyproject.toml ./
+COPY --chown=10001:10001 newrelic.ini ./
 
 # Muda para o usuário sem privilégios
 USER 10001:10001
@@ -56,4 +57,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:8000/health/live || exit 1
 
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+CMD ["newrelic-admin", "run-program", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

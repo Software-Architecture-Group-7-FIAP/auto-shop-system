@@ -28,6 +28,10 @@ from src.infrastructure.database import (
     ServiceOrderStatusHistoryModel,
     VehicleModel,
 )
+from src.infrastructure.observability.business_telemetry import (
+    ServiceOrderStatusDurationEvent,
+    queue_business_event,
+)
 
 
 class SqlAlchemyServiceOrderRepository:
@@ -269,13 +273,21 @@ class SqlAlchemyServiceOrderRepository:
             for item in persisted_history
             if item.request_id is None
         }
+        real_transitions = sorted(
+            (
+                item
+                for item in persisted_history
+                if item.from_status != item.to_status
+            ),
+            key=lambda item: item.occurred_at,
+        )
         for transition in service_order.status_history:
             if (
                 transition.request_id is not None
                 and transition.request_id in existing_request_ids
             ):
                 continue
-            occurred_at = transition.occurred_at.replace(tzinfo=None)
+            occurred_at = self._as_utc(transition.occurred_at).replace(tzinfo=None)
             if (
                 transition.request_id is None
                 and self._history_event_key(transition, occurred_at)
@@ -294,6 +306,39 @@ class SqlAlchemyServiceOrderRepository:
                     occurred_at=occurred_at,
                 )
             )
+            if transition.from_status != transition.to_status:
+                entered_at = max(
+                    (
+                        item.occurred_at
+                        for item in real_transitions
+                        if item.to_status == transition.from_status
+                        and item.occurred_at <= occurred_at
+                    ),
+                    default=model.created_at,
+                )
+                try:
+                    queue_business_event(
+                        self.db,
+                        ServiceOrderStatusDurationEvent.from_interval(
+                            status=transition.from_status,
+                            to_status=transition.to_status,
+                            transition_type=transition.transition_type,
+                            entered_at=self._as_utc(entered_at),
+                            occurred_at=self._as_utc(occurred_at),
+                        ),
+                    )
+                except ValueError:
+                    # Invalid intervals are excluded instead of poisoning aggregates.
+                    pass
+                real_transitions.append(
+                    ServiceOrderStatusHistoryModel(
+                        service_order_id=service_order.id,
+                        from_status=transition.from_status,
+                        to_status=transition.to_status,
+                        transition_type=transition.transition_type,
+                        occurred_at=occurred_at,
+                    )
+                )
             if transition.request_id is not None:
                 existing_request_ids.add(transition.request_id)
             else:
@@ -303,6 +348,12 @@ class SqlAlchemyServiceOrderRepository:
         self.db.flush()
         self.db.refresh(model)
         return self._to_domain(model)
+
+    @staticmethod
+    def _as_utc(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
     @staticmethod
     def _history_event_key(event, occurred_at: datetime | None = None) -> tuple:

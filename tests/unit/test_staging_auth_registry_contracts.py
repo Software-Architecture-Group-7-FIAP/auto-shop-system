@@ -1,9 +1,28 @@
+import re
 from pathlib import Path
 
 import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _workflow_job(workflow: str, job_name: str) -> str:
+    lines = workflow.splitlines()
+    job_header = f"  {job_name}:"
+
+    try:
+        start = lines.index(job_header)
+    except ValueError as error:
+        raise AssertionError(f"Workflow job {job_name!r} is missing") from error
+
+    job_lines = [lines[start]]
+    for line in lines[start + 1 :]:
+        if line.startswith("  ") and not line.startswith("    "):
+            break
+        job_lines.append(line)
+
+    return "\n".join(job_lines)
 
 
 def test_auth_preflight_policy_matches_lambda_auth_function_names() -> None:
@@ -23,26 +42,102 @@ def test_auth_preflight_policy_matches_lambda_auth_function_names() -> None:
         ("cd-prod.yml", "role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN_PRD }}"),
     ),
 )
-def test_deploy_requires_anonymous_ghcr_pull_before_aws_credentials(
+def test_deploy_authenticates_and_mirrors_ghcr_after_aws_credentials(
     workflow_name: str, role_reference: str,
 ) -> None:
     workflow = (ROOT / ".github/workflows" / workflow_name).read_text(
         encoding="utf-8"
     )
-
-    anonymous_pull_checks = [
-        workflow.find('docker manifest inspect "$IMAGE_REFERENCE"'),
-        workflow.find('docker pull "${IMAGE_REFERENCE}"'),
-    ]
-    public_pull_check = min(
-        position for position in anonymous_pull_checks if position >= 0
-    )
     aws_credentials = workflow.index(role_reference)
+    mirror = workflow.index("Mirror authenticated GHCR image to private ECR")
+    deploy = workflow.index("./k8s/scripts/deploy.sh")
 
-    assert public_pull_check < aws_credentials
-    assert "packages: read" not in workflow
-    assert "mirror_ghcr_image_to_ecr.py" not in workflow
-    assert "ecr_image" not in workflow
+    assert workflow.index("SOURCE_IMAGE: ${{ needs.build-push.outputs.ghcr_image_reference }}") < aws_credentials
+    assert aws_credentials < mirror < deploy
+    assert "packages: read" in workflow
+    assert "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}" in workflow
+    assert "mirror_ghcr_image_to_ecr.py \"${SOURCE_IMAGE}\"" in workflow
+    assert "IMAGE_REFERENCE: ${{ steps.ecr_image.outputs.image_reference }}" in workflow
+    assert 'docker pull "${IMAGE_REFERENCE}"' not in workflow
+
+
+def test_reusable_build_publishes_a_commit_derived_ghcr_source_reference() -> None:
+    workflow = (ROOT / ".github/workflows/reusable-build-push.yml").read_text(
+        encoding="utf-8"
+    )
+    build_job = _workflow_job(workflow, "build-push")
+
+    assert "permissions: {}" in workflow
+    assert "permissions:" in build_job
+    assert "packages: write" in build_job
+    assert "verify-anonymous-pull" not in workflow
+
+    assert 'short="${GITHUB_SHA::7}"' in build_job
+    assert 'tag="sha-${short}"' in build_job
+    assert "ghcr_image_reference: ${{ steps.meta.outputs.image_reference }}" in build_job
+    assert "value: ${{ jobs.build-push.outputs.ghcr_image_reference }}" in workflow
+
+
+def test_ecr_mirror_enforces_commit_bound_source_and_immutable_private_target() -> None:
+    mirror = (ROOT / "scripts/mirror_ghcr_image_to_ecr.py").read_text(
+        encoding="utf-8"
+    )
+    terraform = (ROOT / "infra/aws/github_oidc.tf").read_text(encoding="utf-8")
+
+    assert 'expected_tag = f"sha-{github_sha[:7]}"' in mirror
+    assert 'expected_source = f"ghcr.io/{github_repository}:{expected_tag}"' in mirror
+    assert "source_image != expected_source" in mirror
+    assert '"docker", "login", "ghcr.io"' in mirror
+    assert '"docker", "pull", source_image' in mirror
+    assert '"imageTagMutability") != "IMMUTABLE"' in mirror
+    assert "target_config_id != source_config_id" in mirror
+
+    assert 'sid    = "MirrorAndPullApplicationImage"' in terraform
+    assert "resources = [local.github_ecr_repository_arn]" in terraform
+    assert 'sid       = "AuthenticateToECR"' in terraform
+    assert 'actions   = ["ecr:GetAuthorizationToken"]' in terraform
+    assert 'resources = ["*"]' in terraform
+    assert 'permissions_boundary = local.github_deploy_permissions_boundary_arn' in terraform
+    assert '"ecr:BatchCheckLayerAvailability"' in terraform
+    assert '"ecr:BatchGetImage"' in terraform
+    assert '"ecr:CompleteLayerUpload"' in terraform
+    assert '"ecr:DescribeRepositories"' in terraform
+    assert '"ecr:GetDownloadUrlForLayer"' in terraform
+    assert '"ecr:InitiateLayerUpload"' in terraform
+    assert '"ecr:PutImage"' in terraform
+    assert '"ecr:UploadLayerPart"' in terraform
+
+
+@pytest.mark.parametrize(
+    ("workflow_name", "job_name", "branch"),
+    (
+        ("cd-staging.yml", "deploy-staging", "refs/heads/develop"),
+        ("cd-prod.yml", "deploy-production", "refs/heads/main"),
+    ),
+)
+def test_deploy_jobs_require_dispatch_and_successful_prerequisites(
+    workflow_name: str, job_name: str, branch: str,
+) -> None:
+    workflow = (ROOT / ".github/workflows" / workflow_name).read_text(
+        encoding="utf-8"
+    )
+    deploy_job = _workflow_job(workflow, job_name)
+    condition_match = re.search(
+        r"(?ms)^    if:\s*(.*?)(?=^    [A-Za-z_][\w-]*:|\Z)", deploy_job
+    )
+
+    assert condition_match is not None
+    condition = condition_match.group(1)
+    assert "github.event_name == 'workflow_dispatch'" in condition
+    assert f"github.ref == '{branch}'" in condition
+    assert "needs.build-push.result == 'success'" in condition
+    assert "needs.lifecycle-authorization.result == 'success'" in condition
+    assert (
+        re.search(r"github\.event_name\s*(?:==|!=)\s*'push'", condition)
+        is None
+    )
+    assert "always()" not in condition
+    assert "needs: [build-push, lifecycle-authorization]" in deploy_job
 
 
 def test_customer_auth_overlays_share_issuer_and_select_stage_jwks() -> None:
@@ -85,14 +180,18 @@ def test_documented_ssm_jwt_contract_matches_published_parameters() -> None:
     assert "customer-cpf-auth-homolog" not in infrastructure_readme
 
 
-def test_registry_decision_documents_public_ghcr_without_ecr_mirroring() -> None:
+def test_registry_decision_documents_authenticated_private_ecr_mirroring() -> None:
     deployment = (ROOT / "docs/deployment.md").read_text(encoding="utf-8")
+    cd_docs = (ROOT / ".github/CD.md").read_text(encoding="utf-8")
     adr = (
-        ROOT / "docs/architecture/decisions/ADR-0074-estrategia-branches-e-ci.md"
+        ROOT / "docs/architecture/decisions/ADR-0079-registry-privado-ecr.md"
     ).read_text(encoding="utf-8")
 
-    assert "GHCR package is intended to remain public" in deployment
-    assert "anonymous" in deployment.lower()
-    assert "mirror it to the private ECR" not in deployment
-    assert "public GHCR" in adr
-    assert "private ECR" not in adr
+    assert "authenticated GHCR" in deployment
+    assert "private ECR" in deployment
+    assert "anonymous pull" not in deployment.lower()
+    assert "pull anônimo" not in cd_docs.lower()
+    assert "repositório privado ECR" in cd_docs
+    assert "supersedes" in adr.lower()
+    assert "GITHUB_TOKEN" in adr
+    assert "ECR" in adr

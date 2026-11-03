@@ -9,6 +9,9 @@ metadata:
     app.kubernetes.io/part-of: auto-shop-platform
 data:
   APP_ENV: "production"
+  APP_VERSION: "unknown"
+  NEW_RELIC_ENABLED: "false"
+  NEW_RELIC_CONFIG_FILE: "/app/newrelic.ini"
   APP_BASE_URL: "https://api.autoshop.com"
   FRONTEND_PUBLIC_URL: "https://app.autoshop.com"
   CORS_ALLOWED_ORIGINS: "https://app.autoshop.com"

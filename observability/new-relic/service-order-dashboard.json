@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "ownership": "auto-shop-owned-hml-service-order-v1",
+  "name": "auto-shop-owned::HML Service Order Operations",
+  "description": "Aggregate service-order throughput, completed lifecycle duration, and processing failures for the authorized HML environment.",
+  "permissions": "PRIVATE",
+  "pages": [
+    {
+      "name": "Service Orders",
+      "widgets": [
+        {
+          "id": "service-order-volume-daily",
+          "title": "Daily service-order volume (orders/day)",
+          "visualization": "line",
+          "source": "Log",
+          "time_range": "7 days",
+          "unit": "orders/day",
+          "filters": [
+            "event = ServiceOrderCreated",
+            "event_version = 1",
+            "service = auto-shop-api",
+            "environment = staging"
+          ],
+          "coverage_note": "Counts committed creation events forwarded to New Relic; a process crash after commit can leave a telemetry gap.",
+          "nrql": "FROM Log SELECT count(*) WHERE event = 'ServiceOrderCreated' AND event_version = 1 AND service = 'auto-shop-api' AND environment = 'staging' SINCE 7 days ago TIMESERIES 1 day"
+        },
+        {
+          "id": "service-order-duration-by-status",
+          "title": "Average completed status duration (minutes)",
+          "visualization": "line",
+          "source": "Log",
+          "time_range": "7 days",
+          "unit": "minutes",
+          "filters": [
+            "event = ServiceOrderStatusDuration",
+            "event_version = 1",
+            "status IN diagnosis, execution, finalization",
+            "service = auto-shop-api",
+            "environment = staging"
+          ],
+          "coverage_note": "Averages completed intervals only; an open current status has no duration event yet.",
+          "nrql": "FROM Log SELECT average(duration_ms) / 60000 AS 'average minutes' WHERE event = 'ServiceOrderStatusDuration' AND event_version = 1 AND status IN ('Em diagnóstico', 'Em execução', 'Finalizada') AND service = 'auto-shop-api' AND environment = 'staging' SINCE 7 days ago TIMESERIES 1 day FACET status"
+        },
+        {
+          "id": "service-order-failures-by-type",
+          "title": "Service-order processing failures by type and subsystem",
+          "visualization": "line",
+          "source": "Log",
+          "time_range": "24 hours",
+          "unit": "failures/hour",
+          "filters": [
+            "event = ServiceOrderProcessingFailure",
+            "event_version = 1",
+            "service = auto-shop-api",
+            "environment = staging"
+          ],
+          "coverage_note": "Groups only the closed failure type and subsystem taxonomies; record identifiers are excluded.",
+          "nrql": "FROM Log SELECT count(*) WHERE event = 'ServiceOrderProcessingFailure' AND event_version = 1 AND service = 'auto-shop-api' AND environment = 'staging' SINCE 24 hours ago TIMESERIES 1 hour FACET failure_type, subsystem"
+        }
+      ]
+    }
+  ]
+}
