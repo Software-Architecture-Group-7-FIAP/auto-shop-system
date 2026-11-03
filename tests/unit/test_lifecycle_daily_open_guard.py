@@ -21,6 +21,7 @@ CURRENT_RUN_ID = "999"
 PRIOR_RUN_ID = 123
 GUARD_STEP_NAME = "Reject a second opening run for the same HML date"
 FIRST_MUTATION_STEP_NAME = "Configure the narrow lifecycle start role"
+HML_AUTO_STOP_WAIT_JOB_NAME = "hml-auto-stop-wait"
 SESSION_RECORD_STEP_NAME = "Record the trusted operator and authorize the selected HML session profile"
 AUTH_PREFLIGHT_STEP_NAME = "Validate persistent customer auth Lambdas before opening session resources"
 ALL_INPUTS_PREFLIGHT_STEP_NAME = "Validate all credentials, repositories, deploy gates, alerting, and cost evidence inputs"
@@ -129,6 +130,61 @@ def _cost_reader_identity_failure_steps() -> list[dict[str, str]]:
             for name in MUTATING_DEPLOYMENT_STEP_NAMES
         ],
     ]
+
+
+def _guard_failure_steps() -> list[dict[str, str]]:
+    return [
+        {"name": "Set up job", "status": "completed", "conclusion": "success"},
+        {"name": "Run actions/checkout@v4", "status": "completed", "conclusion": "success"},
+        {
+            "name": "Require the triggering actor before AWS credentials",
+            "status": "completed",
+            "conclusion": "success",
+        },
+        {
+            "name": "Resolve the one session identifier and all BRT deadlines",
+            "status": "completed",
+            "conclusion": "success",
+        },
+        {"name": "Sign the resolved lifecycle session capability", "status": "completed", "conclusion": "success"},
+        {"name": GUARD_STEP_NAME, "status": "completed", "conclusion": "failure"},
+        {"name": FIRST_MUTATION_STEP_NAME, "status": "completed", "conclusion": "skipped"},
+        {"name": SESSION_RECORD_STEP_NAME, "status": "completed", "conclusion": "skipped"},
+        {"name": ALL_INPUTS_PREFLIGHT_STEP_NAME, "status": "completed", "conclusion": "skipped"},
+        {"name": AUTH_PREFLIGHT_ROLE_STEP_NAME, "status": "completed", "conclusion": "skipped"},
+        {"name": AUTH_PREFLIGHT_STEP_NAME, "status": "completed", "conclusion": "skipped"},
+        {"name": COST_EVIDENCE_PLACEHOLDER_STEP_NAME, "status": "completed", "conclusion": "skipped"},
+        {"name": COST_READER_IDENTITY_STEP_NAME, "status": "completed", "conclusion": "skipped"},
+        {"name": COST_OBSERVATION_STEP_NAME, "status": "completed", "conclusion": "skipped"},
+        {"name": FOUNDATION_PLAN_STEP_NAME, "status": "completed", "conclusion": "skipped"},
+        *[
+            {"name": name, "status": "completed", "conclusion": "skipped"}
+            for name in MUTATING_DEPLOYMENT_STEP_NAMES
+        ],
+    ]
+
+
+def _active_guard_failure_payload(
+    *,
+    active_jobs: tuple[str, ...] = (HML_AUTO_STOP_WAIT_JOB_NAME,),
+    open_status: str = "completed",
+    open_conclusion: str = "failure",
+    steps: list[dict[str, str]] | None = None,
+) -> dict[str, object]:
+    jobs = [
+        {"name": "hml-gates", "status": "completed", "conclusion": "success", "steps": []},
+        {
+            "name": "open",
+            "status": open_status,
+            "conclusion": open_conclusion,
+            "steps": steps or _guard_failure_steps(),
+        },
+        *[
+            {"name": name, "status": "in_progress", "conclusion": None, "steps": []}
+            for name in active_jobs
+        ],
+    ]
+    return {"total_count": len(jobs), "jobs": jobs}
 
 
 def _set_github_context(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -251,7 +307,110 @@ def test_active_prior_opening_run_blocks_retry(monkeypatch: pytest.MonkeyPatch) 
     _set_github_context(monkeypatch)
     requested_urls = _stub_api(
         monkeypatch,
-        [_listing(_run(PRIOR_RUN_ID, status="in_progress", conclusion=""))],
+        [
+            _listing(_run(PRIOR_RUN_ID, status="in_progress", conclusion="")),
+            _jobs_payload(open_status="in_progress", open_conclusion="", steps=[]),
+        ],
+    )
+
+    assert GUARD.main() == 1
+    assert len(requested_urls) == 2
+
+
+def test_active_prior_guard_failure_allows_recovery_only_while_auto_stop_wait_is_the_only_active_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    owner_run = _run(PRIOR_RUN_ID)
+    active_guard_failure_run = _run(PRIOR_RUN_ID + 1, status="in_progress", conclusion="")
+    current_run = _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")
+    with tempfile.TemporaryDirectory(prefix="lifecycle-guard-active-wait-recovery-test-") as temporary_directory:
+        output_path = Path(temporary_directory) / "github-output.txt"
+        monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+        _stub_api(
+            monkeypatch,
+            [
+                _listing(owner_run, active_guard_failure_run, current_run),
+                _active_guard_failure_payload(),
+                _jobs_payload(open_conclusion="failure", steps=_cost_reader_identity_failure_steps()),
+            ],
+        )
+
+        assert GUARD.main() == 0
+        assert output_path.read_text(encoding="utf-8") == f"recovery_source_run_id={PRIOR_RUN_ID}\n"
+
+
+def test_active_open_job_does_not_qualify_for_auto_stop_wait_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    active_run = _run(PRIOR_RUN_ID, status="in_progress", conclusion="")
+    _stub_api(
+        monkeypatch,
+        [
+            _listing(active_run, _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")),
+            _active_guard_failure_payload(active_jobs=(), open_status="in_progress", open_conclusion=""),
+        ],
+    )
+
+    assert GUARD.main() == 1
+
+
+def test_active_wait_with_a_ledger_owner_is_not_eligible_for_the_guard_failure_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    active_run = _run(PRIOR_RUN_ID, status="in_progress", conclusion="")
+    _stub_api(
+        monkeypatch,
+        [
+            _listing(active_run, _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")),
+            _active_guard_failure_payload(steps=_cost_reader_identity_failure_steps()),
+        ],
+    )
+
+    assert GUARD.main() == 1
+
+
+def test_another_active_job_blocks_auto_stop_wait_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    active_run = _run(PRIOR_RUN_ID, status="in_progress", conclusion="")
+    _stub_api(
+        monkeypatch,
+        [
+            _listing(active_run, _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")),
+            _active_guard_failure_payload(active_jobs=(HML_AUTO_STOP_WAIT_JOB_NAME, "database-migration")),
+        ],
+    )
+
+    assert GUARD.main() == 1
+
+
+def test_unknown_mutation_evidence_blocks_auto_stop_wait_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    active_run = _run(PRIOR_RUN_ID, status="in_progress", conclusion="")
+    steps = _guard_failure_steps()
+    steps[-1]["name"] = "Unknown infrastructure mutation step"
+    _stub_api(
+        monkeypatch,
+        [
+            _listing(active_run, _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")),
+            _active_guard_failure_payload(steps=steps),
+        ],
+    )
+
+    assert GUARD.main() == 1
+
+
+def test_successful_prior_run_still_blocks_recovery(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_github_context(monkeypatch)
+    requested_urls = _stub_api(
+        monkeypatch,
+        [_listing(_run(PRIOR_RUN_ID, status="completed", conclusion="success"))],
     )
 
     assert GUARD.main() == 1
