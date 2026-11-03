@@ -32,6 +32,7 @@ COST_READER_IDENTITY_STEP_NAME = "Configure read-only Cost Explorer identity"
 COST_OBSERVATION_STEP_NAME = "Verify the account and record observed pre-cycle billing"
 FOUNDATION_PLAN_STEP_NAME = "Plan the K8s foundation opening"
 FOUNDATION_APPLY_STEP_NAME = "Apply the exact K8s foundation opening plan"
+FOUNDATION_APPLY_FOLLOWING_STEPS = GUARD.FOUNDATION_APPLY_FOLLOWING_STEPS
 MUTATING_DEPLOYMENT_STEP_NAMES = (
     FOUNDATION_APPLY_STEP_NAME,
     "Apply the exact K8s platform opening plan",
@@ -697,19 +698,51 @@ def _foundation_apply_failure_steps() -> list[dict[str, str]]:
         {"name": FOUNDATION_APPLY_STEP_NAME, "status": "completed", "conclusion": "failure"},
     ]
     steps.extend(
-        {"name": name, "status": "completed", "conclusion": "skipped"}
-        for name in MUTATING_DEPLOYMENT_STEP_NAMES[1:]
+        {
+            "name": name,
+            "status": "completed",
+            "conclusion": "skipped" if index < 15 else "success",
+        }
+        for index, name in enumerate(FOUNDATION_APPLY_FOLLOWING_STEPS)
     )
-    steps.append({"name": "Post Run actions/checkout@v4", "status": "completed", "conclusion": "success"})
-    steps.append({"name": "Complete job", "status": "completed", "conclusion": "success"})
     return steps
+
+
+def _foundation_apply_child_listing(
+    parent_run: dict[str, object], *, status: str = "completed", conclusion: str = "failure"
+) -> dict[str, object]:
+    started_at = str(parent_run["display_title"]).split(":")[3]
+    local_day = datetime.fromisoformat(started_at.replace("Z", "+00:00")).astimezone(GUARD.BRT).date()
+    return _listing(
+        {
+            "id": 41682116885,
+            "display_title": f"hml-{local_day.isoformat()}-foundation-open-apply:stable-id",
+            "event": "workflow_dispatch",
+            "head_branch": "main",
+            "status": status,
+            "conclusion": conclusion,
+        }
+    )
+
+
+def _foundation_parent_run(run_id: int) -> dict[str, object]:
+    started_at = _brt_created_at(-1)
+    return {
+        "id": run_id,
+        "display_title": f"lifecycle:hml:open:{started_at}:{run_id}",
+        "created_at": started_at,
+        "status": "completed",
+        "conclusion": "failure",
+        "run_attempt": 1,
+    }
 
 
 def test_foundation_apply_failure_is_recoverable_with_a_fresh_plan(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _set_github_context(monkeypatch)
-    prior_run = _run(PRIOR_RUN_ID)
+    monkeypatch.setenv("K8S_INFRA_REPOSITORY", "owner/k8s-infra")
+    prior_run = _foundation_parent_run(PRIOR_RUN_ID)
     current_run = _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")
     with tempfile.TemporaryDirectory(prefix="lifecycle-guard-foundation-apply-recovery-test-") as temporary_directory:
         output_path = Path(temporary_directory) / "github-output.txt"
@@ -719,6 +752,7 @@ def test_foundation_apply_failure_is_recoverable_with_a_fresh_plan(
             [
                 _listing(prior_run, current_run),
                 _jobs_payload(open_conclusion="failure", steps=_foundation_apply_failure_steps()),
+                _foundation_apply_child_listing(prior_run),
             ],
         )
 
@@ -730,6 +764,8 @@ def test_foundation_apply_failure_is_not_recoverable_if_a_later_mutation_started
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _set_github_context(monkeypatch)
+    monkeypatch.setenv("K8S_INFRA_REPOSITORY", "owner/k8s-infra")
+    prior_run = _foundation_parent_run(PRIOR_RUN_ID)
     steps = _foundation_apply_failure_steps()
     later_apply_index = next(
         index for index, step in enumerate(steps) if step.get("name") == MUTATING_DEPLOYMENT_STEP_NAMES[1]
@@ -738,8 +774,74 @@ def test_foundation_apply_failure_is_not_recoverable_if_a_later_mutation_started
     _stub_api(
         monkeypatch,
         [
-            _listing(_run(PRIOR_RUN_ID), _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")),
+            _listing(prior_run, _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")),
             _jobs_payload(open_conclusion="failure", steps=steps),
+            _foundation_apply_child_listing(prior_run),
+        ],
+    )
+
+    assert GUARD.main() == 1
+
+
+@pytest.mark.parametrize(
+    ("status", "conclusion"),
+    [("in_progress", ""), ("completed", "success"), ("completed", "cancelled")],
+)
+def test_foundation_apply_retry_requires_terminal_remote_failure(
+    monkeypatch: pytest.MonkeyPatch, status: str, conclusion: str
+) -> None:
+    _set_github_context(monkeypatch)
+    monkeypatch.setenv("K8S_INFRA_REPOSITORY", "owner/k8s-infra")
+    prior_run = _foundation_parent_run(PRIOR_RUN_ID)
+    _stub_api(
+        monkeypatch,
+        [
+            _listing(prior_run, _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")),
+            _jobs_payload(open_conclusion="failure", steps=_foundation_apply_failure_steps()),
+            _foundation_apply_child_listing(prior_run, status=status, conclusion=conclusion),
+        ],
+    )
+
+    assert GUARD.main() == 1
+
+
+def test_foundation_apply_retry_rejects_unrecognized_following_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    monkeypatch.setenv("K8S_INFRA_REPOSITORY", "owner/k8s-infra")
+    prior_run = _foundation_parent_run(PRIOR_RUN_ID)
+    steps = _foundation_apply_failure_steps()
+    steps[-2]["name"] = "Unexpected future deployment step"
+    _stub_api(
+        monkeypatch,
+        [
+            _listing(prior_run, _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")),
+            _jobs_payload(open_conclusion="failure", steps=steps),
+            _foundation_apply_child_listing(prior_run),
+        ],
+    )
+
+    assert GUARD.main() == 1
+
+
+def test_foundation_apply_retry_requires_successful_opening_boundary_to_be_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    monkeypatch.setenv("K8S_INFRA_REPOSITORY", "owner/k8s-infra")
+    prior_run = _foundation_parent_run(PRIOR_RUN_ID)
+    steps = _foundation_apply_failure_steps()
+    boundary_index = next(
+        index for index, step in enumerate(steps) if step.get("name") == "Record the successful opening boundary"
+    )
+    steps[boundary_index]["conclusion"] = "success"
+    _stub_api(
+        monkeypatch,
+        [
+            _listing(prior_run, _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")),
+            _jobs_payload(open_conclusion="failure", steps=steps),
+            _foundation_apply_child_listing(prior_run),
         ],
     )
 

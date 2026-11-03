@@ -30,6 +30,29 @@ COST_READER_IDENTITY_STEP_NAME = "Configure read-only Cost Explorer identity"
 COST_OBSERVATION_STEP_NAME = "Verify the account and record observed pre-cycle billing"
 FOUNDATION_PLAN_STEP_NAME = "Plan the K8s foundation opening"
 FOUNDATION_APPLY_STEP_NAME = "Apply the exact K8s foundation opening plan"
+FOUNDATION_APPLY_FOLLOWING_STEPS = (
+    "Plan the K8s platform opening",
+    "Apply the exact K8s platform opening plan",
+    "Provision the HML database role and SSM contract",
+    "Plan the isolated HML namespace opening",
+    "Apply the exact HML namespace opening plan",
+    "Bootstrap the synthetic lifecycle database",
+    "Deploy the application and recreate its synthetic seed",
+    "Apply the database grants after application migrations",
+    "Configure the narrow public-edge lifecycle role",
+    "Reconcile the public API edge against the current ALB while preserving its URL",
+    "Wait for the PRD health check time",
+    "Dispatch and wait for public endpoint health",
+    "Plan New Relic HML technical dashboards and alerts",
+    "Plan New Relic HML service-order dashboards and alerts",
+    "Record the successful opening boundary",
+    "Upload pre-cycle cost evidence",
+    "Post Configure read-only Cost Explorer identity",
+    "Post Configure the read-only persistent auth preflight role",
+    "Post Configure the narrow lifecycle start role",
+    "Post Run actions/checkout@v4",
+    "Complete job",
+)
 MUTATING_DEPLOYMENT_STEP_NAMES = (
     FOUNDATION_APPLY_STEP_NAME,
     "Apply the exact K8s platform opening plan",
@@ -77,6 +100,48 @@ def _workflow_runs(repository: str, local_day: date, token: str) -> list[dict[st
     if not all(isinstance(run, dict) for run in runs):
         raise ValueError("GitHub returned a malformed workflow-run entry")
     return runs
+
+
+def _foundation_apply_child_failed(parent_run: dict[str, object], token: str) -> bool:
+    """Require one terminal failed K8s apply run for this HML session."""
+    title = parent_run.get("display_title")
+    run_id = parent_run.get("id")
+    if not isinstance(title, str) or not isinstance(run_id, int):
+        return False
+    match = re.fullmatch(r"lifecycle:hml:open:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z):(\d+)", title)
+    if match is None or int(match.group(2)) != run_id:
+        return False
+    started_at = datetime.fromisoformat(match.group(1).replace("Z", "+00:00"))
+    local_day = started_at.astimezone(BRT).date()
+    session_prefix = f"hml-{local_day.isoformat()}-foundation-open-apply:"
+    infrastructure_repository = os.environ.get("K8S_INFRA_REPOSITORY", "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", infrastructure_repository):
+        return False
+
+    day_start_utc = datetime.combine(local_day, time.min, tzinfo=BRT).astimezone(timezone.utc)
+    query = urlencode({
+        "created": ">=" + day_start_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "per_page": "100",
+    })
+    payload = _api_json(
+        f"/repos/{infrastructure_repository}/actions/workflows/apply.yml/runs?{query}", token
+    )
+    runs = payload.get("workflow_runs")
+    total_count = payload.get("total_count")
+    if not isinstance(runs, list) or not isinstance(total_count, int):
+        raise ValueError("GitHub returned an invalid foundation-apply run listing")
+    if total_count > 100 or total_count != len(runs) or not all(isinstance(item, dict) for item in runs):
+        raise ValueError("The foundation-apply run listing is incomplete; refusing recovery")
+    correlated = [item for item in runs if str(item.get("display_title", "")).startswith(session_prefix)]
+    if len(correlated) != 1:
+        return False
+    child = correlated[0]
+    return (
+        child.get("event") == "workflow_dispatch"
+        and child.get("head_branch") == "main"
+        and child.get("status") == "completed"
+        and child.get("conclusion") == "failure"
+    )
 
 
 def _attempt_jobs(repository: str, run_id: int, attempt: int, token: str) -> list[dict[str, object]]:
@@ -133,7 +198,9 @@ def _failed_foundation_plan_waiter(open_job: dict[str, object], steps: list[obje
     return preceding_steps_succeeded and following_steps_are_non_mutating
 
 
-def _failed_foundation_apply_waiter(open_job: dict[str, object], steps: list[object]) -> bool:
+def _failed_foundation_apply_waiter(
+    open_job: dict[str, object], steps: list[object], parent_run: dict[str, object], token: str
+) -> bool:
     """Allow a new lifecycle run to re-plan after the first apply failed.
 
     The retry starts with a fresh Terraform plan; the saved plan from the failed
@@ -162,13 +229,20 @@ def _failed_foundation_apply_waiter(open_job: dict[str, object], steps: list[obj
         and step.get("conclusion") == "success"
         for step in steps[:apply_index]
     )
-    following_steps_finished_without_error = all(
+    following_steps = steps[apply_index + 1 :]
+    if len(following_steps) != len(FOUNDATION_APPLY_FOLLOWING_STEPS):
+        return False
+    if not all(
         isinstance(step, dict)
+        and step.get("name") == expected_name
         and step.get("status") == "completed"
-        and step.get("conclusion") in {"success", "skipped"}
-        for step in steps[apply_index + 1 :]
-    )
-    return preceding_steps_succeeded and following_steps_finished_without_error
+        for step, expected_name in zip(following_steps, FOUNDATION_APPLY_FOLLOWING_STEPS)
+    ):
+        return False
+    expected_conclusions = ["skipped"] * 15 + ["success"] * 6
+    if [step.get("conclusion") for step in following_steps if isinstance(step, dict)] != expected_conclusions:
+        return False
+    return preceding_steps_succeeded and _foundation_apply_child_failed(parent_run, token)
 
 
 def _open_failed_at_guard(open_job: dict[str, object], steps: list[object]) -> bool:
@@ -255,7 +329,7 @@ def _classify_prior_run(
             and plan_state == "success"
             and deployment_states[0] == "failure"
             and all(state == "skipped" for state in deployment_states[1:])
-            and _failed_foundation_apply_waiter(open_job, steps)
+            and _failed_foundation_apply_waiter(open_job, steps, run, token)
         )
         if any(state != "skipped" for state in deployment_states) and not failed_foundation_apply_retry:
             safe_to_retry = False
