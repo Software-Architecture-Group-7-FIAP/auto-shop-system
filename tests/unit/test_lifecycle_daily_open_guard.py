@@ -31,8 +31,9 @@ COST_EVIDENCE_PLACEHOLDER_STEP_NAME = "Create a cost evidence placeholder before
 COST_READER_IDENTITY_STEP_NAME = "Configure read-only Cost Explorer identity"
 COST_OBSERVATION_STEP_NAME = "Verify the account and record observed pre-cycle billing"
 FOUNDATION_PLAN_STEP_NAME = "Plan the K8s foundation opening"
+FOUNDATION_APPLY_STEP_NAME = "Apply the exact K8s foundation opening plan"
 MUTATING_DEPLOYMENT_STEP_NAMES = (
-    "Apply the exact K8s foundation opening plan",
+    FOUNDATION_APPLY_STEP_NAME,
     "Apply the exact K8s platform opening plan",
     "Apply the exact HML namespace opening plan",
     "Provision the HML database role and SSM contract",
@@ -670,6 +671,75 @@ def test_recorded_auth_preflight_failure_is_not_recoverable_after_a_deployment_m
         [
             _listing(_run(PRIOR_RUN_ID), _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")),
             _jobs_payload(open_conclusion="failure", steps=failed_steps),
+        ],
+    )
+
+    assert GUARD.main() == 1
+
+
+def _foundation_apply_failure_steps() -> list[dict[str, str]]:
+    steps = [
+        {"name": "Set up job", "status": "completed", "conclusion": "success"},
+        {"name": "Run actions/checkout@v4", "status": "completed", "conclusion": "success"},
+        {"name": "Require the triggering actor before AWS credentials", "status": "completed", "conclusion": "success"},
+        {"name": "Resolve the one session identifier and all BRT deadlines", "status": "completed", "conclusion": "success"},
+        {"name": "Sign the resolved lifecycle session capability", "status": "completed", "conclusion": "success"},
+        {"name": GUARD_STEP_NAME, "status": "completed", "conclusion": "success"},
+        {"name": "Configure the narrow lifecycle start role", "status": "completed", "conclusion": "success"},
+        {"name": SESSION_RECORD_STEP_NAME, "status": "completed", "conclusion": "success"},
+        {"name": ALL_INPUTS_PREFLIGHT_STEP_NAME, "status": "completed", "conclusion": "success"},
+        {"name": AUTH_PREFLIGHT_ROLE_STEP_NAME, "status": "completed", "conclusion": "success"},
+        {"name": AUTH_PREFLIGHT_STEP_NAME, "status": "completed", "conclusion": "success"},
+        {"name": COST_EVIDENCE_PLACEHOLDER_STEP_NAME, "status": "completed", "conclusion": "success"},
+        {"name": COST_READER_IDENTITY_STEP_NAME, "status": "completed", "conclusion": "success"},
+        {"name": COST_OBSERVATION_STEP_NAME, "status": "completed", "conclusion": "success"},
+        {"name": FOUNDATION_PLAN_STEP_NAME, "status": "completed", "conclusion": "success"},
+        {"name": FOUNDATION_APPLY_STEP_NAME, "status": "completed", "conclusion": "failure"},
+    ]
+    steps.extend(
+        {"name": name, "status": "completed", "conclusion": "skipped"}
+        for name in MUTATING_DEPLOYMENT_STEP_NAMES[1:]
+    )
+    steps.append({"name": "Post Run actions/checkout@v4", "status": "completed", "conclusion": "success"})
+    steps.append({"name": "Complete job", "status": "completed", "conclusion": "success"})
+    return steps
+
+
+def test_foundation_apply_failure_is_recoverable_with_a_fresh_plan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    prior_run = _run(PRIOR_RUN_ID)
+    current_run = _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")
+    with tempfile.TemporaryDirectory(prefix="lifecycle-guard-foundation-apply-recovery-test-") as temporary_directory:
+        output_path = Path(temporary_directory) / "github-output.txt"
+        monkeypatch.setenv("GITHUB_OUTPUT", str(output_path))
+        _stub_api(
+            monkeypatch,
+            [
+                _listing(prior_run, current_run),
+                _jobs_payload(open_conclusion="failure", steps=_foundation_apply_failure_steps()),
+            ],
+        )
+
+        assert GUARD.main() == 0
+        assert output_path.read_text(encoding="utf-8") == f"recovery_source_run_id={PRIOR_RUN_ID}\n"
+
+
+def test_foundation_apply_failure_is_not_recoverable_if_a_later_mutation_started(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_github_context(monkeypatch)
+    steps = _foundation_apply_failure_steps()
+    later_apply_index = next(
+        index for index, step in enumerate(steps) if step.get("name") == MUTATING_DEPLOYMENT_STEP_NAMES[1]
+    )
+    steps[later_apply_index] = {"name": MUTATING_DEPLOYMENT_STEP_NAMES[1], "status": "completed", "conclusion": "failure"}
+    _stub_api(
+        monkeypatch,
+        [
+            _listing(_run(PRIOR_RUN_ID), _run(int(CURRENT_RUN_ID), status="in_progress", conclusion="")),
+            _jobs_payload(open_conclusion="failure", steps=steps),
         ],
     )
 

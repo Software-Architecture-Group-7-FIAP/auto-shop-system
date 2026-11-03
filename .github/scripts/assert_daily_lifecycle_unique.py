@@ -29,8 +29,9 @@ COST_EVIDENCE_PLACEHOLDER_STEP_NAME = "Create a cost evidence placeholder before
 COST_READER_IDENTITY_STEP_NAME = "Configure read-only Cost Explorer identity"
 COST_OBSERVATION_STEP_NAME = "Verify the account and record observed pre-cycle billing"
 FOUNDATION_PLAN_STEP_NAME = "Plan the K8s foundation opening"
+FOUNDATION_APPLY_STEP_NAME = "Apply the exact K8s foundation opening plan"
 MUTATING_DEPLOYMENT_STEP_NAMES = (
-    "Apply the exact K8s foundation opening plan",
+    FOUNDATION_APPLY_STEP_NAME,
     "Apply the exact K8s platform opening plan",
     "Apply the exact HML namespace opening plan",
     "Provision the HML database role and SSM contract",
@@ -132,6 +133,44 @@ def _failed_foundation_plan_waiter(open_job: dict[str, object], steps: list[obje
     return preceding_steps_succeeded and following_steps_are_non_mutating
 
 
+def _failed_foundation_apply_waiter(open_job: dict[str, object], steps: list[object]) -> bool:
+    """Allow a new lifecycle run to re-plan after the first apply failed.
+
+    The retry starts with a fresh Terraform plan; the saved plan from the failed
+    attempt is never reused. Later mutating phases must not have started.
+    """
+    if open_job.get("status") != "completed" or open_job.get("conclusion") != "failure":
+        return False
+    apply_indexes = [
+        index
+        for index, step in enumerate(steps)
+        if isinstance(step, dict) and step.get("name") == FOUNDATION_APPLY_STEP_NAME
+    ]
+    if len(apply_indexes) != 1:
+        return False
+
+    apply_index = apply_indexes[0]
+    apply_step = steps[apply_index]
+    if not isinstance(apply_step, dict):
+        return False
+    if apply_step.get("status") != "completed" or apply_step.get("conclusion") != "failure":
+        return False
+
+    preceding_steps_succeeded = all(
+        isinstance(step, dict)
+        and step.get("status") == "completed"
+        and step.get("conclusion") == "success"
+        for step in steps[:apply_index]
+    )
+    following_steps_finished_without_error = all(
+        isinstance(step, dict)
+        and step.get("status") == "completed"
+        and step.get("conclusion") in {"success", "skipped"}
+        for step in steps[apply_index + 1 :]
+    )
+    return preceding_steps_succeeded and following_steps_finished_without_error
+
+
 def _open_failed_at_guard(open_job: dict[str, object], steps: list[object]) -> bool:
     if open_job.get("status") != "completed" or open_job.get("conclusion") != "failure":
         return False
@@ -210,7 +249,15 @@ def _classify_prior_run(
         deployment_states = [_step_conclusion(steps, name) for name in MUTATING_DEPLOYMENT_STEP_NAMES]
         if any(state is None for state in deployment_states):
             raise ValueError("A prior opening attempt is missing deployment mutation evidence")
-        if any(state != "skipped" for state in deployment_states):
+        failed_foundation_apply_retry = (
+            record_state == "success"
+            and guard_state == "success"
+            and plan_state == "success"
+            and deployment_states[0] == "failure"
+            and all(state == "skipped" for state in deployment_states[1:])
+            and _failed_foundation_apply_waiter(open_job, steps)
+        )
+        if any(state != "skipped" for state in deployment_states) and not failed_foundation_apply_retry:
             safe_to_retry = False
 
         if guard_state == "failure":
@@ -249,6 +296,9 @@ def _classify_prior_run(
         if record_state == "success" and plan_state == "failure":
             if guard_state != "success" or not _failed_foundation_plan_waiter(open_job, steps):
                 raise ValueError("A foundation plan failure lacks exact non-mutating recovery evidence")
+            verified_owner = True
+            continue
+        if failed_foundation_apply_retry:
             verified_owner = True
             continue
         if record_state in {"failure", "skipped"} and plan_state == "skipped":
