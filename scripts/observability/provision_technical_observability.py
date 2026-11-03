@@ -717,6 +717,19 @@ def _dashboard_input(
         }
         widgets = []
         for index, widget in enumerate(page["widgets"]):
+            existing_widget = existing_widgets.get(widget["title"])
+            raw_configuration = {
+                "nrqlQueries": [
+                    {"accountIds": [account_id], "query": widget["nrql"]}
+                ]
+            }
+            if existing_widget and isinstance(
+                existing_widget.get("rawConfiguration"), dict
+            ):
+                raw_configuration = {
+                    **existing_widget["rawConfiguration"],
+                    **raw_configuration,
+                }
             widget_input = {
                 "title": widget["title"],
                 "visualization": {"id": f"viz.{widget['visualization']}"},
@@ -727,26 +740,125 @@ def _dashboard_input(
                     "height": 3,
                 },
                 "linkedEntityGuids": [],
-                "rawConfiguration": {
-                    "nrqlQueries": [
-                        {"accountIds": [account_id], "query": widget["nrql"]}
-                    ]
-                },
+                "rawConfiguration": raw_configuration,
             }
-            existing_widget = existing_widgets.get(widget["title"])
             if existing_widget and existing_widget.get("id"):
                 widget_input["id"] = existing_widget["id"]
             widgets.append(widget_input)
         page_input = {"name": page["name"], "widgets": widgets}
         if existing_page.get("guid"):
             page_input["guid"] = existing_page["guid"]
+        if isinstance(existing_page.get("description"), str):
+            page_input["description"] = existing_page["description"]
         pages.append(page_input)
-    return {
+    dashboard_input = {
         "name": definition["name"],
         "description": definition["description"],
         "permissions": definition["permissions"],
         "pages": pages,
     }
+    if existing is not None and existing.get("variables") is not None:
+        variables = existing["variables"]
+        if not isinstance(variables, list) or any(
+            not isinstance(variable, dict) for variable in variables
+        ):
+            raise ProvisioningError("NerdGraph dashboard variable configuration was invalid")
+        input_variable_fields = (
+            "name",
+            "title",
+            "type",
+            "nrqlQuery",
+            "defaultValues",
+            "options",
+            "isMultiSelection",
+            "replacementStrategy",
+        )
+        dashboard_input["variables"] = [
+            {
+                field: variable[field]
+                for field in input_variable_fields
+                if field in variable
+            }
+            for variable in variables
+        ]
+    return dashboard_input
+
+
+def _dashboard_configuration_matches(
+    desired: dict[str, object], existing: dict[str, object]
+) -> bool:
+    if any(
+        desired.get(field) != existing.get(field)
+        for field in ("name", "description", "permissions")
+    ):
+        return False
+    desired_pages = desired.get("pages")
+    existing_pages = existing.get("pages")
+    if (
+        not isinstance(desired_pages, list)
+        or not isinstance(existing_pages, list)
+        or len(desired_pages) != len(existing_pages)
+    ):
+        return False
+
+    for desired_page, existing_page in zip(desired_pages, existing_pages, strict=True):
+        if not isinstance(desired_page, dict) or not isinstance(existing_page, dict):
+            return False
+        if desired_page.get("name") != existing_page.get("name"):
+            return False
+        if (
+            "description" in desired_page
+            and desired_page["description"] != existing_page.get("description")
+        ):
+            return False
+        desired_widgets = desired_page.get("widgets")
+        existing_widgets = existing_page.get("widgets")
+        if (
+            not isinstance(desired_widgets, list)
+            or not isinstance(existing_widgets, list)
+            or len(desired_widgets) != len(existing_widgets)
+        ):
+            return False
+
+        for desired_widget, existing_widget in zip(
+            desired_widgets, existing_widgets, strict=True
+        ):
+            if not isinstance(desired_widget, dict) or not isinstance(
+                existing_widget, dict
+            ):
+                return False
+            desired_visualization = desired_widget.get("visualization")
+            existing_visualization = existing_widget.get("visualization")
+            if (
+                not isinstance(desired_visualization, dict)
+                or not isinstance(existing_visualization, dict)
+                or desired_visualization.get("id")
+                != existing_visualization.get("id")
+            ):
+                return False
+            existing_links = existing_widget.get("linkedEntities") or []
+            if not isinstance(existing_links, list):
+                return False
+            if any(
+                not isinstance(link, dict)
+                or not isinstance(link.get("guid"), str)
+                for link in existing_links
+            ):
+                return False
+            desired_links = desired_widget.get("linkedEntityGuids")
+            if (
+                not isinstance(desired_links, list)
+                or not all(isinstance(guid, str) for guid in desired_links)
+                or sorted(desired_links)
+                != sorted(link["guid"] for link in existing_links)
+            ):
+                return False
+            if any(
+                desired_widget.get(field) != existing_widget.get(field)
+                for field in ("title", "layout", "rawConfiguration")
+            ):
+                return False
+    return True
 
 
 def _condition_input(condition: dict, *, enabled: bool) -> dict[str, object]:
@@ -900,6 +1012,7 @@ def reconcile(
         raise ProvisioningError("Owned dashboard discovery was ambiguous")
     if dashboards and not _has_ownership_tag(dashboards[0], dashboard["ownership"]):
         raise ProvisioningError("Same-named dashboard is not owned by this repository")
+    dashboard_action = "unchanged"
     if action == "apply":
         if dashboards:
             existing = _dashboard_structure(
@@ -907,11 +1020,17 @@ def reconcile(
                 account_id,
             )
             dashboard_input = _dashboard_input(dashboard, account_id, existing)
-            mutation = client.execute(
-                DASHBOARD_UPDATE,
-                {"guid": dashboards[0]["guid"], "dashboard": dashboard_input},
-            )
-            dashboard_guid = _dashboard_mutation_guid(mutation, "dashboardUpdate")
+            if _dashboard_configuration_matches(dashboard_input, existing):
+                dashboard_guid = dashboards[0]["guid"]
+            else:
+                mutation = client.execute(
+                    DASHBOARD_UPDATE,
+                    {"guid": dashboards[0]["guid"], "dashboard": dashboard_input},
+                )
+                dashboard_guid = _dashboard_mutation_guid(
+                    mutation, "dashboardUpdate"
+                )
+                dashboard_action = "updated"
         else:
             dashboard_input = _dashboard_input(dashboard, account_id)
             mutation = client.execute(
@@ -919,7 +1038,8 @@ def reconcile(
                 {"accountId": account_id, "dashboard": dashboard_input},
             )
             dashboard_guid = _dashboard_mutation_guid(mutation, "dashboardCreate")
-        _tag_owned_dashboard(client, dashboard_guid, dashboard["ownership"])
+            _tag_owned_dashboard(client, dashboard_guid, dashboard["ownership"])
+            dashboard_action = "created"
 
     policy_data = client.execute(
         POLICY_SEARCH,
@@ -1046,11 +1166,7 @@ def reconcile(
             )
     return {
         **coverage_summary,
-        "dashboard": (
-            "unchanged"
-            if action == "disable"
-            else "updated" if dashboards else "created"
-        ),
+        "dashboard": dashboard_action,
         "policy": "reconciled",
         "conditions": len(alerts["conditions"]),
         "notifications": "not-attached",
