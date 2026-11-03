@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Mapping
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
-
 
 ENDPOINTS = {
     "us": "https://api.newrelic.com/graphql",
@@ -15,6 +15,86 @@ ENDPOINTS = {
 }
 REQUEST_TIMEOUT_SECONDS = 10
 MAX_RESPONSE_BYTES = 1_048_576
+_GRAPHQL_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+_OPERATION_NAME = re.compile(r"^\s*(?:query|mutation|subscription)\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+_GRAPHQL_DIAGNOSTIC_PATTERNS = (
+    (
+        re.compile(
+            r"Field\s+['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]\s+is not defined by type\s+['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]",
+            re.IGNORECASE,
+        ),
+        "input field '{0}' is not defined on '{1}'",
+    ),
+    (
+        re.compile(
+            r"Cannot query field\s+['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]\s+on type\s+['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]",
+            re.IGNORECASE,
+        ),
+        "selected field '{0}' is not defined on '{1}'",
+    ),
+    (
+        re.compile(
+            r"Unknown argument\s+['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]\s+on field\s+['\"]([A-Za-z_][A-Za-z0-9_.]*)['\"]",
+            re.IGNORECASE,
+        ),
+        "argument '{0}' is not defined on field '{1}'",
+    ),
+    (
+        re.compile(
+            r"Field\s+['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]\s+of required type\s+['\"]([A-Za-z_][A-Za-z0-9_!\[\]]*)['\"]\s+was not provided",
+            re.IGNORECASE,
+        ),
+        "required input field '{0}' of type '{1}' is missing",
+    ),
+)
+
+
+def _graphql_operation_name(document: str) -> str | None:
+    match = _OPERATION_NAME.match(document)
+    if match is None:
+        return None
+    return match.group(1)
+
+
+def _graphql_error_path(error: Mapping[str, object]) -> str | None:
+    path = error.get("path")
+    if not isinstance(path, list) or not 1 <= len(path) <= 20:
+        return None
+    segments = []
+    for segment in path:
+        if isinstance(segment, str) and _GRAPHQL_IDENTIFIER.fullmatch(segment):
+            segments.append(segment)
+        elif isinstance(segment, int) and not isinstance(segment, bool) and 0 <= segment <= 9_999:
+            segments.append(f"[{segment}]")
+        else:
+            return None
+    return ".".join(segments).replace(".[", "[")
+
+
+def _graphql_error_detail(errors: object, document: str) -> str:
+    if not isinstance(errors, list):
+        return " (GraphQL details redacted)"
+
+    details = []
+    for error in errors[:3]:
+        if not isinstance(error, Mapping):
+            continue
+        message = error.get("message")
+        if isinstance(message, str):
+            for pattern, template in _GRAPHQL_DIAGNOSTIC_PATTERNS:
+                match = pattern.search(message)
+                if match:
+                    details.append(template.format(*match.groups()))
+                    break
+        path = _graphql_error_path(error)
+        if path:
+            details.append(f"path: {path}")
+
+    if not details:
+        details.append("GraphQL details redacted")
+    operation_name = _graphql_operation_name(document)
+    prefix = f"{operation_name}: " if operation_name else ""
+    return f" ({prefix}{'; '.join(details[:4])})"
 
 DASHBOARD_SEARCH = """
 query OwnedDashboard($query: String!) {
@@ -141,8 +221,12 @@ class NerdGraphClient:
             payload = json.loads(raw)
         except (UnicodeDecodeError, json.JSONDecodeError):
             raise ProvisioningError("NerdGraph returned an invalid response") from None
-        if not isinstance(payload, dict) or payload.get("errors"):
-            raise ProvisioningError("NerdGraph rejected the operation")
+        if not isinstance(payload, dict):
+            raise ProvisioningError("NerdGraph returned an invalid response")
+        errors = payload.get("errors")
+        if errors:
+            detail = _graphql_error_detail(errors, document)
+            raise ProvisioningError(f"NerdGraph rejected the operation{detail}") from None
         data = payload.get("data")
         if not isinstance(data, dict):
             raise ProvisioningError("NerdGraph response did not contain operation data")
