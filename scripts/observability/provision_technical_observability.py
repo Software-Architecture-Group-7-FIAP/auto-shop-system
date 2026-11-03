@@ -726,6 +726,7 @@ def _dashboard_input(
                     "width": 6,
                     "height": 3,
                 },
+                "linkedEntityGuids": [],
                 "rawConfiguration": {
                     "nrqlQueries": [
                         {"accountIds": [account_id], "query": widget["nrql"]}

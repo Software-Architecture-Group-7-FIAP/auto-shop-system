@@ -8,11 +8,14 @@ import scripts.observability.provision_technical_observability as technical_obse
 from scripts.observability.provision_technical_observability import (
     CONDITION_CREATE,
     CONDITION_SEARCH,
+    CONDITION_UPDATE,
     DASHBOARD_CREATE,
+    DASHBOARD_GET,
     DASHBOARD_SEARCH,
     DASHBOARD_UPDATE,
     POLICY_CREATE,
     POLICY_SEARCH,
+    POLICY_UPDATE,
     TAG_ENTITY,
     NerdGraphClient,
     ProvisioningError,
@@ -737,9 +740,127 @@ def test_dashboard_update_preserves_page_widget_ids_and_uses_current_input_shape
     assert "DashboardUpdateInput!" in DASHBOARD_UPDATE
     assert rendered["pages"][0]["guid"] == "page-guid"
     assert rendered["pages"][0]["widgets"][0]["id"] == "widget-id"
+    assert rendered["pages"][0]["widgets"][0]["linkedEntityGuids"] == []
     query = rendered["pages"][0]["widgets"][0]["rawConfiguration"]["nrqlQueries"][0]
     assert query["accountIds"] == [123]
     assert "accountId" not in query
+
+
+def test_existing_dashboard_apply_replays_update_payload_locally():
+    dashboard = _load(DASHBOARD_PATH)
+    alerts = _load(ALERTS_PATH)
+    eligible_dashboard, _, _ = technical_observability._verified_dashboard_subset(
+        dashboard
+    )
+    existing_pages = [
+        {
+            "guid": f"page-{index}",
+            "name": page["name"],
+            "widgets": [
+                {"id": f"widget-{widget['id']}", "title": widget["title"]}
+                for widget in page["widgets"]
+            ],
+        }
+        for index, page in enumerate(eligible_dashboard["pages"], start=1)
+    ]
+
+    class _Client:
+        def __init__(self):
+            self.dashboard_update = None
+            self.condition_updates = []
+
+        def execute(self, document, variables):
+            if document == DASHBOARD_SEARCH:
+                return {
+                    "actor": {
+                        "entitySearch": {
+                            "results": {
+                                "entities": [
+                                    {
+                                        "guid": "dashboard-guid",
+                                        "name": dashboard["name"],
+                                        "type": "DASHBOARD",
+                                        "accountId": 1,
+                                        "tags": [
+                                            {
+                                                "key": "auto-shop.ownership",
+                                                "values": [dashboard["ownership"]],
+                                            }
+                                        ],
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            if document == DASHBOARD_GET:
+                return {
+                    "actor": {
+                        "entity": {"accountId": 1, "pages": existing_pages}
+                    }
+                }
+            if document == DASHBOARD_UPDATE:
+                self.dashboard_update = variables["dashboard"]
+                for page in self.dashboard_update["pages"]:
+                    assert page["guid"].startswith("page-")
+                    for widget in page["widgets"]:
+                        assert widget["id"].startswith("widget-")
+                        assert widget["linkedEntityGuids"] == []
+                        assert widget["rawConfiguration"]["nrqlQueries"]
+                return {
+                    "dashboardUpdate": {
+                        "entityResult": {"guid": "dashboard-guid"},
+                        "errors": [],
+                    }
+                }
+            if document == TAG_ENTITY:
+                return {"taggingAddTagsToEntity": {"errors": []}}
+            if document == POLICY_SEARCH:
+                return {
+                    "actor": {
+                        "account": {
+                            "alerts": {
+                                "policiesSearch": {
+                                    "policies": [
+                                        {"id": "7", "name": alerts["policy"]["name"]}
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            if document == POLICY_UPDATE:
+                return {"alertsPolicyUpdate": {"id": "7"}}
+            if document == CONDITION_SEARCH:
+                return {
+                    "actor": {
+                        "account": {
+                            "alerts": {
+                                "nrqlConditionsSearch": {
+                                    "nrqlConditions": [
+                                        {"id": str(index), "name": condition["name"]}
+                                        for index, condition in enumerate(
+                                            alerts["conditions"], start=1
+                                        )
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            if document == CONDITION_UPDATE:
+                self.condition_updates.append(variables["condition"])
+                return {"alertsNrqlConditionStaticUpdate": {"id": variables["conditionId"]}}
+            raise AssertionError("apply issued an unexpected NerdGraph operation")
+
+    client = _Client()
+    result = reconcile(client, 1, dashboard, alerts, action="apply")
+
+    assert result["dashboard"] == "updated"
+    assert len(client.dashboard_update["pages"]) == 2
+    assert len(client.condition_updates) == 7
+    assert all(condition["valueFunction"] == "SINGLE_VALUE" for condition in client.condition_updates)
+    assert all("expiration" not in condition for condition in client.condition_updates)
 
 
 def test_alert_expiration_shape_and_dashboard_business_errors_fail_closed():
