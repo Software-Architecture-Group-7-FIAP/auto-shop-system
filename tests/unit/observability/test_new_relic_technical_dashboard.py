@@ -362,6 +362,99 @@ def test_nerdgraph_graphql_errors_are_sanitized():
     assert "123e4567-e89b-12d3-a456-426614174000" not in diagnostic
 
 
+@pytest.mark.parametrize(
+    ("message", "category", "extensions", "expected_identifiers"),
+    [
+        (
+            "You are not authorized to update the dashboard",
+            "authorization",
+            {"code": "FORBIDDEN", "errorType": "ACCESS_DENIED"},
+            ("code=FORBIDDEN", "errorType=ACCESS_DENIED"),
+        ),
+        (
+            "Dashboard does not exist",
+            "not-found",
+            {"code": "RESOURCE-8684974", "errorType": "DASHBOARD_123456"},
+            (),
+        ),
+        (
+            "Dashboard input is invalid",
+            "validation",
+            {"code": "BAD_USER_INPUT", "errorType": "VALIDATION_ERROR"},
+            ("code=BAD_USER_INPUT", "errorType=VALIDATION_ERROR"),
+        ),
+        (
+            "upstream rejected token NRAK-secret-value",
+            None,
+            {"code": "CUSTOM_SECRET_CODE", "errorType": "PRIVATE_RESOURCE_ID"},
+            (),
+        ),
+    ],
+)
+def test_nerdgraph_top_level_errors_report_safe_categories_only(
+    message, category, extensions, expected_identifiers
+):
+    payload = {
+        "errors": [
+            {
+                "message": (
+                    f"{message}; account 8684974; entity "
+                    "123e4567-e89b-12d3-a456-426614174000; "
+                    "dashboard private-dashboard-guid private-dashboard-name; "
+                    "credential NRAK-secret-value"
+                ),
+                "path": ["dashboardUpdate"] if category else [],
+                "extensions": {**extensions, "traceId": "trace-secret"},
+            }
+        ]
+    }
+
+    class _Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return None
+
+        def read(self, _size):
+            return json.dumps(payload).encode("utf-8")
+
+    client = NerdGraphClient(
+        api_key="NRAK-secret-value",
+        region="us",
+        opener=lambda *_args, **_kwargs: _Response(),
+    )
+    with pytest.raises(ProvisioningError) as error:
+        client.execute(
+            "mutation UpdateDashboard($guid: EntityGuid!, $dashboard: DashboardUpdateInput!) "
+            "{ dashboardUpdate(guid: $guid, dashboard: $dashboard) { entityResult { guid } } }",
+            {"guid": "private-dashboard-guid", "dashboard": {"name": "private-dashboard-name"}},
+        )
+
+    diagnostic = str(error.value)
+    if category:
+        assert f"category={category}" in diagnostic
+        assert "path: dashboardUpdate" in diagnostic
+    else:
+        assert "GraphQL details redacted" in diagnostic
+    assert all(identifier in diagnostic for identifier in expected_identifiers)
+    assert not any(
+        value in diagnostic
+        for value in (
+            "NRAK-secret-value",
+            "8684974",
+            "123e4567-e89b-12d3-a456-426614174000",
+            "private-dashboard-guid",
+            "private-dashboard-name",
+            "trace-secret",
+            "CUSTOM_SECRET_CODE",
+            "PRIVATE_RESOURCE_ID",
+        )
+    )
+
+
 def test_workflow_is_manual_gated_and_does_not_version_notification_destination():
     workflow = (ROOT / ".github" / "workflows" / "new-relic-hml-technical.yml").read_text(
         encoding="utf-8"
