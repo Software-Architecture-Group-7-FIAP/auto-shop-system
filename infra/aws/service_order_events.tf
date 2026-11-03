@@ -129,7 +129,7 @@ resource "aws_sns_topic" "service_order_alerts" {
 }
 
 resource "aws_sns_topic_subscription" "service_order_alert_email" {
-  for_each = trimspace(var.service_order_alert_email) == "" ? toset([]) : local.api_stages
+  for_each = trimspace(var.service_order_alert_email) == "" ? toset([]) : toset(["hml"])
 
   topic_arn = aws_sns_topic.service_order_alerts[each.key].arn
   protocol  = "email"
@@ -412,7 +412,7 @@ resource "aws_ssm_parameter" "service_order_publisher_role_arn" {
 }
 
 variable "service_order_alert_email" {
-  description = "Email endpoint for SNS failure alerts. Leave empty until an address is chosen and available to confirm the subscription."
+  description = "Email endpoint for SNS service-order failure alerts in HML only. Leave empty to disable email delivery."
   type        = string
   default     = ""
 
@@ -446,12 +446,12 @@ output "service_order_alert_topic_arns" {
 }
 
 output "service_order_alert_email_subscription_arns" {
-  description = "SNS email subscription ARNs by stage, when service_order_alert_email is configured. Confirm each subscription before delivery checks."
+  description = "SNS email subscription ARNs by stage; only HML is subscribed when service_order_alert_email is configured."
   value       = { for stage, subscription in aws_sns_topic_subscription.service_order_alert_email : stage => subscription.arn }
 }
 
 output "service_order_alert_email_subscription_pending_by_stage" {
-  description = "Whether each configured SNS email subscription is still awaiting recipient confirmation. Empty when service_order_alert_email is unset."
+  description = "Whether the HML SNS email subscription is still awaiting recipient confirmation. Empty when service_order_alert_email is unset."
   value       = { for stage, subscription in aws_sns_topic_subscription.service_order_alert_email : stage => subscription.pending_confirmation }
 }
 

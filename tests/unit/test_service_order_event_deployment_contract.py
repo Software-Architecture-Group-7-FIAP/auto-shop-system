@@ -38,7 +38,8 @@ def test_alert_topics_subscriptions_and_permissions_are_isolated_by_stage():
 
     assert "for_each = local.api_stages" in topic
     assert "name              = local.service_order_alert_topic_names[each.key]" in topic
-    assert 'for_each = trimspace(var.service_order_alert_email) == "" ? toset([]) : local.api_stages' in subscription
+    assert 'for_each = trimspace(var.service_order_alert_email) == "" ? toset([]) : toset(["hml"])' in subscription
+    assert "local.api_stages" not in subscription
     assert "aws_sns_topic.service_order_alerts[each.key].arn" in subscription
     assert "aws_sns_topic.service_order_alerts[each.key].arn" in target
     assert "aws_sns_topic.service_order_alerts[each.key].arn" in alarm
