@@ -298,6 +298,11 @@ mutation UpdateCondition($accountId: Int!, $conditionId: ID!, $condition: Alerts
   alertsNrqlConditionStaticUpdate(accountId: $accountId, id: $conditionId, condition: $condition) { id name }
 }
 """
+CONDITION_DELETE = """
+mutation DeleteCondition($accountId: Int!, $conditionId: ID!) {
+  alertsConditionDelete(accountId: $accountId, id: $conditionId) { id }
+}
+"""
 
 
 class ProvisioningError(RuntimeError):

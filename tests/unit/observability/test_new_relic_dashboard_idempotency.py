@@ -6,6 +6,7 @@ import pytest
 
 from scripts.observability.provision_technical_observability import (
     CONDITION_CREATE,
+    CONDITION_DELETE,
     CONDITION_GET,
     CONDITION_SEARCH,
     CONDITION_UPDATE,
@@ -283,7 +284,7 @@ class _NerdGraphLifecycle:
                     "id": item["id"],
                     "name": name,
                     "enabled": True,
-                    "type": "NRQL",
+                    "type": "STATIC",
                 }
                 for name, item in self.conditions.items()
             ]
@@ -350,6 +351,16 @@ class _NerdGraphLifecycle:
             return {
                 result_name: {"id": condition_id, "name": condition_input["name"]}
             }
+
+        if document == CONDITION_DELETE:
+            condition_id = variables["conditionId"]
+            condition_name = next(
+                name
+                for name, item in self.conditions.items()
+                if item["id"] == condition_id
+            )
+            del self.conditions[condition_name]
+            return {"alertsConditionDelete": {"id": condition_id}}
 
         raise AssertionError(f"Unexpected NerdGraph document: {document}")
 
@@ -477,4 +488,43 @@ def test_update_rendering_preserves_server_page_and_widget_ids(
             widget["rawConfiguration"]["nrqlQueries"][0]["query"]
             for widget in rendered_page["widgets"]
         ] == [widget["nrql"] for widget in expected_page["widgets"]]
+
+
+def test_service_order_apply_replaces_owned_drifted_legacy_condition():
+    dashboard = _load_definition("service-order-dashboard.json")
+    alerts = _load_definition("service-order-alerts.json")
+    client = _NerdGraphLifecycle(dashboard, alerts)
+
+    reconcile(
+        client,
+        ACCOUNT_ID,
+        dashboard,
+        alerts,
+        action="apply",
+        profile="service-order",
+    )
+    condition_name = alerts["conditions"][0]["name"]
+    client.conditions[condition_name]["configuration"]["description"] = (
+        "Legacy condition requiring migration"
+    )
+    call_count = len(client.calls)
+
+    result = reconcile(
+        client,
+        ACCOUNT_ID,
+        dashboard,
+        alerts,
+        action="apply",
+        profile="service-order",
+    )
+    documents = [document for document, _ in client.calls[call_count:]]
+
+    assert CONDITION_GET in documents
+    assert CONDITION_DELETE in documents
+    assert CONDITION_CREATE in documents
+    assert CONDITION_UPDATE not in documents
+    assert result["conditions"] == 1
+    assert client.conditions[condition_name]["configuration"]["description"] == (
+        "Owned aggregate HML condition: service_order_failure"
+    )
 

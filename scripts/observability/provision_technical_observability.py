@@ -14,6 +14,7 @@ from pathlib import Path
 if __package__:
     from .nerdgraph_client import (
         CONDITION_CREATE,
+        CONDITION_DELETE,
         CONDITION_GET,
         CONDITION_SEARCH,
         CONDITION_UPDATE,
@@ -32,6 +33,7 @@ if __package__:
 else:
     from nerdgraph_client import (
         CONDITION_CREATE,
+        CONDITION_DELETE,
         CONDITION_GET,
         CONDITION_SEARCH,
         CONDITION_UPDATE,
@@ -1191,14 +1193,45 @@ def reconcile(
             if not _condition_configuration_matches(
                 condition_input, existing_condition
             ):
-                client.execute(
-                    CONDITION_UPDATE,
-                    {
-                        "accountId": account_id,
-                        "conditionId": current["id"],
-                        "condition": condition_input,
-                    },
-                )
+                if profile == "service-order":
+                    if current.get("type") != "STATIC":
+                        raise ProvisioningError(
+                            "Owned service-order condition is not a static NRQL condition"
+                        )
+                    deleted = client.execute(
+                        CONDITION_DELETE,
+                        {
+                            "accountId": account_id,
+                            "conditionId": current["id"],
+                        },
+                    )
+                    try:
+                        deleted_id = deleted["alertsConditionDelete"]["id"]
+                    except (KeyError, TypeError):
+                        raise ProvisioningError(
+                            "NerdGraph alert condition deletion response was invalid"
+                        ) from None
+                    if str(deleted_id) != str(current["id"]):
+                        raise ProvisioningError(
+                            "NerdGraph deleted an unexpected alert condition"
+                        )
+                    client.execute(
+                        CONDITION_CREATE,
+                        {
+                            "accountId": account_id,
+                            "policyId": policy_id,
+                            "condition": condition_input,
+                        },
+                    )
+                else:
+                    client.execute(
+                        CONDITION_UPDATE,
+                        {
+                            "accountId": account_id,
+                            "conditionId": current["id"],
+                            "condition": condition_input,
+                        },
+                    )
         elif action == "apply":
             client.execute(
                 CONDITION_CREATE,
