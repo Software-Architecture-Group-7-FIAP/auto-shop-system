@@ -24,6 +24,29 @@ def test_staging_and_production_deploy_require_coordinator_dispatch() -> None:
         assert "validate_environment_window.py --action" in deployment
 
 
+def test_kubernetes_deploys_use_the_private_codebuild_eks_runner_contract() -> None:
+    minimal_workflow = (WORKFLOWS / "deploy-hml-minimal.yml").read_text(
+        encoding="utf-8"
+    )
+    minimal_deploy = minimal_workflow.split("  deploy-hml:\n", 1)[1].split(
+        "\n  summary:", 1
+    )[0]
+    expected_runner = "    runs-on:\n" + minimal_deploy.split(
+        "    runs-on:\n", 1
+    )[1].split("    timeout-minutes:", 1)[0]
+
+    for filename, deploy_job, next_job in (
+        ("cd-staging.yml", "deploy-staging", "deploy-staging-frontend"),
+        ("cd-prod.yml", "deploy-production", "deploy-production-frontend"),
+    ):
+        workflow = (WORKFLOWS / filename).read_text(encoding="utf-8")
+        deployment = workflow.split(f"  {deploy_job}:\n", 1)[1].split(
+            f"\n  {next_job}:", 1
+        )[0]
+
+        assert expected_runner in deployment
+
+
 def test_frontend_deploy_gate_is_independent_from_backend_deploy_gate() -> None:
     for filename, backend_job, frontend_job, next_job, gate in (
         (
