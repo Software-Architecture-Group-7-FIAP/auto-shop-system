@@ -1,0 +1,31 @@
+# The HML deploy role holds AmazonEKSEditPolicy, which is namespace scoped.
+# Installing the nri-bundle chart also manages cluster-scoped RBAC objects,
+# so grant the deployer group exactly those extra permissions.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: auto-shop-observability-deployer
+  labels:
+    app.kubernetes.io/part-of: auto-shop-platform
+rules:
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles", "clusterrolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete", "bind", "escalate"]
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: auto-shop-observability-deployer
+  labels:
+    app.kubernetes.io/part-of: auto-shop-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: auto-shop-observability-deployer
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: auto-shop-deployers
