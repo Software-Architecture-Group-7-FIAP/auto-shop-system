@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import unittest
 
 
@@ -53,10 +54,12 @@ class HmlNewRelicSecretWorkflowTests(unittest.TestCase):
         self.assertNotIn('echo "$NEW_RELIC_LICENSE_KEY"', materialize)
         self.assertLess(job.index("Require the HML New Relic license secret"), job.index("Configure AWS credentials"))
 
-    def test_run_title_stays_within_the_existing_hml_webhook_allowlist(self) -> None:
+    def test_run_title_matches_the_existing_hml_webhook_allowlist(self) -> None:
         content = WORKFLOW.read_text(encoding="utf-8")
+        run_name = re.search(r"(?m)^run-name: (.+)$", content).group(1)
+        rendered = re.sub(r"\$\{\{ github\.sha \}\}", "a" * 40, run_name)
 
-        self.assertRegex(content, r"(?m)^run-name: HML deploy \\$\\{\\{ github\\.sha \\}\\}$")
+        self.assertRegex(rendered, r"^HML deploy [0-9a-f]{40}$")
 
     def test_summary_reports_prepare_only_runs_as_their_own_operation(self) -> None:
         content = WORKFLOW.read_text(encoding="utf-8")
