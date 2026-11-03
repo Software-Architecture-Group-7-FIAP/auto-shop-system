@@ -1,0 +1,3131 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "codex.hml-jwks-update": "2026-11-01T12:50:12.301438+00:00",
+                    "kubectl.kubernetes.io/restartedAt": "2026-11-03T15:18:42-03:00"
+                },
+                "creationTimestamp": "2026-11-03T19:37:07Z",
+                "generateName": "auto-shop-backend-5f59d4797b-",
+                "generation": 1,
+                "labels": {
+                    "app": "auto-shop-backend",
+                    "app.kubernetes.io/component": "backend",
+                    "app.kubernetes.io/name": "auto-shop-system",
+                    "pod-template-hash": "5f59d4797b",
+                    "topology.kubernetes.io/region": "us-east-1",
+                    "topology.kubernetes.io/zone": "us-east-1b"
+                },
+                "name": "auto-shop-backend-5f59d4797b-28q66",
+                "namespace": "auto-shop-hml",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "ReplicaSet",
+                        "name": "auto-shop-backend-5f59d4797b",
+                        "uid": "60a9aaaf-3917-466f-a4bd-bc84349f21b3"
+                    }
+                ],
+                "resourceVersion": "2004039",
+                "uid": "6cefad1e-038e-40bf-bfad-61cfab41c994"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "command": [
+                            "newrelic-admin",
+                            "run-program",
+                            "uvicorn",
+                            "src.main:app",
+                            "--host",
+                            "0.0.0.0",
+                            "--port",
+                            "8000",
+                            "--no-access-log"
+                        ],
+                        "env": [
+                            {
+                                "name": "NEW_RELIC_LICENSE_KEY",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "key": "NEW_RELIC_LICENSE_KEY",
+                                        "name": "auto-shop-new-relic"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "REDIS_URL",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "key": "REDIS_URL",
+                                        "name": "auto-shop-redis-credentials"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "AWS_STS_REGIONAL_ENDPOINTS",
+                                "value": "regional"
+                            },
+                            {
+                                "name": "AWS_DEFAULT_REGION",
+                                "value": "us-east-1"
+                            },
+                            {
+                                "name": "AWS_REGION",
+                                "value": "us-east-1"
+                            },
+                            {
+                                "name": "AWS_ROLE_ARN",
+                                "value": "arn:aws:iam::035611741563:role/auto-shop-staging-hml-service-order-events-publisher"
+                            },
+                            {
+                                "name": "AWS_WEB_IDENTITY_TOKEN_FILE",
+                                "value": "/var/run/secrets/eks.amazonaws.com/serviceaccount/token"
+                            }
+                        ],
+                        "envFrom": [
+                            {
+                                "configMapRef": {
+                                    "name": "auto-shop-config"
+                                }
+                            },
+                            {
+                                "secretRef": {
+                                    "name": "auto-shop-secrets"
+                                }
+                            }
+                        ],
+                        "image": "035611741563.dkr.ecr.us-east-1.amazonaws.com/auto-shop-system@sha256:1e877c14959eb5a75837f68144a0ed52396a7aba1444960f12fe10617cbff5e2",
+                        "imagePullPolicy": "IfNotPresent",
+                        "livenessProbe": {
+                            "failureThreshold": 3,
+                            "httpGet": {
+                                "path": "/health/live",
+                                "port": "http",
+                                "scheme": "HTTP"
+                            },
+                            "periodSeconds": 15,
+                            "successThreshold": 1,
+                            "timeoutSeconds": 3
+                        },
+                        "name": "backend-api",
+                        "ports": [
+                            {
+                                "containerPort": 8000,
+                                "name": "http",
+                                "protocol": "TCP"
+                            }
+                        ],
+                        "readinessProbe": {
+                            "failureThreshold": 3,
+                            "httpGet": {
+                                "path": "/health/ready",
+                                "port": "http",
+                                "scheme": "HTTP"
+                            },
+                            "periodSeconds": 5,
+                            "successThreshold": 1,
+                            "timeoutSeconds": 3
+                        },
+                        "resources": {
+                            "limits": {
+                                "cpu": "500m",
+                                "memory": "512Mi"
+                            },
+                            "requests": {
+                                "cpu": "250m",
+                                "memory": "256Mi"
+                            }
+                        },
+                        "securityContext": {
+                            "allowPrivilegeEscalation": false,
+                            "capabilities": {
+                                "drop": [
+                                    "ALL"
+                                ]
+                            },
+                            "readOnlyRootFilesystem": true
+                        },
+                        "startupProbe": {
+                            "failureThreshold": 30,
+                            "httpGet": {
+                                "path": "/health/live",
+                                "port": "http",
+                                "scheme": "HTTP"
+                            },
+                            "periodSeconds": 5,
+                            "successThreshold": 1,
+                            "timeoutSeconds": 3
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/tmp",
+                                "name": "tmp"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-rz92f",
+                                "readOnly": true
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/eks.amazonaws.com/serviceaccount",
+                                "name": "aws-iam-token",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "nodeName": "ip-10-80-5-64.ec2.internal",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "readinessGates": [
+                    {
+                        "conditionType": "target-health.elbv2.k8s.aws/auto-shop-hml-backend"
+                    }
+                ],
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "securityContext": {
+                    "fsGroup": 10001,
+                    "runAsGroup": 10001,
+                    "runAsNonRoot": true,
+                    "runAsUser": 10001,
+                    "seccompProfile": {
+                        "type": "RuntimeDefault"
+                    }
+                },
+                "serviceAccount": "auto-shop-backend",
+                "serviceAccountName": "auto-shop-backend",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "aws-iam-token",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "audience": "sts.amazonaws.com",
+                                        "expirationSeconds": 86400,
+                                        "path": "token"
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "emptyDir": {},
+                        "name": "tmp"
+                    },
+                    {
+                        "name": "kube-api-access-rz92f",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "allocatedResources": {
+                    "cpu": "250m",
+                    "memory": "256Mi"
+                },
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:37:44Z",
+                        "status": "True",
+                        "type": "target-health.elbv2.k8s.aws/auto-shop-hml-backend"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:37:08Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:37:07Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:37:44Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:37:27Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:37:07Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "allocatedResources": {
+                            "cpu": "250m",
+                            "memory": "256Mi"
+                        },
+                        "containerID": "containerd://5c50ad83fe21140a49b9f65574ec77b09832623e5e9e4144c2b885ca7cdca62d",
+                        "image": "sha256:aeff9d9399515bd1412963fc4f44db9ff43d26d64ab0492b272b22f42e6e9110",
+                        "imageID": "035611741563.dkr.ecr.us-east-1.amazonaws.com/auto-shop-system@sha256:1e877c14959eb5a75837f68144a0ed52396a7aba1444960f12fe10617cbff5e2",
+                        "lastState": {},
+                        "name": "backend-api",
+                        "ready": true,
+                        "resources": {
+                            "limits": {
+                                "cpu": "500m",
+                                "memory": "512Mi"
+                            },
+                            "requests": {
+                                "cpu": "250m",
+                                "memory": "256Mi"
+                            }
+                        },
+                        "restartCount": 0,
+                        "started": true,
+                        "state": {
+                            "running": {
+                                "startedAt": "2026-11-03T19:37:11Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 10001,
+                                "supplementalGroups": [
+                                    10001
+                                ],
+                                "uid": 10001
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/tmp",
+                                "name": "tmp"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-rz92f",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/eks.amazonaws.com/serviceaccount",
+                                "name": "aws-iam-token",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "10.80.5.64",
+                "hostIPs": [
+                    {
+                        "ip": "10.80.5.64"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Running",
+                "podIP": "10.80.5.11",
+                "podIPs": [
+                    {
+                        "ip": "10.80.5.11"
+                    }
+                ],
+                "qosClass": "Burstable",
+                "resources": {
+                    "limits": {
+                        "cpu": "500m",
+                        "memory": "512Mi"
+                    },
+                    "requests": {
+                        "cpu": "232m",
+                        "memory": "256Mi"
+                    }
+                },
+                "startTime": "2026-11-03T19:37:07Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "codex.hml-jwks-update": "2026-11-01T12:50:12.301438+00:00",
+                    "kubectl.kubernetes.io/restartedAt": "2026-11-03T15:18:42-03:00"
+                },
+                "creationTimestamp": "2026-11-03T19:36:30Z",
+                "generateName": "auto-shop-backend-5f59d4797b-",
+                "generation": 1,
+                "labels": {
+                    "app": "auto-shop-backend",
+                    "app.kubernetes.io/component": "backend",
+                    "app.kubernetes.io/name": "auto-shop-system",
+                    "pod-template-hash": "5f59d4797b",
+                    "topology.kubernetes.io/region": "us-east-1",
+                    "topology.kubernetes.io/zone": "us-east-1a"
+                },
+                "name": "auto-shop-backend-5f59d4797b-8bbwl",
+                "namespace": "auto-shop-hml",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "ReplicaSet",
+                        "name": "auto-shop-backend-5f59d4797b",
+                        "uid": "60a9aaaf-3917-466f-a4bd-bc84349f21b3"
+                    }
+                ],
+                "resourceVersion": "2003788",
+                "uid": "c212e456-f879-4bde-aaed-03e1f0408df0"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "command": [
+                            "newrelic-admin",
+                            "run-program",
+                            "uvicorn",
+                            "src.main:app",
+                            "--host",
+                            "0.0.0.0",
+                            "--port",
+                            "8000",
+                            "--no-access-log"
+                        ],
+                        "env": [
+                            {
+                                "name": "NEW_RELIC_LICENSE_KEY",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "key": "NEW_RELIC_LICENSE_KEY",
+                                        "name": "auto-shop-new-relic"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "REDIS_URL",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "key": "REDIS_URL",
+                                        "name": "auto-shop-redis-credentials"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "AWS_STS_REGIONAL_ENDPOINTS",
+                                "value": "regional"
+                            },
+                            {
+                                "name": "AWS_DEFAULT_REGION",
+                                "value": "us-east-1"
+                            },
+                            {
+                                "name": "AWS_REGION",
+                                "value": "us-east-1"
+                            },
+                            {
+                                "name": "AWS_ROLE_ARN",
+                                "value": "arn:aws:iam::035611741563:role/auto-shop-staging-hml-service-order-events-publisher"
+                            },
+                            {
+                                "name": "AWS_WEB_IDENTITY_TOKEN_FILE",
+                                "value": "/var/run/secrets/eks.amazonaws.com/serviceaccount/token"
+                            }
+                        ],
+                        "envFrom": [
+                            {
+                                "configMapRef": {
+                                    "name": "auto-shop-config"
+                                }
+                            },
+                            {
+                                "secretRef": {
+                                    "name": "auto-shop-secrets"
+                                }
+                            }
+                        ],
+                        "image": "035611741563.dkr.ecr.us-east-1.amazonaws.com/auto-shop-system@sha256:1e877c14959eb5a75837f68144a0ed52396a7aba1444960f12fe10617cbff5e2",
+                        "imagePullPolicy": "IfNotPresent",
+                        "livenessProbe": {
+                            "failureThreshold": 3,
+                            "httpGet": {
+                                "path": "/health/live",
+                                "port": "http",
+                                "scheme": "HTTP"
+                            },
+                            "periodSeconds": 15,
+                            "successThreshold": 1,
+                            "timeoutSeconds": 3
+                        },
+                        "name": "backend-api",
+                        "ports": [
+                            {
+                                "containerPort": 8000,
+                                "name": "http",
+                                "protocol": "TCP"
+                            }
+                        ],
+                        "readinessProbe": {
+                            "failureThreshold": 3,
+                            "httpGet": {
+                                "path": "/health/ready",
+                                "port": "http",
+                                "scheme": "HTTP"
+                            },
+                            "periodSeconds": 5,
+                            "successThreshold": 1,
+                            "timeoutSeconds": 3
+                        },
+                        "resources": {
+                            "limits": {
+                                "cpu": "500m",
+                                "memory": "512Mi"
+                            },
+                            "requests": {
+                                "cpu": "250m",
+                                "memory": "256Mi"
+                            }
+                        },
+                        "securityContext": {
+                            "allowPrivilegeEscalation": false,
+                            "capabilities": {
+                                "drop": [
+                                    "ALL"
+                                ]
+                            },
+                            "readOnlyRootFilesystem": true
+                        },
+                        "startupProbe": {
+                            "failureThreshold": 30,
+                            "httpGet": {
+                                "path": "/health/live",
+                                "port": "http",
+                                "scheme": "HTTP"
+                            },
+                            "periodSeconds": 5,
+                            "successThreshold": 1,
+                            "timeoutSeconds": 3
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/tmp",
+                                "name": "tmp"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-86dz9",
+                                "readOnly": true
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/eks.amazonaws.com/serviceaccount",
+                                "name": "aws-iam-token",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "nodeName": "ip-10-80-3-1.ec2.internal",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "readinessGates": [
+                    {
+                        "conditionType": "target-health.elbv2.k8s.aws/auto-shop-hml-backend"
+                    }
+                ],
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "securityContext": {
+                    "fsGroup": 10001,
+                    "runAsGroup": 10001,
+                    "runAsNonRoot": true,
+                    "runAsUser": 10001,
+                    "seccompProfile": {
+                        "type": "RuntimeDefault"
+                    }
+                },
+                "serviceAccount": "auto-shop-backend",
+                "serviceAccountName": "auto-shop-backend",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "aws-iam-token",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "audience": "sts.amazonaws.com",
+                                        "expirationSeconds": 86400,
+                                        "path": "token"
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "emptyDir": {},
+                        "name": "tmp"
+                    },
+                    {
+                        "name": "kube-api-access-86dz9",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "allocatedResources": {
+                    "cpu": "250m",
+                    "memory": "256Mi"
+                },
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:37:02Z",
+                        "status": "True",
+                        "type": "target-health.elbv2.k8s.aws/auto-shop-hml-backend"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:36:31Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:36:30Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:37:02Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:36:45Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:36:30Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "allocatedResources": {
+                            "cpu": "250m",
+                            "memory": "256Mi"
+                        },
+                        "containerID": "containerd://4e77a0fad691ffe47c905607dd94527fb857469eb895c46a0fd281b749b448ca",
+                        "image": "sha256:aeff9d9399515bd1412963fc4f44db9ff43d26d64ab0492b272b22f42e6e9110",
+                        "imageID": "035611741563.dkr.ecr.us-east-1.amazonaws.com/auto-shop-system@sha256:1e877c14959eb5a75837f68144a0ed52396a7aba1444960f12fe10617cbff5e2",
+                        "lastState": {},
+                        "name": "backend-api",
+                        "ready": true,
+                        "resources": {
+                            "limits": {
+                                "cpu": "500m",
+                                "memory": "512Mi"
+                            },
+                            "requests": {
+                                "cpu": "250m",
+                                "memory": "256Mi"
+                            }
+                        },
+                        "restartCount": 0,
+                        "started": true,
+                        "state": {
+                            "running": {
+                                "startedAt": "2026-11-03T19:36:31Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 10001,
+                                "supplementalGroups": [
+                                    10001
+                                ],
+                                "uid": 10001
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/tmp",
+                                "name": "tmp"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-86dz9",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/eks.amazonaws.com/serviceaccount",
+                                "name": "aws-iam-token",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "10.80.3.1",
+                "hostIPs": [
+                    {
+                        "ip": "10.80.3.1"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Running",
+                "podIP": "10.80.2.229",
+                "podIPs": [
+                    {
+                        "ip": "10.80.2.229"
+                    }
+                ],
+                "qosClass": "Burstable",
+                "resources": {
+                    "limits": {
+                        "cpu": "500m",
+                        "memory": "512Mi"
+                    },
+                    "requests": {
+                        "cpu": "232m",
+                        "memory": "256Mi"
+                    }
+                },
+                "startTime": "2026-11-03T19:36:30Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "creationTimestamp": "2026-11-03T18:07:59Z",
+                "generateName": "auto-shop-new-relic-kube-state-metrics-79bb454d86-",
+                "generation": 1,
+                "labels": {
+                    "app.kubernetes.io/component": "metrics",
+                    "app.kubernetes.io/instance": "auto-shop-new-relic",
+                    "app.kubernetes.io/managed-by": "Helm",
+                    "app.kubernetes.io/name": "kube-state-metrics",
+                    "app.kubernetes.io/part-of": "kube-state-metrics",
+                    "app.kubernetes.io/version": "2.16.0",
+                    "helm.sh/chart": "kube-state-metrics-6.1.5",
+                    "pod-template-hash": "79bb454d86",
+                    "topology.kubernetes.io/region": "us-east-1",
+                    "topology.kubernetes.io/zone": "us-east-1b"
+                },
+                "name": "auto-shop-new-relic-kube-state-metrics-79bb454d86-bqlx4",
+                "namespace": "auto-shop-hml",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "ReplicaSet",
+                        "name": "auto-shop-new-relic-kube-state-metrics-79bb454d86",
+                        "uid": "0672ec08-b1ea-4252-81b8-6d75396a9eb1"
+                    }
+                ],
+                "resourceVersion": "1980799",
+                "uid": "960e0250-43d8-4db3-b69f-586a3224b305"
+            },
+            "spec": {
+                "automountServiceAccountToken": true,
+                "containers": [
+                    {
+                        "args": [
+                            "--port=8080",
+                            "--resources=certificatesigningrequests,configmaps,cronjobs,daemonsets,deployments,endpoints,horizontalpodautoscalers,ingresses,jobs,leases,limitranges,mutatingwebhookconfigurations,namespaces,networkpolicies,nodes,persistentvolumeclaims,persistentvolumes,poddisruptionbudgets,pods,replicasets,replicationcontrollers,resourcequotas,secrets,services,statefulsets,storageclasses,validatingwebhookconfigurations,volumeattachments"
+                        ],
+                        "image": "registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.16.0",
+                        "imagePullPolicy": "IfNotPresent",
+                        "livenessProbe": {
+                            "failureThreshold": 3,
+                            "httpGet": {
+                                "path": "/livez",
+                                "port": 8080,
+                                "scheme": "HTTP"
+                            },
+                            "initialDelaySeconds": 5,
+                            "periodSeconds": 10,
+                            "successThreshold": 1,
+                            "timeoutSeconds": 5
+                        },
+                        "name": "kube-state-metrics",
+                        "ports": [
+                            {
+                                "containerPort": 8080,
+                                "name": "http",
+                                "protocol": "TCP"
+                            }
+                        ],
+                        "readinessProbe": {
+                            "failureThreshold": 3,
+                            "httpGet": {
+                                "path": "/readyz",
+                                "port": 8081,
+                                "scheme": "HTTP"
+                            },
+                            "initialDelaySeconds": 5,
+                            "periodSeconds": 10,
+                            "successThreshold": 1,
+                            "timeoutSeconds": 5
+                        },
+                        "resources": {
+                            "limits": {
+                                "cpu": "100m",
+                                "memory": "128Mi"
+                            },
+                            "requests": {
+                                "cpu": "10m",
+                                "memory": "32Mi"
+                            }
+                        },
+                        "securityContext": {
+                            "allowPrivilegeEscalation": false,
+                            "capabilities": {
+                                "drop": [
+                                    "ALL"
+                                ]
+                            },
+                            "readOnlyRootFilesystem": true
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-smkd4",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "nodeName": "ip-10-80-5-64.ec2.internal",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "securityContext": {
+                    "fsGroup": 65534,
+                    "runAsGroup": 65534,
+                    "runAsNonRoot": true,
+                    "runAsUser": 65534,
+                    "seccompProfile": {
+                        "type": "RuntimeDefault"
+                    }
+                },
+                "serviceAccount": "auto-shop-new-relic-kube-state-metrics",
+                "serviceAccountName": "auto-shop-new-relic-kube-state-metrics",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "volumes": [
+                    {
+                        "name": "kube-api-access-smkd4",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "allocatedResources": {
+                    "cpu": "10m",
+                    "memory": "32Mi"
+                },
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T18:08:01Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T18:07:59Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T18:08:14Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T18:08:14Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T18:07:59Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "allocatedResources": {
+                            "cpu": "10m",
+                            "memory": "32Mi"
+                        },
+                        "containerID": "containerd://02a52881da428840272c4daf46ebfe823733273846606522f0c5cf83cd7591ae",
+                        "image": "registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.16.0",
+                        "imageID": "registry.k8s.io/kube-state-metrics/kube-state-metrics@sha256:e750cd4b43f782e3106537026c2995cac85d921aedea334e1d16caad7877c360",
+                        "lastState": {},
+                        "name": "kube-state-metrics",
+                        "ready": true,
+                        "resources": {
+                            "limits": {
+                                "cpu": "100m",
+                                "memory": "128Mi"
+                            },
+                            "requests": {
+                                "cpu": "10m",
+                                "memory": "32Mi"
+                            }
+                        },
+                        "restartCount": 0,
+                        "started": true,
+                        "state": {
+                            "running": {
+                                "startedAt": "2026-11-03T18:08:03Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 65534,
+                                "supplementalGroups": [
+                                    65534
+                                ],
+                                "uid": 65534
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-smkd4",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "10.80.5.64",
+                "hostIPs": [
+                    {
+                        "ip": "10.80.5.64"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Running",
+                "podIP": "10.80.4.17",
+                "podIPs": [
+                    {
+                        "ip": "10.80.4.17"
+                    }
+                ],
+                "qosClass": "Burstable",
+                "resources": {
+                    "limits": {
+                        "cpu": "100m",
+                        "memory": "128Mi"
+                    },
+                    "requests": {
+                        "memory": "32Mi"
+                    }
+                },
+                "startTime": "2026-11-03T18:07:59Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "checksum/agent-config": "8d1c570ab564b95b426b6654011af81229394fc5171a1d47742bdc636600c1e5",
+                    "checksum/nri-kubernetes": "f90326c8898ca9fc9c1786ccb35b26ca4c44e8935deb604d5102934595408d69"
+                },
+                "creationTimestamp": "2026-11-03T19:27:58Z",
+                "generateName": "auto-shop-new-relic-nrk8s-ksm-584dc4875d-",
+                "generation": 1,
+                "labels": {
+                    "app.kubernetes.io/component": "ksm",
+                    "app.kubernetes.io/instance": "auto-shop-new-relic",
+                    "app.kubernetes.io/name": "newrelic-infrastructure",
+                    "mode": "unprivileged",
+                    "pod-template-hash": "584dc4875d",
+                    "topology.kubernetes.io/region": "us-east-1",
+                    "topology.kubernetes.io/zone": "us-east-1b"
+                },
+                "name": "auto-shop-new-relic-nrk8s-ksm-584dc4875d-2bpn2",
+                "namespace": "auto-shop-hml",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "ReplicaSet",
+                        "name": "auto-shop-new-relic-nrk8s-ksm-584dc4875d",
+                        "uid": "6ad934d2-58b1-45c1-8131-64278ac9427a"
+                    }
+                ],
+                "resourceVersion": "2001832",
+                "uid": "378e12a7-1878-4016-b3a0-0a132f5e6280"
+            },
+            "spec": {
+                "affinity": {
+                    "podAffinity": {
+                        "preferredDuringSchedulingIgnoredDuringExecution": [
+                            {
+                                "podAffinityTerm": {
+                                    "labelSelector": {
+                                        "matchLabels": {
+                                            "app.kubernetes.io/name": "kube-state-metrics"
+                                        }
+                                    },
+                                    "topologyKey": "kubernetes.io/hostname"
+                                },
+                                "weight": 100
+                            }
+                        ]
+                    }
+                },
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "NRI_KUBERNETES_SINK_HTTP_PORT",
+                                "value": "8002"
+                            },
+                            {
+                                "name": "NRI_KUBERNETES_CLUSTERNAME",
+                                "value": "auto-shop-hml"
+                            },
+                            {
+                                "name": "NRI_KUBERNETES_VERBOSE",
+                                "value": "false"
+                            },
+                            {
+                                "name": "NRI_KUBERNETES_KSM_ENABLERESOURCEQUOTASAMPLES",
+                                "value": "true"
+                            },
+                            {
+                                "name": "NRI_KUBERNETES_NODENAME",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "spec.nodeName"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "docker.io/newrelic/nri-kubernetes:4.9.0",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "ksm",
+                        "resources": {
+                            "limits": {
+                                "memory": "850M"
+                            },
+                            "requests": {
+                                "cpu": "100m",
+                                "memory": "150M"
+                            }
+                        },
+                        "securityContext": {
+                            "allowPrivilegeEscalation": false,
+                            "readOnlyRootFilesystem": true,
+                            "runAsGroup": 2000,
+                            "runAsUser": 1000
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/etc/newrelic-infra/nri-kubernetes.yml",
+                                "name": "nri-kubernetes-config",
+                                "subPath": "nri-kubernetes.yml"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-4d9rx",
+                                "readOnly": true
+                            }
+                        ]
+                    },
+                    {
+                        "env": [
+                            {
+                                "name": "NRIA_LICENSE_KEY",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "key": "NEW_RELIC_LICENSE_KEY",
+                                        "name": "auto-shop-new-relic"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NRIA_DNS_HOSTNAME_RESOLUTION",
+                                "value": "false"
+                            },
+                            {
+                                "name": "K8S_NODE_NAME",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "spec.nodeName"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "docker.io/newrelic/k8s-events-forwarder:1.80.7",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "forwarder",
+                        "ports": [
+                            {
+                                "containerPort": 8002,
+                                "protocol": "TCP"
+                            }
+                        ],
+                        "resources": {
+                            "limits": {
+                                "memory": "850M"
+                            },
+                            "requests": {
+                                "cpu": "100m",
+                                "memory": "150M"
+                            }
+                        },
+                        "securityContext": {
+                            "allowPrivilegeEscalation": false,
+                            "readOnlyRootFilesystem": true,
+                            "runAsGroup": 2000,
+                            "runAsUser": 1000
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/db/newrelic-infra/data",
+                                "name": "forwarder-tmpfs-data"
+                            },
+                            {
+                                "mountPath": "/var/db/newrelic-infra/user_data",
+                                "name": "forwarder-tmpfs-user-data"
+                            },
+                            {
+                                "mountPath": "/tmp",
+                                "name": "forwarder-tmpfs-tmp"
+                            },
+                            {
+                                "mountPath": "/etc/newrelic-infra.yml",
+                                "name": "config",
+                                "subPath": "newrelic-infra.yml"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-4d9rx",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "nodeName": "ip-10-80-5-64.ec2.internal",
+                "nodeSelector": {
+                    "kubernetes.io/os": "linux"
+                },
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "auto-shop-new-relic-newrelic-infrastructure",
+                "serviceAccountName": "auto-shop-new-relic-newrelic-infrastructure",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoSchedule",
+                        "key": "node.kubernetes.io/disk-pressure",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoSchedule",
+                        "key": "node.kubernetes.io/memory-pressure",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoSchedule",
+                        "key": "node.kubernetes.io/pid-pressure",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoSchedule",
+                        "key": "node.kubernetes.io/network-unavailable",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "operator": "Exists"
+                    }
+                ],
+                "volumes": [
+                    {
+                        "configMap": {
+                            "defaultMode": 420,
+                            "items": [
+                                {
+                                    "key": "nri-kubernetes.yml",
+                                    "path": "nri-kubernetes.yml"
+                                }
+                            ],
+                            "name": "auto-shop-new-relic-nrk8s-ksm"
+                        },
+                        "name": "nri-kubernetes-config"
+                    },
+                    {
+                        "emptyDir": {},
+                        "name": "forwarder-tmpfs-data"
+                    },
+                    {
+                        "emptyDir": {},
+                        "name": "forwarder-tmpfs-user-data"
+                    },
+                    {
+                        "emptyDir": {},
+                        "name": "forwarder-tmpfs-tmp"
+                    },
+                    {
+                        "configMap": {
+                            "defaultMode": 420,
+                            "items": [
+                                {
+                                    "key": "newrelic-infra.yml",
+                                    "path": "newrelic-infra.yml"
+                                }
+                            ],
+                            "name": "auto-shop-new-relic-nrk8s-agent-ksm"
+                        },
+                        "name": "config"
+                    },
+                    {
+                        "name": "kube-api-access-4d9rx",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "allocatedResources": {
+                    "cpu": "200m",
+                    "memory": "300M"
+                },
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:27:58Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:27:58Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:27:58Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:27:58Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T19:27:58Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "allocatedResources": {
+                            "cpu": "100m",
+                            "memory": "150M"
+                        },
+                        "containerID": "containerd://e97de23bbd8651fdf4cabea05c63a20103d1e17595a902488a8d54a261340e11",
+                        "image": "docker.io/newrelic/k8s-events-forwarder:1.80.7",
+                        "imageID": "docker.io/newrelic/k8s-events-forwarder@sha256:181bb6e132f5495d851eff6e245d0516f52ba9554626f35ea8f8593692262962",
+                        "lastState": {},
+                        "name": "forwarder",
+                        "ready": true,
+                        "resources": {
+                            "limits": {
+                                "memory": "850M"
+                            },
+                            "requests": {
+                                "cpu": "100m",
+                                "memory": "150M"
+                            }
+                        },
+                        "restartCount": 0,
+                        "started": true,
+                        "state": {
+                            "running": {
+                                "startedAt": "2026-11-03T19:27:58Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 2000,
+                                "supplementalGroups": [
+                                    2000
+                                ],
+                                "uid": 1000
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/var/db/newrelic-infra/data",
+                                "name": "forwarder-tmpfs-data"
+                            },
+                            {
+                                "mountPath": "/var/db/newrelic-infra/user_data",
+                                "name": "forwarder-tmpfs-user-data"
+                            },
+                            {
+                                "mountPath": "/tmp",
+                                "name": "forwarder-tmpfs-tmp"
+                            },
+                            {
+                                "mountPath": "/etc/newrelic-infra.yml",
+                                "name": "config"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-4d9rx",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    },
+                    {
+                        "allocatedResources": {
+                            "cpu": "100m",
+                            "memory": "150M"
+                        },
+                        "containerID": "containerd://2a9374a9221b562009e3265da90c2ec0bf3cca671903fede5aba210c4d2526c8",
+                        "image": "docker.io/newrelic/nri-kubernetes:4.9.0",
+                        "imageID": "docker.io/newrelic/nri-kubernetes@sha256:e45b92e691010b8bdba78a2c3eaca8fc9d04877584920568e1bf253f57d4bd23",
+                        "lastState": {},
+                        "name": "ksm",
+                        "ready": true,
+                        "resources": {
+                            "limits": {
+                                "memory": "850M"
+                            },
+                            "requests": {
+                                "cpu": "100m",
+                                "memory": "150M"
+                            }
+                        },
+                        "restartCount": 0,
+                        "started": true,
+                        "state": {
+                            "running": {
+                                "startedAt": "2026-11-03T19:27:58Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 2000,
+                                "supplementalGroups": [
+                                    2000
+                                ],
+                                "uid": 1000
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/etc/newrelic-infra/nri-kubernetes.yml",
+                                "name": "nri-kubernetes-config"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-4d9rx",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "10.80.5.64",
+                "hostIPs": [
+                    {
+                        "ip": "10.80.5.64"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Running",
+                "podIP": "10.80.5.10",
+                "podIPs": [
+                    {
+                        "ip": "10.80.5.10"
+                    }
+                ],
+                "qosClass": "Burstable",
+                "resources": {
+                    "limits": {
+                        "memory": "1660156Ki"
+                    },
+                    "requests": {
+                        "cpu": "181m",
+                        "memory": "300M"
+                    }
+                },
+                "startTime": "2026-11-03T19:27:58Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "checksum/agent-config": "eff80ff71d97dc88db76cbaf0628251e0cbfb1a73a6dc28ed60b7d44b25227e4",
+                    "checksum/integrations_config": "afa2dcd2e21756834c5ff92253bf888721094cd2019bb3a2611b7cb7ca5ca1f7",
+                    "checksum/nri-kubernetes": "e2f4a5dc7c9e5d58e8be03b4bdf198b2978d8e26334dffc09732fd855737bc54"
+                },
+                "creationTimestamp": "2026-11-03T18:07:59Z",
+                "generateName": "auto-shop-new-relic-nrk8s-kubelet-",
+                "generation": 1,
+                "labels": {
+                    "app.kubernetes.io/component": "kubelet",
+                    "app.kubernetes.io/instance": "auto-shop-new-relic",
+                    "app.kubernetes.io/name": "newrelic-infrastructure",
+                    "controller-revision-hash": "66fcdd6945",
+                    "mode": "unprivileged",
+                    "pod-template-generation": "1",
+                    "topology.kubernetes.io/region": "us-east-1",
+                    "topology.kubernetes.io/zone": "us-east-1a"
+                },
+                "name": "auto-shop-new-relic-nrk8s-kubelet-ffwpw",
+                "namespace": "auto-shop-hml",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "DaemonSet",
+                        "name": "auto-shop-new-relic-nrk8s-kubelet",
+                        "uid": "85e88679-efba-4a53-b5e8-f911082e3786"
+                    }
+                ],
+                "resourceVersion": "1983507",
+                "uid": "5ee5ac33-464f-4b2f-8aba-55315cfbdbc9"
+            },
+            "spec": {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchFields": [
+                                        {
+                                            "key": "metadata.name",
+                                            "operator": "In",
+                                            "values": [
+                                                "ip-10-80-3-1.ec2.internal"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "NRI_KUBERNETES_SINK_HTTP_PORT",
+                                "value": "8003"
+                            },
+                            {
+                                "name": "NRI_KUBERNETES_CLUSTERNAME",
+                                "value": "auto-shop-hml"
+                            },
+                            {
+                                "name": "NRI_KUBERNETES_VERBOSE",
+                                "value": "false"
+                            },
+                            {
+                                "name": "NRI_KUBERNETES_TESTCONNECTIONENDPOINT",
+                                "value": "/healthz"
+                            },
+                            {
+                                "name": "NRI_KUBERNETES_NODENAME",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "spec.nodeName"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NRI_KUBERNETES_NODEIP",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "status.hostIP"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "docker.io/newrelic/nri-kubernetes:4.9.0",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "kubelet",
+                        "resources": {
+                            "limits": {
+                                "memory": "300M"
+                            },
+                            "requests": {
+                                "cpu": "100m",
+                                "memory": "150M"
+                            }
+                        },
+                        "securityContext": {
+                            "allowPrivilegeEscalation": false,
+                            "readOnlyRootFilesystem": true,
+                            "runAsGroup": 2000,
+                            "runAsUser": 1000
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/etc/newrelic-infra/nri-kubernetes.yml",
+                                "name": "nri-kubernetes-config",
+                                "subPath": "nri-kubernetes.yml"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-w2ksl",
+                                "readOnly": true
+                            }
+                        ]
+                    },
+                    {
+                        "args": [
+                            "newrelic-infra"
+                        ],
+                        "env": [
+                            {
+                                "name": "NRIA_LICENSE_KEY",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "key": "NEW_RELIC_LICENSE_KEY",
+                                        "name": "auto-shop-new-relic"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NRIA_OVERRIDE_HOSTNAME_SHORT",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "spec.nodeName"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NRIA_OVERRIDE_HOSTNAME",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "spec.nodeName"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NRIA_OVERRIDE_HOST_ROOT"
+                            },
+                            {
+                                "name": "NRI_KUBERNETES_NODE_NAME",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "spec.nodeName"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "CLUSTER_NAME",
+                                "value": "auto-shop-hml"
+                            },
+                            {
+                                "name": "NRIA_PASSTHROUGH_ENVIRONMENT",
+                                "value": "CLUSTER_NAME"
+                            },
+                            {
+                                "name": "NRIA_HOST",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "status.hostIP"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "docker.io/newrelic/infrastructure-bundle:3.5.6",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "agent",
+                        "ports": [
+                            {
+                                "containerPort": 8003,
+                                "protocol": "TCP"
+                            }
+                        ],
+                        "resources": {
+                            "limits": {
+                                "memory": "300M"
+                            },
+                            "requests": {
+                                "cpu": "100m",
+                                "memory": "150M"
+                            }
+                        },
+                        "securityContext": {
+                            "allowPrivilegeEscalation": false,
+                            "readOnlyRootFilesystem": true,
+                            "runAsGroup": 2000,
+                            "runAsUser": 1000
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/etc/newrelic-infra.yml",
+                                "name": "config",
+                                "subPath": "newrelic-infra.yml"
+                            },
+                            {
+                                "mountPath": "/etc/newrelic-infra/integrations.d/",
+                                "name": "nri-integrations-cfg-volume"
+                            },
+                            {
+                                "mountPath": "/var/db/newrelic-infra/data",
+                                "name": "agent-tmpfs-data"
+                            },
+                            {
+                                "mountPath": "/var/db/newrelic-infra/user_data",
+                                "name": "agent-tmpfs-user-data"
+                            },
+                            {
+                                "mountPath": "/tmp",
+                                "name": "agent-tmpfs-tmp"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-w2ksl",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "nodeName": "ip-10-80-3-1.ec2.internal",
+                "nodeSelector": {
+                    "kubernetes.io/os": "linux"
+                },
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "auto-shop-new-relic-newrelic-infrastructure",
+                "serviceAccountName": "auto-shop-new-relic-newrelic-infrastructure",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoSchedule",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoSchedule",
+                        "key": "node.kubernetes.io/disk-pressure",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoSchedule",
+                        "key": "node.kubernetes.io/memory-pressure",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoSchedule",
+                        "key": "node.kubernetes.io/pid-pressure",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoSchedule",
+                        "key": "node.kubernetes.io/unschedulable",
+                        "operator": "Exists"
+                    }
+                ],
+                "volumes": [
+                    {
+                        "emptyDir": {},
+                        "name": "agent-tmpfs-data"
+                    },
+                    {
+                        "emptyDir": {},
+                        "name": "agent-tmpfs-user-data"
+                    },
+                    {
+                        "emptyDir": {},
+                        "name": "agent-tmpfs-tmp"
+                    },
+                    {
+                        "configMap": {
+                            "defaultMode": 420,
+                            "items": [
+                                {
+                                    "key": "nri-kubernetes.yml",
+                                    "path": "nri-kubernetes.yml"
+                                }
+                            ],
+                            "name": "auto-shop-new-relic-nrk8s-kubelet"
+                        },
+                        "name": "nri-kubernetes-config"
+                    },
+                    {
+                        "configMap": {
+                            "defaultMode": 420,
+                            "items": [
+                                {
+                                    "key": "newrelic-infra.yml",
+                                    "path": "newrelic-infra.yml"
+                                }
+                            ],
+                            "name": "auto-shop-new-relic-nrk8s-agent-kubelet"
+                        },
+                        "name": "config"
+                    },
+                    {
+                        "configMap": {
+                            "defaultMode": 420,
+                            "name": "auto-shop-new-relic-nrk8s-integrations-cfg"
+                        },
+                        "name": "nri-integrations-cfg-volume"
+                    },
+                    {
+                        "name": "kube-api-access-w2ksl",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "allocatedResources": {
+                    "cpu": "200m",
+                    "memory": "300M"
+                },
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T18:08:00Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T18:07:59Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T18:18:15Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T18:18:15Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T18:07:59Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "allocatedResources": {
+                            "cpu": "100m",
+                            "memory": "150M"
+                        },
+                        "containerID": "containerd://8f63a4fdb21ca8c6af0d46c24a290c59aac01d733b16b14bbee4699686f95387",
+                        "image": "docker.io/newrelic/infrastructure-bundle:3.5.6",
+                        "imageID": "docker.io/newrelic/infrastructure-bundle@sha256:caffe23d0b17be69d5930a4469690bbca83246f7b296ccfa1d1c26decdea8b49",
+                        "lastState": {
+                            "terminated": {
+                                "containerID": "containerd://7f808b5d01357be6d6da827e2d23fea6a939a7fc99b70fec1cd2f4a52a7899c1",
+                                "exitCode": 1,
+                                "finishedAt": "2026-11-03T18:16:37Z",
+                                "reason": "Error",
+                                "startedAt": "2026-11-03T18:15:19Z"
+                            }
+                        },
+                        "name": "agent",
+                        "ready": true,
+                        "resources": {
+                            "limits": {
+                                "memory": "300M"
+                            },
+                            "requests": {
+                                "cpu": "100m",
+                                "memory": "150M"
+                            }
+                        },
+                        "restartCount": 5,
+                        "started": true,
+                        "state": {
+                            "running": {
+                                "startedAt": "2026-11-03T18:18:06Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 2000,
+                                "supplementalGroups": [
+                                    2000
+                                ],
+                                "uid": 1000
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/etc/newrelic-infra.yml",
+                                "name": "config"
+                            },
+                            {
+                                "mountPath": "/etc/newrelic-infra/integrations.d/",
+                                "name": "nri-integrations-cfg-volume"
+                            },
+                            {
+                                "mountPath": "/var/db/newrelic-infra/data",
+                                "name": "agent-tmpfs-data"
+                            },
+                            {
+                                "mountPath": "/var/db/newrelic-infra/user_data",
+                                "name": "agent-tmpfs-user-data"
+                            },
+                            {
+                                "mountPath": "/tmp",
+                                "name": "agent-tmpfs-tmp"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-w2ksl",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    },
+                    {
+                        "allocatedResources": {
+                            "cpu": "100m",
+                            "memory": "150M"
+                        },
+                        "containerID": "containerd://6cdadae6715a058693ec8afc6856635171cf2f9427787c9ffc52a8ff0de594b1",
+                        "image": "docker.io/newrelic/nri-kubernetes:4.9.0",
+                        "imageID": "docker.io/newrelic/nri-kubernetes@sha256:e45b92e691010b8bdba78a2c3eaca8fc9d04877584920568e1bf253f57d4bd23",
+                        "lastState": {
+                            "terminated": {
+                                "containerID": "containerd://723d4ec8f197d6f1c2b8ecaf59fbd9e7159c210e65a2cecf8cf7a219b177af2a",
+                                "exitCode": 5,
+                                "finishedAt": "2026-11-03T18:16:52Z",
+                                "reason": "Error",
+                                "startedAt": "2026-11-03T18:15:22Z"
+                            }
+                        },
+                        "name": "kubelet",
+                        "ready": true,
+                        "resources": {
+                            "limits": {
+                                "memory": "300M"
+                            },
+                            "requests": {
+                                "cpu": "100m",
+                                "memory": "150M"
+                            }
+                        },
+                        "restartCount": 5,
+                        "started": true,
+                        "state": {
+                            "running": {
+                                "startedAt": "2026-11-03T18:18:15Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 2000,
+                                "supplementalGroups": [
+                                    2000
+                                ],
+                                "uid": 1000
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/etc/newrelic-infra/nri-kubernetes.yml",
+                                "name": "nri-kubernetes-config"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-w2ksl",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "10.80.3.1",
+                "hostIPs": [
+                    {
+                        "ip": "10.80.3.1"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Running",
+                "podIP": "10.80.2.228",
+                "podIPs": [
+                    {
+                        "ip": "10.80.2.228"
+                    }
+                ],
+                "qosClass": "Burstable",
+                "resources": {
+                    "limits": {
+                        "memory": "585936Ki"
+                    },
+                    "requests": {
+                        "cpu": "181m",
+                        "memory": "300M"
+                    }
+                },
+                "startTime": "2026-11-03T18:07:59Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "annotations": {
+                    "checksum/agent-config": "eff80ff71d97dc88db76cbaf0628251e0cbfb1a73a6dc28ed60b7d44b25227e4",
+                    "checksum/integrations_config": "afa2dcd2e21756834c5ff92253bf888721094cd2019bb3a2611b7cb7ca5ca1f7",
+                    "checksum/nri-kubernetes": "e2f4a5dc7c9e5d58e8be03b4bdf198b2978d8e26334dffc09732fd855737bc54"
+                },
+                "creationTimestamp": "2026-11-03T18:07:59Z",
+                "generateName": "auto-shop-new-relic-nrk8s-kubelet-",
+                "generation": 1,
+                "labels": {
+                    "app.kubernetes.io/component": "kubelet",
+                    "app.kubernetes.io/instance": "auto-shop-new-relic",
+                    "app.kubernetes.io/name": "newrelic-infrastructure",
+                    "controller-revision-hash": "66fcdd6945",
+                    "mode": "unprivileged",
+                    "pod-template-generation": "1",
+                    "topology.kubernetes.io/region": "us-east-1",
+                    "topology.kubernetes.io/zone": "us-east-1b"
+                },
+                "name": "auto-shop-new-relic-nrk8s-kubelet-kwvhr",
+                "namespace": "auto-shop-hml",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "DaemonSet",
+                        "name": "auto-shop-new-relic-nrk8s-kubelet",
+                        "uid": "85e88679-efba-4a53-b5e8-f911082e3786"
+                    }
+                ],
+                "resourceVersion": "1983544",
+                "uid": "9999b4ff-ea95-491f-bc72-a19ee29e9f3b"
+            },
+            "spec": {
+                "affinity": {
+                    "nodeAffinity": {
+                        "requiredDuringSchedulingIgnoredDuringExecution": {
+                            "nodeSelectorTerms": [
+                                {
+                                    "matchFields": [
+                                        {
+                                            "key": "metadata.name",
+                                            "operator": "In",
+                                            "values": [
+                                                "ip-10-80-5-64.ec2.internal"
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+                "containers": [
+                    {
+                        "env": [
+                            {
+                                "name": "NRI_KUBERNETES_SINK_HTTP_PORT",
+                                "value": "8003"
+                            },
+                            {
+                                "name": "NRI_KUBERNETES_CLUSTERNAME",
+                                "value": "auto-shop-hml"
+                            },
+                            {
+                                "name": "NRI_KUBERNETES_VERBOSE",
+                                "value": "false"
+                            },
+                            {
+                                "name": "NRI_KUBERNETES_TESTCONNECTIONENDPOINT",
+                                "value": "/healthz"
+                            },
+                            {
+                                "name": "NRI_KUBERNETES_NODENAME",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "spec.nodeName"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NRI_KUBERNETES_NODEIP",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "status.hostIP"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "docker.io/newrelic/nri-kubernetes:4.9.0",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "kubelet",
+                        "resources": {
+                            "limits": {
+                                "memory": "300M"
+                            },
+                            "requests": {
+                                "cpu": "100m",
+                                "memory": "150M"
+                            }
+                        },
+                        "securityContext": {
+                            "allowPrivilegeEscalation": false,
+                            "readOnlyRootFilesystem": true,
+                            "runAsGroup": 2000,
+                            "runAsUser": 1000
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/etc/newrelic-infra/nri-kubernetes.yml",
+                                "name": "nri-kubernetes-config",
+                                "subPath": "nri-kubernetes.yml"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-prhkh",
+                                "readOnly": true
+                            }
+                        ]
+                    },
+                    {
+                        "args": [
+                            "newrelic-infra"
+                        ],
+                        "env": [
+                            {
+                                "name": "NRIA_LICENSE_KEY",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "key": "NEW_RELIC_LICENSE_KEY",
+                                        "name": "auto-shop-new-relic"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NRIA_OVERRIDE_HOSTNAME_SHORT",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "spec.nodeName"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NRIA_OVERRIDE_HOSTNAME",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "spec.nodeName"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "NRIA_OVERRIDE_HOST_ROOT"
+                            },
+                            {
+                                "name": "NRI_KUBERNETES_NODE_NAME",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "spec.nodeName"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "CLUSTER_NAME",
+                                "value": "auto-shop-hml"
+                            },
+                            {
+                                "name": "NRIA_PASSTHROUGH_ENVIRONMENT",
+                                "value": "CLUSTER_NAME"
+                            },
+                            {
+                                "name": "NRIA_HOST",
+                                "valueFrom": {
+                                    "fieldRef": {
+                                        "apiVersion": "v1",
+                                        "fieldPath": "status.hostIP"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "docker.io/newrelic/infrastructure-bundle:3.5.6",
+                        "imagePullPolicy": "IfNotPresent",
+                        "name": "agent",
+                        "ports": [
+                            {
+                                "containerPort": 8003,
+                                "protocol": "TCP"
+                            }
+                        ],
+                        "resources": {
+                            "limits": {
+                                "memory": "300M"
+                            },
+                            "requests": {
+                                "cpu": "100m",
+                                "memory": "150M"
+                            }
+                        },
+                        "securityContext": {
+                            "allowPrivilegeEscalation": false,
+                            "readOnlyRootFilesystem": true,
+                            "runAsGroup": 2000,
+                            "runAsUser": 1000
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/etc/newrelic-infra.yml",
+                                "name": "config",
+                                "subPath": "newrelic-infra.yml"
+                            },
+                            {
+                                "mountPath": "/etc/newrelic-infra/integrations.d/",
+                                "name": "nri-integrations-cfg-volume"
+                            },
+                            {
+                                "mountPath": "/var/db/newrelic-infra/data",
+                                "name": "agent-tmpfs-data"
+                            },
+                            {
+                                "mountPath": "/var/db/newrelic-infra/user_data",
+                                "name": "agent-tmpfs-user-data"
+                            },
+                            {
+                                "mountPath": "/tmp",
+                                "name": "agent-tmpfs-tmp"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-prhkh",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "nodeName": "ip-10-80-5-64.ec2.internal",
+                "nodeSelector": {
+                    "kubernetes.io/os": "linux"
+                },
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "auto-shop-new-relic-newrelic-infrastructure",
+                "serviceAccountName": "auto-shop-new-relic-newrelic-infrastructure",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoSchedule",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoSchedule",
+                        "key": "node.kubernetes.io/disk-pressure",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoSchedule",
+                        "key": "node.kubernetes.io/memory-pressure",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoSchedule",
+                        "key": "node.kubernetes.io/pid-pressure",
+                        "operator": "Exists"
+                    },
+                    {
+                        "effect": "NoSchedule",
+                        "key": "node.kubernetes.io/unschedulable",
+                        "operator": "Exists"
+                    }
+                ],
+                "volumes": [
+                    {
+                        "emptyDir": {},
+                        "name": "agent-tmpfs-data"
+                    },
+                    {
+                        "emptyDir": {},
+                        "name": "agent-tmpfs-user-data"
+                    },
+                    {
+                        "emptyDir": {},
+                        "name": "agent-tmpfs-tmp"
+                    },
+                    {
+                        "configMap": {
+                            "defaultMode": 420,
+                            "items": [
+                                {
+                                    "key": "nri-kubernetes.yml",
+                                    "path": "nri-kubernetes.yml"
+                                }
+                            ],
+                            "name": "auto-shop-new-relic-nrk8s-kubelet"
+                        },
+                        "name": "nri-kubernetes-config"
+                    },
+                    {
+                        "configMap": {
+                            "defaultMode": 420,
+                            "items": [
+                                {
+                                    "key": "newrelic-infra.yml",
+                                    "path": "newrelic-infra.yml"
+                                }
+                            ],
+                            "name": "auto-shop-new-relic-nrk8s-agent-kubelet"
+                        },
+                        "name": "config"
+                    },
+                    {
+                        "configMap": {
+                            "defaultMode": 420,
+                            "name": "auto-shop-new-relic-nrk8s-integrations-cfg"
+                        },
+                        "name": "nri-integrations-cfg-volume"
+                    },
+                    {
+                        "name": "kube-api-access-prhkh",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "allocatedResources": {
+                    "cpu": "200m",
+                    "memory": "300M"
+                },
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T18:08:00Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T18:07:59Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T18:18:21Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T18:18:21Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-03T18:07:59Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "allocatedResources": {
+                            "cpu": "100m",
+                            "memory": "150M"
+                        },
+                        "containerID": "containerd://45d8ef030f48397c7ef0f0bdbc8f44082ec828e165643596e0a553a574ae021c",
+                        "image": "docker.io/newrelic/infrastructure-bundle:3.5.6",
+                        "imageID": "docker.io/newrelic/infrastructure-bundle@sha256:caffe23d0b17be69d5930a4469690bbca83246f7b296ccfa1d1c26decdea8b49",
+                        "lastState": {
+                            "terminated": {
+                                "containerID": "containerd://e0a6165aa6ea8c84e9eb2af83fb3c87739bf55077eae652009cc64d68e607209",
+                                "exitCode": 1,
+                                "finishedAt": "2026-11-03T18:16:47Z",
+                                "reason": "Error",
+                                "startedAt": "2026-11-03T18:15:31Z"
+                            }
+                        },
+                        "name": "agent",
+                        "ready": true,
+                        "resources": {
+                            "limits": {
+                                "memory": "300M"
+                            },
+                            "requests": {
+                                "cpu": "100m",
+                                "memory": "150M"
+                            }
+                        },
+                        "restartCount": 5,
+                        "started": true,
+                        "state": {
+                            "running": {
+                                "startedAt": "2026-11-03T18:18:21Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 2000,
+                                "supplementalGroups": [
+                                    2000
+                                ],
+                                "uid": 1000
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/etc/newrelic-infra.yml",
+                                "name": "config"
+                            },
+                            {
+                                "mountPath": "/etc/newrelic-infra/integrations.d/",
+                                "name": "nri-integrations-cfg-volume"
+                            },
+                            {
+                                "mountPath": "/var/db/newrelic-infra/data",
+                                "name": "agent-tmpfs-data"
+                            },
+                            {
+                                "mountPath": "/var/db/newrelic-infra/user_data",
+                                "name": "agent-tmpfs-user-data"
+                            },
+                            {
+                                "mountPath": "/tmp",
+                                "name": "agent-tmpfs-tmp"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-prhkh",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    },
+                    {
+                        "allocatedResources": {
+                            "cpu": "100m",
+                            "memory": "150M"
+                        },
+                        "containerID": "containerd://68460d044d7aae094782cccfd3c2f6049604a8f6877a470f14004d02fee729d7",
+                        "image": "docker.io/newrelic/nri-kubernetes:4.9.0",
+                        "imageID": "docker.io/newrelic/nri-kubernetes@sha256:e45b92e691010b8bdba78a2c3eaca8fc9d04877584920568e1bf253f57d4bd23",
+                        "lastState": {
+                            "terminated": {
+                                "containerID": "containerd://89bc02d1827de67ad6d5568e45c9a761dceb4dcfbefa06224db10c281ae71e6a",
+                                "exitCode": 5,
+                                "finishedAt": "2026-11-03T18:17:01Z",
+                                "reason": "Error",
+                                "startedAt": "2026-11-03T18:15:31Z"
+                            }
+                        },
+                        "name": "kubelet",
+                        "ready": true,
+                        "resources": {
+                            "limits": {
+                                "memory": "300M"
+                            },
+                            "requests": {
+                                "cpu": "100m",
+                                "memory": "150M"
+                            }
+                        },
+                        "restartCount": 5,
+                        "started": true,
+                        "state": {
+                            "running": {
+                                "startedAt": "2026-11-03T18:18:21Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 2000,
+                                "supplementalGroups": [
+                                    2000
+                                ],
+                                "uid": 1000
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/etc/newrelic-infra/nri-kubernetes.yml",
+                                "name": "nri-kubernetes-config"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-prhkh",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "10.80.5.64",
+                "hostIPs": [
+                    {
+                        "ip": "10.80.5.64"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Running",
+                "podIP": "10.80.5.4",
+                "podIPs": [
+                    {
+                        "ip": "10.80.5.4"
+                    }
+                ],
+                "qosClass": "Burstable",
+                "resources": {
+                    "limits": {
+                        "memory": "585936Ki"
+                    },
+                    "requests": {
+                        "cpu": "181m",
+                        "memory": "300M"
+                    }
+                },
+                "startTime": "2026-11-03T18:07:59Z"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "creationTimestamp": "2026-11-01T11:02:34Z",
+                "generateName": "auto-shop-redis-f47769bd-",
+                "generation": 1,
+                "labels": {
+                    "app": "auto-shop-redis",
+                    "app.kubernetes.io/component": "cache",
+                    "app.kubernetes.io/name": "auto-shop-system",
+                    "pod-template-hash": "f47769bd",
+                    "topology.kubernetes.io/region": "us-east-1",
+                    "topology.kubernetes.io/zone": "us-east-1b"
+                },
+                "name": "auto-shop-redis-f47769bd-b2pk5",
+                "namespace": "auto-shop-hml",
+                "ownerReferences": [
+                    {
+                        "apiVersion": "apps/v1",
+                        "blockOwnerDeletion": true,
+                        "controller": true,
+                        "kind": "ReplicaSet",
+                        "name": "auto-shop-redis-f47769bd",
+                        "uid": "d0184147-ae06-4c59-8bd9-fc356d69a895"
+                    }
+                ],
+                "resourceVersion": "1198623",
+                "uid": "ea50ebbe-857b-4c7a-a60e-e00c02aa6ee1"
+            },
+            "spec": {
+                "containers": [
+                    {
+                        "args": [
+                            "umask 077\nprintf 'requirepass %s\\n' \"$REDIS_PASSWORD\" \u003e /tmp/redis.conf\nexec redis-server /tmp/redis.conf --bind 0.0.0.0 --save \"\" --appendonly no --dir /tmp --maxmemory 64mb --maxmemory-policy noeviction\n"
+                        ],
+                        "command": [
+                            "sh",
+                            "-c"
+                        ],
+                        "env": [
+                            {
+                                "name": "REDIS_PASSWORD",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "key": "REDIS_PASSWORD",
+                                        "name": "auto-shop-redis-credentials"
+                                    }
+                                }
+                            },
+                            {
+                                "name": "REDISCLI_AUTH",
+                                "valueFrom": {
+                                    "secretKeyRef": {
+                                        "key": "REDIS_PASSWORD",
+                                        "name": "auto-shop-redis-credentials"
+                                    }
+                                }
+                            }
+                        ],
+                        "image": "redis:7-alpine",
+                        "imagePullPolicy": "IfNotPresent",
+                        "livenessProbe": {
+                            "exec": {
+                                "command": [
+                                    "redis-cli",
+                                    "ping"
+                                ]
+                            },
+                            "failureThreshold": 3,
+                            "periodSeconds": 15,
+                            "successThreshold": 1,
+                            "timeoutSeconds": 2
+                        },
+                        "name": "redis",
+                        "ports": [
+                            {
+                                "containerPort": 6379,
+                                "name": "redis",
+                                "protocol": "TCP"
+                            }
+                        ],
+                        "readinessProbe": {
+                            "exec": {
+                                "command": [
+                                    "redis-cli",
+                                    "ping"
+                                ]
+                            },
+                            "failureThreshold": 3,
+                            "periodSeconds": 5,
+                            "successThreshold": 1,
+                            "timeoutSeconds": 2
+                        },
+                        "resources": {
+                            "limits": {
+                                "cpu": "250m",
+                                "memory": "128Mi"
+                            },
+                            "requests": {
+                                "cpu": "50m",
+                                "memory": "64Mi"
+                            }
+                        },
+                        "securityContext": {
+                            "allowPrivilegeEscalation": false,
+                            "capabilities": {
+                                "drop": [
+                                    "ALL"
+                                ]
+                            },
+                            "readOnlyRootFilesystem": true
+                        },
+                        "terminationMessagePath": "/dev/termination-log",
+                        "terminationMessagePolicy": "File",
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/tmp",
+                                "name": "tmp"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-rwk58",
+                                "readOnly": true
+                            }
+                        ]
+                    }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "enableServiceLinks": true,
+                "nodeName": "ip-10-80-5-64.ec2.internal",
+                "preemptionPolicy": "PreemptLowerPriority",
+                "priority": 0,
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "securityContext": {
+                    "fsGroup": 1000,
+                    "runAsGroup": 1000,
+                    "runAsNonRoot": true,
+                    "runAsUser": 999,
+                    "seccompProfile": {
+                        "type": "RuntimeDefault"
+                    }
+                },
+                "serviceAccount": "default",
+                "serviceAccountName": "default",
+                "terminationGracePeriodSeconds": 30,
+                "tolerations": [
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/not-ready",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    },
+                    {
+                        "effect": "NoExecute",
+                        "key": "node.kubernetes.io/unreachable",
+                        "operator": "Exists",
+                        "tolerationSeconds": 300
+                    }
+                ],
+                "volumes": [
+                    {
+                        "emptyDir": {
+                            "medium": "Memory",
+                            "sizeLimit": "4Mi"
+                        },
+                        "name": "tmp"
+                    },
+                    {
+                        "name": "kube-api-access-rwk58",
+                        "projected": {
+                            "defaultMode": 420,
+                            "sources": [
+                                {
+                                    "serviceAccountToken": {
+                                        "expirationSeconds": 3607,
+                                        "path": "token"
+                                    }
+                                },
+                                {
+                                    "configMap": {
+                                        "items": [
+                                            {
+                                                "key": "ca.crt",
+                                                "path": "ca.crt"
+                                            }
+                                        ],
+                                        "name": "kube-root-ca.crt"
+                                    }
+                                },
+                                {
+                                    "downwardAPI": {
+                                        "items": [
+                                            {
+                                                "fieldRef": {
+                                                    "apiVersion": "v1",
+                                                    "fieldPath": "metadata.namespace"
+                                                },
+                                                "path": "namespace"
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "status": {
+                "allocatedResources": {
+                    "cpu": "50m",
+                    "memory": "64Mi"
+                },
+                "conditions": [
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-01T11:02:35Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodReadyToStartContainers"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-01T11:02:34Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Initialized"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-01T11:02:36Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "Ready"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-01T11:02:36Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "ContainersReady"
+                    },
+                    {
+                        "lastProbeTime": null,
+                        "lastTransitionTime": "2026-11-01T11:02:34Z",
+                        "observedGeneration": 1,
+                        "status": "True",
+                        "type": "PodScheduled"
+                    }
+                ],
+                "containerStatuses": [
+                    {
+                        "allocatedResources": {
+                            "cpu": "50m",
+                            "memory": "64Mi"
+                        },
+                        "containerID": "containerd://97cbecf14ebb2da0213db244844e06b7a08a460b00f066b8a39728804f3f7a1b",
+                        "image": "docker.io/library/redis:7-alpine",
+                        "imageID": "docker.io/library/redis@sha256:8da19c7399dca900c6822a1cf30f9d2285585e2c4b457ff4095b0f4500054d3f",
+                        "lastState": {},
+                        "name": "redis",
+                        "ready": true,
+                        "resources": {
+                            "limits": {
+                                "cpu": "250m",
+                                "memory": "128Mi"
+                            },
+                            "requests": {
+                                "cpu": "50m",
+                                "memory": "64Mi"
+                            }
+                        },
+                        "restartCount": 0,
+                        "started": true,
+                        "state": {
+                            "running": {
+                                "startedAt": "2026-11-01T11:02:36Z"
+                            }
+                        },
+                        "user": {
+                            "linux": {
+                                "gid": 1000,
+                                "supplementalGroups": [
+                                    1000
+                                ],
+                                "uid": 999
+                            }
+                        },
+                        "volumeMounts": [
+                            {
+                                "mountPath": "/tmp",
+                                "name": "tmp"
+                            },
+                            {
+                                "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                                "name": "kube-api-access-rwk58",
+                                "readOnly": true,
+                                "recursiveReadOnly": "Disabled"
+                            }
+                        ]
+                    }
+                ],
+                "hostIP": "10.80.5.64",
+                "hostIPs": [
+                    {
+                        "ip": "10.80.5.64"
+                    }
+                ],
+                "observedGeneration": 1,
+                "phase": "Running",
+                "podIP": "10.80.5.6",
+                "podIPs": [
+                    {
+                        "ip": "10.80.5.6"
+                    }
+                ],
+                "qosClass": "Burstable",
+                "resources": {
+                    "limits": {
+                        "cpu": "250m",
+                        "memory": "128Mi"
+                    },
+                    "requests": {
+                        "cpu": "28m",
+                        "memory": "64Mi"
+                    }
+                },
+                "startTime": "2026-11-01T11:02:34Z"
+            }
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}

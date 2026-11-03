@@ -1,0 +1,32 @@
+[
+    {
+        "RouteKey": "$default",
+        "Target": "integrations/a5kzbyq",
+        "RouteId": "03i8idp"
+    },
+    {
+        "RouteKey": "GET /health",
+        "Target": "integrations/n5fa4ys",
+        "RouteId": "gp9icks"
+    },
+    {
+        "RouteKey": "GET /.well-known/jwks.json",
+        "Target": "integrations/n5fa4ys",
+        "RouteId": "gzfs0ev"
+    },
+    {
+        "RouteKey": "ANY /api/v1/admin/{proxy+}",
+        "Target": "integrations/a5kzbyq",
+        "RouteId": "jf81z20"
+    },
+    {
+        "RouteKey": "ANY /api/v1/admin",
+        "Target": "integrations/a5kzbyq",
+        "RouteId": "mfyq39j"
+    },
+    {
+        "RouteKey": "POST /auth/customer/token",
+        "Target": "integrations/n5fa4ys",
+        "RouteId": "n99fb9r"
+    }
+]

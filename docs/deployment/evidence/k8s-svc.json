@@ -1,0 +1,153 @@
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "annotations": {
+                    "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"annotations\":{},\"labels\":{\"app\":\"auto-shop-backend\",\"app.kubernetes.io/component\":\"backend\",\"app.kubernetes.io/name\":\"auto-shop-system\"},\"name\":\"auto-shop-backend-service\",\"namespace\":\"auto-shop-hml\"},\"spec\":{\"ports\":[{\"name\":\"http\",\"port\":80,\"targetPort\":8000}],\"selector\":{\"app\":\"auto-shop-backend\"},\"type\":\"ClusterIP\"}}\n"
+                },
+                "creationTimestamp": "2026-11-01T11:00:51Z",
+                "labels": {
+                    "app": "auto-shop-backend",
+                    "app.kubernetes.io/component": "backend",
+                    "app.kubernetes.io/name": "auto-shop-system"
+                },
+                "name": "auto-shop-backend-service",
+                "namespace": "auto-shop-hml",
+                "resourceVersion": "1198046",
+                "uid": "527e269b-c71f-434c-ba07-b4d93ef86b62"
+            },
+            "spec": {
+                "clusterIP": "172.20.237.9",
+                "clusterIPs": [
+                    "172.20.237.9"
+                ],
+                "internalTrafficPolicy": "Cluster",
+                "ipFamilies": [
+                    "IPv4"
+                ],
+                "ipFamilyPolicy": "SingleStack",
+                "ports": [
+                    {
+                        "name": "http",
+                        "port": 80,
+                        "protocol": "TCP",
+                        "targetPort": 8000
+                    }
+                ],
+                "selector": {
+                    "app": "auto-shop-backend"
+                },
+                "sessionAffinity": "None",
+                "type": "ClusterIP"
+            },
+            "status": {
+                "loadBalancer": {}
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "annotations": {
+                    "meta.helm.sh/release-name": "auto-shop-new-relic",
+                    "meta.helm.sh/release-namespace": "auto-shop-hml"
+                },
+                "creationTimestamp": "2026-11-03T18:07:58Z",
+                "labels": {
+                    "app.kubernetes.io/component": "metrics",
+                    "app.kubernetes.io/instance": "auto-shop-new-relic",
+                    "app.kubernetes.io/managed-by": "Helm",
+                    "app.kubernetes.io/name": "kube-state-metrics",
+                    "app.kubernetes.io/part-of": "kube-state-metrics",
+                    "app.kubernetes.io/version": "2.16.0",
+                    "helm.sh/chart": "kube-state-metrics-6.1.5"
+                },
+                "name": "auto-shop-new-relic-kube-state-metrics",
+                "namespace": "auto-shop-hml",
+                "resourceVersion": "1980637",
+                "uid": "e42cbd9f-baf0-43f2-aa6a-6fb43616f9d7"
+            },
+            "spec": {
+                "clusterIP": "172.20.231.113",
+                "clusterIPs": [
+                    "172.20.231.113"
+                ],
+                "internalTrafficPolicy": "Cluster",
+                "ipFamilies": [
+                    "IPv4"
+                ],
+                "ipFamilyPolicy": "SingleStack",
+                "ports": [
+                    {
+                        "name": "http",
+                        "port": 8080,
+                        "protocol": "TCP",
+                        "targetPort": 8080
+                    }
+                ],
+                "selector": {
+                    "app.kubernetes.io/instance": "auto-shop-new-relic",
+                    "app.kubernetes.io/name": "kube-state-metrics"
+                },
+                "sessionAffinity": "None",
+                "type": "ClusterIP"
+            },
+            "status": {
+                "loadBalancer": {}
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "annotations": {
+                    "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"v1\",\"kind\":\"Service\",\"metadata\":{\"annotations\":{},\"labels\":{\"app\":\"auto-shop-redis\",\"app.kubernetes.io/component\":\"cache\",\"app.kubernetes.io/name\":\"auto-shop-system\"},\"name\":\"auto-shop-redis\",\"namespace\":\"auto-shop-hml\"},\"spec\":{\"ports\":[{\"name\":\"redis\",\"port\":6379,\"protocol\":\"TCP\",\"targetPort\":\"redis\"}],\"selector\":{\"app\":\"auto-shop-redis\"},\"type\":\"ClusterIP\"}}\n"
+                },
+                "creationTimestamp": "2026-11-01T11:00:52Z",
+                "labels": {
+                    "app": "auto-shop-redis",
+                    "app.kubernetes.io/component": "cache",
+                    "app.kubernetes.io/name": "auto-shop-system"
+                },
+                "name": "auto-shop-redis",
+                "namespace": "auto-shop-hml",
+                "resourceVersion": "1198051",
+                "uid": "23994049-72a8-42aa-8b22-f49eec030435"
+            },
+            "spec": {
+                "clusterIP": "172.20.20.67",
+                "clusterIPs": [
+                    "172.20.20.67"
+                ],
+                "internalTrafficPolicy": "Cluster",
+                "ipFamilies": [
+                    "IPv4"
+                ],
+                "ipFamilyPolicy": "SingleStack",
+                "ports": [
+                    {
+                        "name": "redis",
+                        "port": 6379,
+                        "protocol": "TCP",
+                        "targetPort": "redis"
+                    }
+                ],
+                "selector": {
+                    "app": "auto-shop-redis"
+                },
+                "sessionAffinity": "None",
+                "type": "ClusterIP"
+            },
+            "status": {
+                "loadBalancer": {}
+            }
+        }
+    ],
+    "kind": "List",
+    "metadata": {
+        "resourceVersion": ""
+    }
+}
