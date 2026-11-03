@@ -20,6 +20,13 @@ class HmlNewRelicSecretWorkflowTests(unittest.TestCase):
         self.assertIn("- deploy", inputs)
         self.assertIn("- prepare-newrelic-secret", inputs)
         self.assertIn("inputs.operation == 'prepare-newrelic-secret'", content)
+        build_job = content.split("\n  build-push:\n", maxsplit=1)[1].split(
+            "\n  prepare-hml-newrelic-secret:\n", maxsplit=1
+        )[0]
+        self.assertIn(
+            "if: needs.source-guard.result == 'success' && inputs.operation != 'prepare-newrelic-secret'",
+            build_job,
+        )
 
     def test_secret_preparation_uses_the_existing_hml_environment_and_private_runner(self) -> None:
         content = WORKFLOW.read_text(encoding="utf-8")
