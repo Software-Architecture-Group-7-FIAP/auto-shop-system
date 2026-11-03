@@ -18,7 +18,9 @@ from zoneinfo import ZoneInfo
 BRT = ZoneInfo("America/Sao_Paulo")
 API_ROOT = "https://api.github.com"
 ACTIVE_STATUSES = {"queued", "requested", "waiting", "in_progress", "pending"}
+HML_AUTO_STOP_WAIT_JOB_NAME = "hml-auto-stop-wait"
 GUARD_STEP_NAME = "Reject a second opening run for the same HML date"
+LIFECYCLE_START_ROLE_STEP_NAME = "Configure the narrow lifecycle start role"
 SESSION_RECORD_STEP_NAME = "Record the trusted operator and authorize the selected HML session profile"
 ALL_INPUTS_PREFLIGHT_STEP_NAME = "Validate all credentials, repositories, deploy gates, alerting, and cost evidence inputs"
 AUTH_PREFLIGHT_ROLE_STEP_NAME = "Configure the read-only persistent auth preflight role"
@@ -97,6 +99,30 @@ def _step_conclusion(steps: list[object], name: str) -> str | None:
     return conclusion if isinstance(conclusion, str) else None
 
 
+def _open_failed_at_guard(open_job: dict[str, object], steps: list[object]) -> bool:
+    if open_job.get("status") != "completed" or open_job.get("conclusion") != "failure":
+        return False
+    guard_indexes = [
+        index
+        for index, step in enumerate(steps)
+        if isinstance(step, dict) and step.get("name") == GUARD_STEP_NAME
+    ]
+    if len(guard_indexes) != 1:
+        return False
+    guard_index = guard_indexes[0]
+    preceding_steps_succeeded = all(
+        isinstance(step, dict) and step.get("conclusion") == "success"
+        for step in steps[:guard_index]
+    )
+    return (
+        preceding_steps_succeeded
+        and _step_conclusion(steps, GUARD_STEP_NAME) == "failure"
+        and _step_conclusion(steps, LIFECYCLE_START_ROLE_STEP_NAME) == "skipped"
+        and _step_conclusion(steps, SESSION_RECORD_STEP_NAME) == "skipped"
+        and _step_conclusion(steps, FOUNDATION_PLAN_STEP_NAME) == "skipped"
+    )
+
+
 def _classify_prior_run(
     repository: str,
     run: dict[str, object],
@@ -104,8 +130,8 @@ def _classify_prior_run(
     *,
     stage: str,
     last_attempt: int | None = None,
-) -> tuple[bool, bool]:
-    """Return (safe_to_retry, verified_ledger_owner), failing closed on ambiguity."""
+) -> tuple[bool, bool, bool]:
+    """Return retry safety, verified ownership, and the narrow active-wait exception."""
     run_id = run.get("id")
     run_attempt = run.get("run_attempt")
     if not isinstance(run_id, int) or not isinstance(run_attempt, int) or run_attempt < 1:
@@ -117,6 +143,7 @@ def _classify_prior_run(
 
     verified_owner = False
     safe_to_retry = True
+    active_job_evidence: list[tuple[str, bool]] = []
     for attempt in range(1, last_attempt + 1):
         jobs = _attempt_jobs(repository, run_id, attempt, token)
         open_jobs = [job for job in jobs if job.get("name") == "open"]
@@ -128,6 +155,14 @@ def _classify_prior_run(
         steps = open_job.get("steps")
         if not isinstance(steps, list):
             raise ValueError("A prior opening attempt has no readable step evidence")
+
+        attempt_active_jobs = [job for job in jobs if job.get("status") in ACTIVE_STATUSES]
+        if attempt_active_jobs:
+            guard_failure_is_terminal = _open_failed_at_guard(open_job, steps)
+            active_job_evidence.extend(
+                (str(job.get("name", "")), guard_failure_is_terminal)
+                for job in attempt_active_jobs
+            )
 
         record_state = _step_conclusion(steps, SESSION_RECORD_STEP_NAME)
         all_inputs_state = _step_conclusion(steps, ALL_INPUTS_PREFLIGHT_STEP_NAME)
@@ -185,7 +220,13 @@ def _classify_prior_run(
             continue
         raise ValueError("A prior opening attempt has ambiguous pre-mutation evidence")
 
-    return safe_to_retry, verified_owner and safe_to_retry
+    active_wait_only = (
+        safe_to_retry
+        and not verified_owner
+        and len(active_job_evidence) == 1
+        and active_job_evidence[0] == (HML_AUTO_STOP_WAIT_JOB_NAME, True)
+    )
+    return safe_to_retry, verified_owner and safe_to_retry, active_wait_only
 
 
 def main() -> int:
@@ -225,7 +266,7 @@ def main() -> int:
             run_attempt = current_run.get("run_attempt")
             if not isinstance(run_attempt, int) or run_attempt < current_attempt:
                 raise ValueError("The current rerun has incomplete attempt evidence")
-            safe, verified = _classify_prior_run(
+            safe, verified, _ = _classify_prior_run(
                 repository,
                 current_run,
                 token,
@@ -240,14 +281,32 @@ def main() -> int:
                 )
 
         prior_runs = [run for run in matching_runs if str(run.get("id")) != current_run_id]
-        if any(str(run.get("status", "")) in ACTIVE_STATUSES for run in prior_runs):
-            raise ValueError("A prior opening run is still active; refusing a second opening")
+        active_prior_runs = [
+            run for run in prior_runs if str(run.get("status", "")) in ACTIVE_STATUSES
+        ]
+        active_wait_run_id: str | None = None
+        if active_prior_runs:
+            if arguments.stage != "hml" or len(active_prior_runs) != 1:
+                raise ValueError("A prior opening run is still active; refusing a second opening")
+            active_run = active_prior_runs[0]
+            safe, verified, active_wait_only = _classify_prior_run(
+                repository,
+                active_run,
+                token,
+                stage=arguments.stage,
+            )
+            if active_run.get("conclusion") == "success" or not safe or verified or not active_wait_only:
+                raise ValueError("A prior opening run is still active; refusing a second opening")
+            active_wait_run_id = str(active_run.get("id"))
+
         if any(run.get("conclusion") == "success" for run in prior_runs):
             raise ValueError(f"A successful {arguments.stage.upper()} opening run already exists today.")
 
         verified_owners: list[tuple[datetime, int]] = []
         for run in prior_runs:
-            safe, verified = _classify_prior_run(repository, run, token, stage=arguments.stage)
+            if str(run.get("id")) == active_wait_run_id:
+                continue
+            safe, verified, _ = _classify_prior_run(repository, run, token, stage=arguments.stage)
             if not safe:
                 raise ValueError("A prior opening attempt may have started infrastructure mutation")
             if verified:
