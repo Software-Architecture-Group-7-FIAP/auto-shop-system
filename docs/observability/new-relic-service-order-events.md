@@ -60,6 +60,26 @@ Access to failure records must be restricted to operators, with the shortest
 retention supported by the approved New Relic account policy. Never facet by
 `event_id`, `service_order_id`, trace ID, or span ID.
 
+## HML drill evidence
+
+A controlled drill may inspect one single synthetic failure only after the HML SRE
+owner approves a service-order integration fault-injection path that uses
+synthetic-only context. The workflow does not inject an event or mutate
+business records. Do not use real customer data, shared-infrastructure faults,
+or request/response contents to create a signal. If no approved safe injector
+exists, stop and record the drill as blocked.
+
+For the single inspected record, check the closed `failure_type` and `subsystem`
+values and follow `trace.id` or `span.id` to a technical trace when available.
+Record only whether linking was `linked` or `unavailable`; **do not copy raw
+trace identifiers into the workflow evidence**. Keep the restricted source log
+and any incident details in their approved operator-only location. The workflow
+summary may contain the bounded baseline and drill query intervals, zero
+baseline count, one-event count, route/incident/cleanup confirmations, and link
+outcome. It contains no
+customer data, business record identifiers, secrets, payloads, or live New
+Relic query results.
+
 ## NRQL examples
 
 Daily committed OS volume (calendar-day interpretation uses the New Relic
@@ -98,7 +118,9 @@ For investigation, open a single failure record and follow its `trace.id` or
 Business events are not sampled by application code. Delivery is process-local
 and best effort after commit, so a process crash between database commit and log
 forwarding can lose a signal; dashboards must not be treated as an audit ledger.
-New Relic account-level
-retention, ingest limits, or sampling can still create gaps and must be recorded
-with dashboard evidence. HML validation requires a new signed lifecycle window;
-the prior window ended on 2026-10-31 and must not be bypassed.
+New Relic account-level retention, ingest limits, or sampling can still create
+gaps and must be recorded with dashboard evidence. HML validation requires a
+currently active signed lifecycle window. Use the checked-in lifecycle validator
+and current coordinator authorization; do not infer access from an earlier
+window or bypass its gate. The previous evidence window ended on 2026-10-31 and
+remains historical context rather than authorization for a new drill.

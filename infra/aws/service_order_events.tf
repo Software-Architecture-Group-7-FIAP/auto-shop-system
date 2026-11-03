@@ -23,10 +23,35 @@ locals {
     for stage in local.api_stages : stage => "${trimsuffix(var.upstream_ssm_prefix, "/")}/events/service-order-publisher-role-arn/${stage}"
   }
 
+  service_order_alert_topic_names = {
+    hml = "${local.name_prefix}-service-order-alerts"
+    prd = "${local.name_prefix}-prd-service-order-alerts"
+  }
+
+  service_order_alert_topic_arns = {
+    for stage, name in local.service_order_alert_topic_names :
+    stage => "arn:${data.aws_partition.current.partition}:sns:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:${name}"
+  }
+
   eks_oidc_claim_prefix = trimprefix(
     data.aws_ssm_parameter.upstream["eks_oidc_provider_arn"].value,
     "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/",
   )
+}
+
+moved {
+  from = aws_sns_topic.service_order_alerts
+  to   = aws_sns_topic.service_order_alerts["hml"]
+}
+
+moved {
+  from = aws_sns_topic_subscription.service_order_alert_email[0]
+  to   = aws_sns_topic_subscription.service_order_alert_email["hml"]
+}
+
+moved {
+  from = aws_sns_topic_policy.service_order_events
+  to   = aws_sns_topic_policy.service_order_events["hml"]
 }
 
 resource "aws_cloudwatch_event_bus" "service_order" {
@@ -69,7 +94,7 @@ data "aws_iam_policy_document" "service_order_alerts_key" {
     condition {
       test     = "StringEquals"
       variable = "kms:EncryptionContext:aws:sns:topicArn"
-      values   = [local.service_order_alert_topic_arn]
+      values   = values(local.service_order_alert_topic_arns)
     }
   }
 }
@@ -92,19 +117,21 @@ resource "aws_kms_alias" "service_order_alerts" {
 }
 
 resource "aws_sns_topic" "service_order_alerts" {
-  name              = "${local.name_prefix}-service-order-alerts"
+  for_each = local.api_stages
+
+  name              = local.service_order_alert_topic_names[each.key]
   kms_master_key_id = aws_kms_key.service_order_alerts.arn
 
   tags = merge(local.common_tags, {
-    Name      = "${local.name_prefix}-service-order-alerts"
+    Name      = local.service_order_alert_topic_names[each.key]
     Component = "service-order-events"
   })
 }
 
 resource "aws_sns_topic_subscription" "service_order_alert_email" {
-  count = trimspace(var.service_order_alert_email) == "" ? 0 : 1
+  for_each = trimspace(var.service_order_alert_email) == "" ? toset([]) : local.api_stages
 
-  topic_arn = aws_sns_topic.service_order_alerts.arn
+  topic_arn = aws_sns_topic.service_order_alerts[each.key].arn
   protocol  = "email"
   endpoint  = trimspace(var.service_order_alert_email)
 }
@@ -148,7 +175,7 @@ resource "aws_cloudwatch_event_target" "service_order_alerts" {
   event_bus_name = aws_cloudwatch_event_bus.service_order[each.key].name
   rule           = aws_cloudwatch_event_rule.service_order_failed[each.key].name
   target_id      = "service-order-alert-email"
-  arn            = aws_sns_topic.service_order_alerts.arn
+  arn            = aws_sns_topic.service_order_alerts[each.key].arn
 
   dead_letter_config {
     arn = aws_sqs_queue.service_order_event_dlq[each.key].arn
@@ -195,7 +222,7 @@ resource "aws_cloudwatch_metric_alarm" "service_order_event_dlq_visible" {
     QueueName = aws_sqs_queue.service_order_event_dlq[each.key].name
   }
 
-  alarm_actions = [aws_sns_topic.service_order_alerts.arn]
+  alarm_actions = [aws_sns_topic.service_order_alerts[each.key].arn]
 
   tags = merge(local.common_tags, {
     Name      = "${local.name_prefix}-service-order-${each.key}-dlq-not-empty"
@@ -204,6 +231,8 @@ resource "aws_cloudwatch_metric_alarm" "service_order_event_dlq_visible" {
 }
 
 data "aws_iam_policy_document" "service_order_sns_events" {
+  for_each = local.api_stages
+
   statement {
     sid    = "AllowEventBridgeFromServiceOrderRules"
     effect = "Allow"
@@ -214,12 +243,12 @@ data "aws_iam_policy_document" "service_order_sns_events" {
     }
 
     actions   = ["sns:Publish"]
-    resources = [aws_sns_topic.service_order_alerts.arn]
+    resources = [aws_sns_topic.service_order_alerts[each.key].arn]
 
     condition {
       test     = "ArnEquals"
       variable = "aws:SourceArn"
-      values   = [for rule in aws_cloudwatch_event_rule.service_order_failed : rule.arn]
+      values   = [aws_cloudwatch_event_rule.service_order_failed[each.key].arn]
     }
 
     condition {
@@ -239,12 +268,12 @@ data "aws_iam_policy_document" "service_order_sns_events" {
     }
 
     actions   = ["sns:Publish"]
-    resources = [aws_sns_topic.service_order_alerts.arn]
+    resources = [aws_sns_topic.service_order_alerts[each.key].arn]
 
     condition {
       test     = "ArnEquals"
       variable = "aws:SourceArn"
-      values   = [for alarm in aws_cloudwatch_metric_alarm.service_order_event_dlq_visible : alarm.arn]
+      values   = [aws_cloudwatch_metric_alarm.service_order_event_dlq_visible[each.key].arn]
     }
 
     condition {
@@ -256,8 +285,10 @@ data "aws_iam_policy_document" "service_order_sns_events" {
 }
 
 resource "aws_sns_topic_policy" "service_order_events" {
-  arn    = aws_sns_topic.service_order_alerts.arn
-  policy = data.aws_iam_policy_document.service_order_sns_events.json
+  for_each = local.api_stages
+
+  arn    = aws_sns_topic.service_order_alerts[each.key].arn
+  policy = data.aws_iam_policy_document.service_order_sns_events[each.key].json
 }
 
 data "aws_iam_policy_document" "service_order_event_dlq" {
@@ -405,8 +436,28 @@ output "service_order_publisher_role_arns" {
 }
 
 output "service_order_alert_topic_arn" {
-  description = "SNS topic ARN receiving service-order failure events."
-  value       = aws_sns_topic.service_order_alerts.arn
+  description = "Deprecated compatibility alias for the HML service-order alert topic. Use service_order_alert_topic_arns for both stages."
+  value       = aws_sns_topic.service_order_alerts["hml"].arn
+}
+
+output "service_order_alert_topic_arns" {
+  description = "Stage-isolated SNS topic ARNs receiving service-order failure events."
+  value       = { for stage, topic in aws_sns_topic.service_order_alerts : stage => topic.arn }
+}
+
+output "service_order_alert_email_subscription_arns" {
+  description = "SNS email subscription ARNs by stage, when service_order_alert_email is configured. Confirm each subscription before delivery checks."
+  value       = { for stage, subscription in aws_sns_topic_subscription.service_order_alert_email : stage => subscription.arn }
+}
+
+output "service_order_alert_email_subscription_pending_by_stage" {
+  description = "Whether each configured SNS email subscription is still awaiting recipient confirmation. Empty when service_order_alert_email is unset."
+  value       = { for stage, subscription in aws_sns_topic_subscription.service_order_alert_email : stage => subscription.pending_confirmation }
+}
+
+output "service_order_event_rule_arns" {
+  description = "EventBridge service-order failure rule ARNs by API stage."
+  value       = { for stage, rule in aws_cloudwatch_event_rule.service_order_failed : stage => rule.arn }
 }
 
 output "service_order_alert_kms_key_arn" {

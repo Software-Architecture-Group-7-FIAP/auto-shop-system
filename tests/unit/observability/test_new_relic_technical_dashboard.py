@@ -4,21 +4,28 @@ from pathlib import Path
 
 import pytest
 
+import scripts.observability.provision_technical_observability as technical_observability
 from scripts.observability.provision_technical_observability import (
+    CONDITION_CREATE,
     CONDITION_SEARCH,
-    DASHBOARD_UPDATE,
+    DASHBOARD_CREATE,
     DASHBOARD_SEARCH,
-    NerdGraphClient,
+    DASHBOARD_UPDATE,
+    POLICY_CREATE,
     POLICY_SEARCH,
+    TAG_ENTITY,
+    NerdGraphClient,
     ProvisioningError,
-    reconcile,
     _condition_input,
     _dashboard_input,
     _dashboard_mutation_guid,
+    _entities,
+    _has_ownership_tag,
+    _verified_alerts_subset,
     main,
+    reconcile,
     validate_definitions,
 )
-
 
 ROOT = Path(__file__).resolve().parents[3]
 DASHBOARD_PATH = ROOT / "observability" / "new-relic" / "technical-dashboard.json"
@@ -33,31 +40,22 @@ def test_dashboard_has_required_aggregate_widgets_and_metadata():
     dashboard = _load(DASHBOARD_PATH)
     alerts = _load(ALERTS_PATH)
 
-    validate_definitions(dashboard, alerts, require_verified_aws=False)
+    validate_definitions(dashboard, alerts)
     widgets = [widget for page in dashboard["pages"] for widget in page["widgets"]]
     assert len(widgets) == 11
     assert len({widget["id"] for widget in widgets}) == 11
-    required_sources = {
-        "Transaction",
-        "ApiGatewaySample",
-        "ServerlessSample",
-        "K8sPodSample",
-        "K8sContainerSample",
-        "K8sHpaSample",
+    assert "aws_schema_mapping" not in dashboard
+    assert {widget["coverage_status"] for widget in widgets} == {
+        "verified",
+        "excluded",
+        "gated",
     }
-    assert required_sources <= {widget["source"] for widget in widgets}
-    gateway_availability = next(
-        widget for widget in widgets if widget["id"] == "gateway-error-availability"
-    )
-    assert gateway_availability["source"] == "ApiGatewaySample"
-    assert gateway_availability["unit"] == "percent"
-    gateway_query = gateway_availability["nrql"].lower()
-    assert "sum(provider.count)" in gateway_query
-    assert "sum(provider.4xxerror)" in gateway_query
-    assert "sum(provider.5xxerror)" in gateway_query
-    assert "availability" in gateway_query
-    assert "4xx error rate" in gateway_query
-    assert "5xx error rate" in gateway_query
+    excluded_gateway = next(widget for widget in widgets if widget["id"] == "gateway-volume-errors")
+    assert excluded_gateway["coverage_status"] == "excluded"
+    assert "HTTP API v2" in excluded_gateway["coverage_note"]
+    gated_lambda = next(widget for widget in widgets if widget["id"] == "lambda-auth-health")
+    assert gated_lambda["coverage_status"] == "gated"
+    assert "schema" in gated_lambda["coverage_note"].lower()
     for widget in widgets:
         assert widget["time_range"] == "30 minutes"
         assert widget["unit"]
@@ -82,6 +80,10 @@ def test_validate_reports_dashboard_and_alert_counts(capsys):
     assert result == 0
     assert json.loads(capsys.readouterr().out) == {
         "conditions": 7,
+        "eligible_conditions": 7,
+        "eligible_widgets": 7,
+        "excluded_conditions": 0,
+        "excluded_widgets": 4,
         "status": "valid",
         "widgets": 11,
     }
@@ -136,12 +138,158 @@ def test_alerts_cover_api_and_kubernetes_with_complete_operational_metadata():
         )
 
 
-def test_apply_refuses_unverified_aws_schema():
+def test_unsupported_and_unverified_sources_cannot_be_claimed_as_verified():
     dashboard = _load(DASHBOARD_PATH)
     alerts = _load(ALERTS_PATH)
 
-    with pytest.raises(ValueError, match="AWS schema mapping"):
-        validate_definitions(dashboard, alerts, require_verified_aws=True)
+    for widget_id in ("gateway-volume-errors", "lambda-auth-health"):
+        unsafe_dashboard = deepcopy(dashboard)
+        widget = next(
+            widget
+            for page in unsafe_dashboard["pages"]
+            for widget in page["widgets"]
+            if widget["id"] == widget_id
+        )
+        widget["coverage_status"] = "verified"
+
+        with pytest.raises(ValueError, match="coverage status"):
+            validate_definitions(unsafe_dashboard, alerts)
+
+    unsafe_alerts = deepcopy(alerts)
+    gated_condition = unsafe_alerts["conditions"][0]
+    gated_condition["coverage_status"] = "gated"
+
+    with pytest.raises(ValueError, match="coverage status"):
+        validate_definitions(dashboard, unsafe_alerts)
+
+
+def test_unsupported_widgets_cannot_be_laundered_through_a_verified_source():
+    dashboard = _load(DASHBOARD_PATH)
+    alerts = _load(ALERTS_PATH)
+
+    for widget_id in ("gateway-volume-errors", "lambda-auth-health"):
+        unsafe_dashboard = deepcopy(dashboard)
+        widget = next(
+            widget
+            for page in unsafe_dashboard["pages"]
+            for widget in page["widgets"]
+            if widget["id"] == widget_id
+        )
+        widget["source"] = "Transaction"
+        widget["coverage_status"] = "verified"
+        widget["nrql"] = (
+            "FROM Transaction SELECT count(*) "
+            "WHERE appName = 'auto-shop-api' AND label.environment = 'hml' "
+            "SINCE 30 minutes ago"
+        )
+
+        with pytest.raises(ValueError, match="source does not match"):
+            validate_definitions(unsafe_dashboard, alerts)
+
+    unsafe_alerts = deepcopy(alerts)
+    condition = unsafe_alerts["conditions"][0]
+    condition["source"] = "ServerlessSample"
+    condition["coverage_status"] = "gated"
+    condition["nrql"] = (
+        "FROM ServerlessSample SELECT count(*) "
+        "WHERE provider.functionName = 'lambda-auth-hml'"
+    )
+
+    with pytest.raises(ValueError, match="source does not match"):
+        validate_definitions(dashboard, unsafe_alerts)
+
+
+def test_verified_sources_require_their_hml_scope_in_dashboard_and_alert_queries():
+    dashboard = _load(DASHBOARD_PATH)
+    alerts = _load(ALERTS_PATH)
+    unsafe_dashboard = deepcopy(dashboard)
+    unsafe_dashboard["pages"][0]["widgets"][0]["nrql"] = (
+        "FROM Transaction SELECT rate(count(*), 1 minute) "
+        "WHERE appName = 'auto-shop-api' SINCE 30 minutes ago"
+    )
+
+    with pytest.raises(ValueError, match="HML scope"):
+        validate_definitions(unsafe_dashboard, alerts)
+
+    unsafe_alerts = deepcopy(alerts)
+    unsafe_alerts["conditions"][0]["nrql"] = (
+        "FROM Transaction SELECT percentage(count(*), WHERE error IS false) "
+        "WHERE appName = 'auto-shop-api'"
+    )
+
+    with pytest.raises(ValueError, match="HML scope"):
+        validate_definitions(dashboard, unsafe_alerts)
+
+    unsafe_dashboard["pages"][0]["widgets"][0]["nrql"] = (
+        "FROM Transaction SELECT rate(count(*), 1 minute) "
+        "WHERE appName = 'auto-shop-api' AND label.environment = 'hml' "
+        "OR appName = 'production-api' SINCE 30 minutes ago"
+    )
+
+    with pytest.raises(ValueError, match="HML scope"):
+        validate_definitions(unsafe_dashboard, alerts)
+
+
+def test_dashboard_discovery_fails_closed_when_nerdgraph_response_is_malformed():
+    with pytest.raises(ProvisioningError, match="dashboard discovery response was invalid"):
+        _entities(
+            {
+                "actor": {
+                    "entitySearch": {
+                        "results": {"entities": None},
+                    }
+                }
+            }
+        )
+
+
+def test_dashboard_ownership_requires_an_exact_structured_tag_value():
+    ownership = "auto-shop-owned-hml-technical-v1"
+
+    assert _has_ownership_tag(
+        {
+            "tags": [
+                {
+                    "key": "auto-shop.ownership",
+                    "values": [ownership],
+                }
+            ]
+        },
+        ownership,
+    )
+    assert not _has_ownership_tag(
+        {
+            "tags": [
+                {
+                    "key": "auto-shop.ownership",
+                    "values": f"prefix-{ownership}-suffix",
+                }
+            ]
+        },
+        ownership,
+    )
+
+
+def test_explicitly_gated_alert_condition_is_excluded_from_reconciliation():
+    alerts = _load(ALERTS_PATH)
+    gated_condition = alerts["conditions"][0]
+    gated_condition["source"] = "ServerlessSample"
+    gated_condition["coverage_status"] = "gated"
+    gated_condition["coverage_note"] = "Gated until the Lambda schema is verified."
+    gated_condition["nrql"] = (
+        "FROM ServerlessSample SELECT count(*) "
+        "WHERE provider.functionName = 'lambda-auth-hml'"
+    )
+
+    verified_alerts, total, eligible = _verified_alerts_subset(alerts)
+
+    assert total == 7
+    assert eligible == 6
+    assert len(verified_alerts["conditions"]) == 6
+    assert all(
+        condition["source"] != "ServerlessSample"
+        for condition in verified_alerts["conditions"]
+    )
 
 
 def test_nerdgraph_client_uses_fixed_endpoint_header_and_bounded_safe_errors():
@@ -216,7 +364,135 @@ def test_workflow_is_manual_gated_and_does_not_version_notification_destination(
     assert "NEW_RELIC_LICENSE_KEY" not in workflow
     assert "confirm_apply" in workflow
     assert "confirm_notification_route" in workflow
+    assert "session_token:" in workflow
+    assert "LIFECYCLE_SESSION_TOKEN" in workflow
+    assert "LIFECYCLE_SESSION_SIGNING_KEY" in workflow
+    assert "STAGING_SESSION_AUTHORIZED" in workflow
+    assert "SESSION_MODE" in workflow
+    assert "validator_action=teardown" in workflow
+    assert "confirm_aws_schema" not in workflow
+    assert "CONFIRM_AWS_SCHEMA" not in workflow
+    assert "--confirm-aws-schema" not in workflow
     assert "persist-credentials: false" in workflow
+
+
+def test_apply_reconciles_only_the_verified_fastapi_and_kubernetes_subset(monkeypatch, capsys):
+    class _Client:
+        def __init__(self):
+            self.dashboard_input = None
+            self.created_conditions = []
+
+        def execute(self, document, variables):
+            if document == DASHBOARD_SEARCH:
+                return {"actor": {"entitySearch": {"results": {"entities": []}}}}
+            if document == DASHBOARD_CREATE:
+                self.dashboard_input = variables["dashboard"]
+                return {
+                    "dashboardCreate": {
+                        "entityResult": {"guid": "dashboard-guid"},
+                        "errors": [],
+                    }
+                }
+            if document == TAG_ENTITY:
+                return {"taggingAddTagsToEntity": {"errors": []}}
+            if document == POLICY_SEARCH:
+                return {
+                    "actor": {
+                        "account": {"alerts": {"policiesSearch": {"policies": []}}}
+                    }
+                }
+            if document == POLICY_CREATE:
+                return {"alertsPolicyCreate": {"id": "7"}}
+            if document == CONDITION_SEARCH:
+                return {
+                    "actor": {
+                        "account": {
+                            "alerts": {"nrqlConditionsSearch": {"nrqlConditions": []}}
+                        }
+                    }
+                }
+            if document == CONDITION_CREATE:
+                self.created_conditions.append(variables["condition"])
+                return {"alertsNrqlConditionStaticCreate": {"id": "condition-id"}}
+            raise AssertionError("apply issued an unexpected NerdGraph operation")
+
+    client = _Client()
+    monkeypatch.setattr(technical_observability, "NerdGraphClient", lambda **_kwargs: client)
+
+    result = main(
+        [
+            "apply",
+            "--dashboard",
+            str(DASHBOARD_PATH),
+            "--alerts",
+            str(ALERTS_PATH),
+        ],
+        environ={"NEW_RELIC_ACCOUNT_ID": "1", "NEW_RELIC_USER_API_KEY": "test-key"},
+    )
+
+    assert result == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["eligible_widgets"] == 7
+    assert output["excluded_widgets"] == 4
+    assert output["eligible_conditions"] == 7
+    assert output["excluded_conditions"] == 0
+    applied_widgets = [
+        widget
+        for page in client.dashboard_input["pages"]
+        for widget in page["widgets"]
+    ]
+    assert len(applied_widgets) == 7
+    assert len(client.created_conditions) == 7
+    applied_nrql = json.dumps(client.dashboard_input).lower()
+    assert "apigateway" not in applied_nrql
+    assert "serverlesssample" not in applied_nrql
+    assert "provider.functionname" not in applied_nrql
+    assert "from transaction" in applied_nrql
+    assert "from k8spodsample" in applied_nrql
+    assert "from k8scontainersample" in applied_nrql
+    assert "from k8shpasample" in applied_nrql
+
+
+def test_reconcile_revalidates_contracts_and_rejects_unknown_profiles_before_network_calls():
+    dashboard = _load(DASHBOARD_PATH)
+    alerts = _load(ALERTS_PATH)
+    gateway = next(
+        widget
+        for page in dashboard["pages"]
+        for widget in page["widgets"]
+        if widget["id"] == "gateway-volume-errors"
+    )
+    gateway["source"] = "Transaction"
+    gateway["coverage_status"] = "verified"
+    gateway["nrql"] = (
+        "FROM Transaction SELECT count(*) "
+        "WHERE appName = 'auto-shop-api' AND label.environment = 'hml'"
+    )
+
+    class _Client:
+        def __init__(self):
+            self.documents = []
+
+        def execute(self, document, _variables):
+            self.documents.append(document)
+            return {}
+
+    client = _Client()
+    with pytest.raises(ValueError, match="source does not match"):
+        reconcile(client, 1, dashboard, alerts, action="apply")
+    assert client.documents == []
+
+    dashboard = _load(DASHBOARD_PATH)
+    with pytest.raises(ValueError, match="profile"):
+        reconcile(
+            client,
+            1,
+            dashboard,
+            alerts,
+            action="apply",
+            profile="unsupported",
+        )
+    assert client.documents == []
 
 
 def test_plan_is_read_only_and_idempotently_counts_owned_resources():
@@ -285,9 +561,25 @@ def test_plan_is_read_only_and_idempotently_counts_owned_resources():
 
     assert result["dashboard"] == "update"
     assert result["policy"] == "update"
+    assert result["eligible_widgets"] == 7
+    assert result["excluded_widgets"] == 4
+    assert result["eligible_conditions"] == 7
+    assert result["excluded_conditions"] == 0
     assert result["conditions_update"] == 1
     assert result["conditions_create"] == 6
     assert client.documents == [DASHBOARD_SEARCH, POLICY_SEARCH, CONDITION_SEARCH]
+
+    repeated_client = _Client()
+    repeated_result = reconcile(
+        repeated_client,
+        1,
+        dashboard,
+        alerts,
+        action="plan",
+    )
+
+    assert repeated_result == result
+    assert repeated_client.documents == client.documents
 
 
 def test_runbook_documents_sources_thresholds_route_drills_and_teardown():
@@ -361,9 +653,32 @@ def test_validation_rejects_whitespace_raw_query_and_malformed_threshold():
         "FROM\nLog SELECT   * WHERE service = 'auto-shop-api' SINCE 30 minutes ago"
     )
     with pytest.raises(ValueError, match="privacy contract"):
-        validate_definitions(unsafe_dashboard, alerts, require_verified_aws=False)
+        validate_definitions(unsafe_dashboard, alerts)
+
+    unsafe_dashboard = deepcopy(dashboard)
+    unsafe_dashboard["pages"][0]["widgets"][0]["nrql"] = (
+        "FROM Transaction SELECT count(cpf) "
+        "WHERE appName = 'auto-shop-api' AND label.environment = 'hml' "
+        "SINCE 30 minutes ago"
+    )
+    with pytest.raises(ValueError, match="privacy contract"):
+        validate_definitions(unsafe_dashboard, alerts)
 
     unsafe_alerts = deepcopy(alerts)
     unsafe_alerts["conditions"][0]["terms"][0]["threshold"] = -1
     with pytest.raises(ValueError, match="threshold"):
-        validate_definitions(dashboard, unsafe_alerts, require_verified_aws=False)
+        validate_definitions(dashboard, unsafe_alerts)
+
+    duplicate_widget_title = deepcopy(dashboard)
+    duplicate_widget_title["pages"][0]["widgets"][1]["title"] = (
+        duplicate_widget_title["pages"][0]["widgets"][0]["title"]
+    )
+    with pytest.raises(ValueError, match="duplicate dashboard widget title"):
+        validate_definitions(duplicate_widget_title, alerts)
+
+    duplicate_condition_name = deepcopy(alerts)
+    duplicate_condition_name["conditions"][1]["name"] = duplicate_condition_name[
+        "conditions"
+    ][0]["name"]
+    with pytest.raises(ValueError, match="Duplicate alert condition name"):
+        validate_definitions(dashboard, duplicate_condition_name)
