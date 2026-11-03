@@ -7,6 +7,7 @@ import pytest
 import scripts.observability.provision_technical_observability as technical_observability
 from scripts.observability.provision_technical_observability import (
     CONDITION_CREATE,
+    CONDITION_GET,
     CONDITION_SEARCH,
     CONDITION_UPDATE,
     DASHBOARD_CREATE,
@@ -851,6 +852,19 @@ def test_existing_dashboard_apply_replays_update_payload_locally():
             if document == CONDITION_UPDATE:
                 self.condition_updates.append(variables["condition"])
                 return {"alertsNrqlConditionStaticUpdate": {"id": variables["conditionId"]}}
+            if document == CONDITION_GET:
+                return {
+                    "actor": {
+                        "account": {
+                            "alerts": {
+                                "nrqlCondition": {
+                                    "id": variables["conditionId"],
+                                    "name": "drifted condition",
+                                }
+                            }
+                        }
+                    }
+                }
             raise AssertionError("apply issued an unexpected NerdGraph operation")
 
     client = _Client()

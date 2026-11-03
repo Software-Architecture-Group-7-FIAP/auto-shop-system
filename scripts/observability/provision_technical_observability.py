@@ -14,6 +14,7 @@ from pathlib import Path
 if __package__:
     from .nerdgraph_client import (
         CONDITION_CREATE,
+        CONDITION_GET,
         CONDITION_SEARCH,
         CONDITION_UPDATE,
         DASHBOARD_CREATE,
@@ -31,6 +32,7 @@ if __package__:
 else:
     from nerdgraph_client import (
         CONDITION_CREATE,
+        CONDITION_GET,
         CONDITION_SEARCH,
         CONDITION_UPDATE,
         DASHBOARD_CREATE,
@@ -890,6 +892,39 @@ def _condition_input(condition: dict, *, enabled: bool) -> dict[str, object]:
     }
 
 
+def _condition_configuration(data: dict) -> dict[str, object]:
+    try:
+        condition = data["actor"]["account"]["alerts"]["nrqlCondition"]
+    except (KeyError, TypeError):
+        raise ProvisioningError(
+            "NerdGraph alert condition configuration response was invalid"
+        ) from None
+    if not isinstance(condition, dict) or not condition.get("id"):
+        raise ProvisioningError(
+            "NerdGraph alert condition configuration response was invalid"
+        )
+    return {
+        field: condition.get(field)
+        for field in (
+            "name",
+            "description",
+            "enabled",
+            "nrql",
+            "runbookUrl",
+            "valueFunction",
+            "signal",
+            "terms",
+            "violationTimeLimitSeconds",
+        )
+    }
+
+
+def _condition_configuration_matches(
+    desired: dict[str, object], existing: dict[str, object]
+) -> bool:
+    return desired == existing
+
+
 def _positive_account_id(raw: str) -> int:
     try:
         value = int(raw)
@@ -1147,14 +1182,23 @@ def reconcile(
         condition_input = _condition_input(condition, enabled=action == "apply")
         current = by_name.get(condition["name"])
         if current:
-            client.execute(
-                CONDITION_UPDATE,
-                {
-                    "accountId": account_id,
-                    "conditionId": current["id"],
-                    "condition": condition_input,
-                },
+            existing_condition = _condition_configuration(
+                client.execute(
+                    CONDITION_GET,
+                    {"accountId": account_id, "conditionId": current["id"]},
+                )
             )
+            if not _condition_configuration_matches(
+                condition_input, existing_condition
+            ):
+                client.execute(
+                    CONDITION_UPDATE,
+                    {
+                        "accountId": account_id,
+                        "conditionId": current["id"],
+                        "condition": condition_input,
+                    },
+                )
         elif action == "apply":
             client.execute(
                 CONDITION_CREATE,

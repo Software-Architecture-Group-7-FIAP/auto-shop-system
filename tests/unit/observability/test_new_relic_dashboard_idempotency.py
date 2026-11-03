@@ -6,6 +6,7 @@ import pytest
 
 from scripts.observability.provision_technical_observability import (
     CONDITION_CREATE,
+    CONDITION_GET,
     CONDITION_SEARCH,
     CONDITION_UPDATE,
     DASHBOARD_CREATE,
@@ -296,6 +297,26 @@ class _NerdGraphLifecycle:
                 }
             }
 
+        if document == CONDITION_GET:
+            condition_id = variables["conditionId"]
+            condition = next(
+                item
+                for item in self.conditions.values()
+                if item["id"] == condition_id
+            )
+            return {
+                "actor": {
+                    "account": {
+                        "alerts": {
+                            "nrqlCondition": {
+                                "id": condition_id,
+                                **deepcopy(condition["configuration"]),
+                            }
+                        }
+                    }
+                }
+            }
+
         if document in {CONDITION_CREATE, CONDITION_UPDATE}:
             condition_input = variables["condition"]
             expected_condition = next(
@@ -314,11 +335,17 @@ class _NerdGraphLifecycle:
             if document == CONDITION_CREATE:
                 assert condition_input["name"] not in self.conditions
                 condition_id = f"condition-id-{len(self.conditions) + 1}"
-                self.conditions[condition_input["name"]] = {"id": condition_id}
+                self.conditions[condition_input["name"]] = {
+                    "id": condition_id,
+                    "configuration": deepcopy(condition_input),
+                }
                 result_name = "alertsNrqlConditionStaticCreate"
             else:
                 condition_id = variables["conditionId"]
                 assert self.conditions[condition_input["name"]]["id"] == condition_id
+                self.conditions[condition_input["name"]]["configuration"] = deepcopy(
+                    condition_input
+                )
                 result_name = "alertsNrqlConditionStaticUpdate"
             return {
                 result_name: {"id": condition_id, "name": condition_input["name"]}
@@ -400,6 +427,7 @@ def test_identical_second_apply_discovers_dashboard_without_updating_it(
     assert TAG_ENTITY not in second_documents
     assert POLICY_CREATE not in second_documents
     assert CONDITION_CREATE not in second_documents
+    assert CONDITION_UPDATE not in second_documents
     assert len(client.conditions) == len(alerts["conditions"])
     assert len({item["id"] for item in client.conditions.values()}) == len(
         alerts["conditions"]
