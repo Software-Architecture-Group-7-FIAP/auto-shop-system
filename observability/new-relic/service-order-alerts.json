@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "ownership": "auto-shop-owned-hml-service-order-v1",
+  "ownership": "auto-shop-owned-hml-service-order-v2",
   "policy": {
     "name": "auto-shop-owned::HML Service Order Failures",
     "incident_preference": "PER_CONDITION_AND_TARGET"

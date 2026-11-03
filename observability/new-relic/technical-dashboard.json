@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "ownership": "auto-shop-owned-hml-technical-v1",
-  "name": "auto-shop-owned::HML Technical Health",
+  "ownership": "auto-shop-owned-hml-technical-v2",
+  "name": "auto-shop-owned::HML Technical Health v2",
   "description": "Owned by auto-shop-system. Aggregate HML health only; no raw logs or personal data.",
   "permissions": "PRIVATE",
   "pages": [

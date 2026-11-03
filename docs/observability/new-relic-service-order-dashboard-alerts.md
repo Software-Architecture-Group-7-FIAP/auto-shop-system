@@ -2,8 +2,13 @@
 
 ## Dashboard contract
 
-The private `HML Service Order Operations` dashboard reads the structured `Log`
-events documented in [the service-order event contract](new-relic-service-order-events.md).
+The replacement private dashboard is
+`auto-shop-owned::HML Service Order Operations v2`. It reads the structured
+`Log` events documented in [the service-order event contract](new-relic-service-order-events.md).
+It uses the existing `auto-shop.ownership` tag key with a v2 ownership value;
+the legacy v1 dashboard is retained and is not deleted by reconciliation.
+The existing service-order alert policy and condition definitions are retained;
+their manifest ownership marker moves to v2 with the replacement dashboard.
 The records use `service = 'auto-shop-api'` and `environment = 'staging'`; the
 application's staging deployment is the HML environment. All widgets include
 those filters and `event_version = 1`.

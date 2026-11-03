@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "ownership": "auto-shop-owned-hml-technical-v1",
+  "ownership": "auto-shop-owned-hml-technical-v2",
   "policy": {
     "name": "auto-shop-owned::HML Technical Alerts",
     "incident_preference": "PER_CONDITION_AND_TARGET"
