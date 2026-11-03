@@ -49,6 +49,20 @@ def _utc_timestamp(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _run_completion_bound(run: dict[str, Any]) -> datetime:
+    """Return a conservative completion bound from a completed Actions run."""
+    timestamps = []
+    for field in ("completed_at", "updated_at"):
+        value = run.get(field)
+        if value is not None:
+            if not isinstance(value, str) or not value:
+                raise LifecycleDispatchError("GitHub returned an invalid completion timestamp.")
+            timestamps.append(_utc_timestamp(value))
+    if not timestamps:
+        raise LifecycleDispatchError("GitHub returned an invalid completion timestamp.")
+    return max(timestamps)
+
+
 def _api_request(
     token: str,
     method: str,
@@ -316,7 +330,7 @@ def _cancel_session_apply_runs(
             status = latest.get("status")
             if status == "completed":
                 try:
-                    completed_at = _utc_timestamp(str(latest.get("completed_at", "")))
+                    completed_at = _run_completion_bound(latest)
                 except LifecycleDispatchError as error:
                     raise LifecycleDispatchError(
                         f"Apply run {run_id} reached completed with an invalid completion timestamp; destroy was not dispatched."
@@ -680,7 +694,7 @@ def dispatch_and_wait(arguments: argparse.Namespace) -> int:
                         f"Correlated run {run.get('id')} ended with conclusion '{conclusion}'."
                     )
                 try:
-                    completed_at = _utc_timestamp(str(run.get("completed_at", "")))
+                    completed_at = _run_completion_bound(run)
                 except LifecycleDispatchError as error:
                     raise LifecycleDispatchError("GitHub returned an invalid completion timestamp.") from error
                 if completed_at > deadline:
@@ -724,9 +738,8 @@ def dispatch_and_wait(arguments: argparse.Namespace) -> int:
         raise LifecycleDispatchError("The uniquely correlated run has no valid ID; no run was canceled.")
 
     if run.get("status") == "completed":
-        completed_at_value = run.get("completed_at")
         try:
-            completed_at = _utc_timestamp(str(completed_at_value))
+            completed_at = _run_completion_bound(run)
         except LifecycleDispatchError as error:
             raise LifecycleDispatchError(
                 f"Deadline reached and correlated run {run_id} is complete, but its completion time is invalid."
