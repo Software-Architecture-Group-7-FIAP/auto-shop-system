@@ -917,8 +917,10 @@ def test_cost_observation_failure_is_not_misclassified_as_identity_recovery(
 ) -> None:
     _set_github_context(monkeypatch)
     steps = _cost_reader_identity_failure_steps()
-    steps[5]["conclusion"] = "success"
-    steps[6]["conclusion"] = "failure"
+    # Test the scenario where COST_OBSERVATION fails (not COST_READER_IDENTITY)
+    # Index [6] = COST_READER_IDENTITY, [7] = COST_OBSERVATION
+    steps[6]["conclusion"] = "skipped"     # COST_READER_IDENTITY -> skipped
+    steps[7]["conclusion"] = "failure"     # COST_OBSERVATION -> failure
     _stub_api(
         monkeypatch,
         [
