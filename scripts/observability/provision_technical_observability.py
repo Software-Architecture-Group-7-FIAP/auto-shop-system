@@ -14,6 +14,8 @@ from pathlib import Path
 if __package__:
     from .nerdgraph_client import (
         CONDITION_CREATE,
+        CONDITION_DELETE,
+        CONDITION_GET,
         CONDITION_SEARCH,
         CONDITION_UPDATE,
         DASHBOARD_CREATE,
@@ -24,13 +26,15 @@ if __package__:
         POLICY_CREATE,
         POLICY_SEARCH,
         POLICY_UPDATE,
+        TAG_ENTITY,
         NerdGraphClient,
         ProvisioningError,
-        TAG_ENTITY,
     )
 else:
     from nerdgraph_client import (
         CONDITION_CREATE,
+        CONDITION_DELETE,
+        CONDITION_GET,
         CONDITION_SEARCH,
         CONDITION_UPDATE,
         DASHBOARD_CREATE,
@@ -41,9 +45,9 @@ else:
         POLICY_CREATE,
         POLICY_SEARCH,
         POLICY_UPDATE,
+        TAG_ENTITY,
         NerdGraphClient,
         ProvisioningError,
-        TAG_ENTITY,
     )
 
 
@@ -68,11 +72,61 @@ FORBIDDEN_QUERY_TERMS = (
     "response.body",
     "customer_id",
     "mechanic_name",
+    "cpf",
+    "cnpj",
+    "email",
 )
 
-SERVICE_ORDER_OWNERSHIP = "auto-shop-owned-hml-service-order-v1"
-SERVICE_ORDER_DASHBOARD_NAME = "auto-shop-owned::HML Service Order Operations"
+SERVICE_ORDER_OWNERSHIP = "auto-shop-owned-hml-service-order-v2"
+SERVICE_ORDER_DASHBOARD_NAME = "auto-shop-owned::HML Service Order Operations v2"
 SERVICE_ORDER_POLICY_NAME = "auto-shop-owned::HML Service Order Failures"
+SOURCE_COVERAGE_STATUS = {
+    "Transaction": "verified",
+    "ApiGatewaySample": "excluded",
+    "ServerlessSample": "gated",
+    "K8sPodSample": "verified",
+    "K8sContainerSample": "verified",
+    "K8sHpaSample": "verified",
+}
+TECHNICAL_WIDGET_SOURCES = {
+    "fastapi-throughput": "Transaction",
+    "fastapi-availability-errors": "Transaction",
+    "fastapi-latency": "Transaction",
+    "gateway-volume-errors": "ApiGatewaySample",
+    "gateway-error-availability": "ApiGatewaySample",
+    "gateway-latency": "ApiGatewaySample",
+    "lambda-auth-health": "ServerlessSample",
+    "k8s-pod-resources": "K8sPodSample",
+    "k8s-readiness": "K8sPodSample",
+    "k8s-restarts": "K8sContainerSample",
+    "k8s-hpa": "K8sHpaSample",
+}
+TECHNICAL_ALERT_CONTRACTS = {
+    "api-availability": ("api_availability", "Transaction"),
+    "api-latency": ("api_latency", "Transaction"),
+    "api-error-rate": ("api_error_rate", "Transaction"),
+    "k8s-readiness": ("k8s_readiness", "K8sPodSample"),
+    "k8s-restarts": ("k8s_restarts", "K8sContainerSample"),
+    "k8s-cpu": ("k8s_cpu", "K8sPodSample"),
+    "k8s-memory": ("k8s_memory", "K8sPodSample"),
+}
+SOURCE_REQUIRED_HML_SCOPE = {
+    "Transaction": ("appname = 'auto-shop-api'", "label.environment = 'hml'"),
+    "ApiGatewaySample": ("stage = 'hml'",),
+    "ServerlessSample": ("provider.functionname = 'lambda-auth-hml'",),
+    "K8sPodSample": (
+        "clustername = 'auto-shop-hml'",
+        "namespacename = 'auto-shop-hml'",
+    ),
+    "K8sContainerSample": (
+        "clustername = 'auto-shop-hml'",
+        "namespacename = 'auto-shop-hml'",
+    ),
+    "K8sHpaSample": (
+        "clustername = 'auto-shop-hml'",
+        "namespacename = 'auto-shop-hml'",
+    ),
+}
 SERVICE_ORDER_WIDGET_CONTRACTS = {
     "service-order-volume-daily": {
         "title": "Daily service-order volume (orders/day)",
@@ -170,11 +224,79 @@ def _validate_query(query: object, *, bounded: bool, expected_source: str) -> st
     return query
 
 
+def _source_is_verified(source: object, coverage_status: object, context: str) -> bool:
+    expected_status = SOURCE_COVERAGE_STATUS.get(source) if isinstance(source, str) else None
+    if expected_status is None or coverage_status != expected_status:
+        raise ValueError(f"{context} coverage status does not match the reviewed source policy")
+    return expected_status == "verified"
+
+
+def _validate_hml_source_scope(query: str, source: str) -> None:
+    normalized = f" {' '.join(query.lower().split())} "
+    required_scope = SOURCE_REQUIRED_HML_SCOPE.get(source)
+    if required_scope is None or " where " not in normalized:
+        raise ValueError("NRQL query does not match the required HML scope for its source")
+    filter_clause = normalized.rsplit(" where ", 1)[1]
+    filter_clause = re.split(
+        r"\b(?:facet|timeseries|since|limit|order by)\b",
+        filter_clause,
+        maxsplit=1,
+    )[0].strip()
+    required_prefix = " and ".join(required_scope)
+    if (
+        re.search(r"\bor\b", filter_clause)
+        or not filter_clause.startswith(required_prefix)
+        or (
+            len(filter_clause) > len(required_prefix)
+            and not filter_clause[len(required_prefix) :].startswith(" and ")
+        )
+    ):
+        raise ValueError("NRQL query does not match the required HML scope for its source")
+
+
+def _verified_dashboard_subset(dashboard: dict) -> tuple[dict, int, int]:
+    total_widgets = 0
+    eligible_widgets = 0
+    pages = []
+    for page in dashboard["pages"]:
+        widgets = []
+        for widget in page["widgets"]:
+            total_widgets += 1
+            if _source_is_verified(
+                widget.get("source"),
+                widget.get("coverage_status"),
+                "Dashboard widget",
+            ):
+                widgets.append(widget)
+                eligible_widgets += 1
+        if widgets:
+            pages.append({**page, "widgets": widgets})
+    if not eligible_widgets:
+        raise ValueError("No verified dashboard widgets are eligible for reconciliation")
+    return {**dashboard, "pages": pages}, total_widgets, eligible_widgets
+
+
+def _verified_alerts_subset(alerts: dict) -> tuple[dict, int, int]:
+    total_conditions = 0
+    eligible_conditions = 0
+    conditions = []
+    for condition in alerts["conditions"]:
+        total_conditions += 1
+        if _source_is_verified(
+            condition.get("source"),
+            condition.get("coverage_status"),
+            "Alert condition",
+        ):
+            conditions.append(condition)
+            eligible_conditions += 1
+    if not eligible_conditions:
+        raise ValueError("No verified alert conditions are eligible for reconciliation")
+    return {**alerts, "conditions": conditions}, total_conditions, eligible_conditions
+
+
 def validate_definitions(
     dashboard: dict,
     alerts: dict,
-    *,
-    require_verified_aws: bool,
 ) -> None:
     _require_exact_keys(
         dashboard,
@@ -184,7 +306,6 @@ def validate_definitions(
             "name",
             "description",
             "permissions",
-            "aws_schema_mapping",
             "pages",
         },
         "dashboard",
@@ -195,36 +316,25 @@ def validate_definitions(
         raise ValueError("Invalid ownership marker")
     if not RESOURCE_NAME_PATTERN.fullmatch(str(dashboard.get("name", ""))):
         raise ValueError("Invalid dashboard name")
-    mapping = dashboard.get("aws_schema_mapping")
-    if not isinstance(mapping, dict) or set(mapping) != {
-        "verified",
-        "verified_at",
-        "evidence_run_url",
-    }:
-        raise ValueError("Invalid AWS schema mapping")
-    if require_verified_aws and mapping.get("verified") is not True:
-        raise ValueError("AWS schema mapping must be verified before apply")
-    if mapping.get("verified") is True:
-        verified_at = mapping.get("verified_at")
-        evidence_url = mapping.get("evidence_run_url")
-        if not isinstance(verified_at, str) or not re.fullmatch(
-            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",
-            verified_at,
-        ):
-            raise ValueError("Invalid AWS schema verification timestamp")
-        if not isinstance(evidence_url, str) or not evidence_url.startswith(
-            "https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/actions/runs/"
-        ):
-            raise ValueError("Invalid AWS schema evidence URL")
     pages = dashboard.get("pages")
     if not isinstance(pages, list) or len(pages) != 2:
         raise ValueError("Dashboard must contain exactly two pages")
+    page_names: set[str] = set()
     widget_ids: set[str] = set()
     widget_count = 0
     for page in pages:
         _require_exact_keys(page, {"name", "widgets"}, "dashboard page")
+        page_name = page.get("name")
+        if (
+            not isinstance(page_name, str)
+            or not 1 <= len(page_name) <= 120
+            or page_name in page_names
+        ):
+            raise ValueError("Invalid or duplicate dashboard page name")
+        page_names.add(page_name)
         if not isinstance(page.get("widgets"), list):
-            raise ValueError("Dashboard page widgets must be a list")
+            raise TypeError("Dashboard page widgets must be a list")
+        page_widget_titles: set[str] = set()
         for widget in page["widgets"]:
             _require_exact_keys(
                 widget,
@@ -237,6 +347,7 @@ def validate_definitions(
                     "unit",
                     "filters",
                     "coverage_note",
+                    "coverage_status",
                     "nrql",
                 },
                 "dashboard widget",
@@ -244,9 +355,16 @@ def validate_definitions(
             widget_id = widget.get("id")
             if not isinstance(widget_id, str) or not SAFE_ID_PATTERN.fullmatch(widget_id):
                 raise ValueError("Invalid dashboard widget ID")
+            expected_source = TECHNICAL_WIDGET_SOURCES.get(widget_id)
+            if expected_source is None:
+                raise ValueError("Unreviewed dashboard widget ID")
             if widget_id in widget_ids:
                 raise ValueError("Duplicate dashboard widget ID")
             widget_ids.add(widget_id)
+            title = widget.get("title")
+            if not isinstance(title, str) or title in page_widget_titles:
+                raise ValueError("Invalid or duplicate dashboard widget title")
+            page_widget_titles.add(title)
             if widget.get("visualization") not in {"line", "billboard"}:
                 raise ValueError("Invalid dashboard visualization")
             if widget.get("time_range") != "30 minutes":
@@ -254,22 +372,23 @@ def validate_definitions(
             if not isinstance(widget.get("filters"), list) or not widget["filters"]:
                 raise ValueError("Dashboard widget filters are required")
             source = widget.get("source")
-            if source not in {
-                "Transaction",
-                "ApiGatewaySample",
-                "ServerlessSample",
-                "K8sPodSample",
-                "K8sContainerSample",
-                "K8sHpaSample",
-            }:
+            if source not in SOURCE_COVERAGE_STATUS:
                 raise ValueError("Invalid dashboard source")
+            if source != expected_source:
+                raise ValueError("Dashboard widget source does not match its reviewed source contract")
+            coverage_status = widget.get("coverage_status")
+            if not _source_is_verified(source, coverage_status, "Dashboard widget"):
+                coverage_note = widget.get("coverage_note")
+                if not isinstance(coverage_note, str) or not coverage_note.strip():
+                    raise ValueError("Gated dashboard widgets require an explicit coverage note")
             for field_name in ("title", "unit"):
                 field_value = widget.get(field_name)
                 if not isinstance(field_value, str) or not 1 <= len(field_value) <= 120:
                     raise ValueError("Invalid dashboard display field")
-            _validate_query(widget.get("nrql"), bounded=True, expected_source=source)
+            query = _validate_query(widget.get("nrql"), bounded=True, expected_source=source)
+            _validate_hml_source_scope(query, source)
             widget_count += 1
-    if widget_count != 11:
+    if widget_count != 11 or widget_ids != set(TECHNICAL_WIDGET_SOURCES):
         raise ValueError("Dashboard must contain exactly eleven widgets")
 
     _require_exact_keys(
@@ -300,6 +419,7 @@ def validate_definitions(
     if not isinstance(conditions, list) or len(conditions) != 7:
         raise ValueError("Exactly seven alert conditions are required")
     condition_ids: set[str] = set()
+    condition_names: set[str] = set()
     for condition in conditions:
         _require_exact_keys(
             condition,
@@ -311,6 +431,8 @@ def validate_definitions(
                 "nrql",
                 "signal",
                 "terms",
+                "coverage_status",
+                "coverage_note",
                 "loss_of_signal",
                 "enabled_during_hml_only",
                 "runbook_url",
@@ -320,15 +442,33 @@ def validate_definitions(
         condition_id = condition.get("id")
         if not isinstance(condition_id, str) or not SAFE_ID_PATTERN.fullmatch(condition_id):
             raise ValueError("Invalid alert condition ID")
+        expected_contract = TECHNICAL_ALERT_CONTRACTS.get(condition_id)
+        if expected_contract is None:
+            raise ValueError("Unreviewed alert condition ID")
         if condition_id in condition_ids:
             raise ValueError("Duplicate alert condition ID")
         condition_ids.add(condition_id)
-        if not RESOURCE_NAME_PATTERN.fullmatch(str(condition.get("name", ""))):
+        condition_name = condition.get("name")
+        if not RESOURCE_NAME_PATTERN.fullmatch(str(condition_name or "")):
             raise ValueError("Invalid owned alert condition name")
+        if condition_name in condition_names:
+            raise ValueError("Duplicate alert condition name")
+        condition_names.add(condition_name)
         source = condition.get("source")
-        if source not in {"Transaction", "K8sPodSample", "K8sContainerSample"}:
+        if source not in SOURCE_COVERAGE_STATUS:
             raise ValueError("Invalid alert source")
-        _validate_query(condition.get("nrql"), bounded=False, expected_source=source)
+        if (condition.get("category"), source) != expected_contract:
+            raise ValueError("Alert condition source does not match its reviewed source contract")
+        if not _source_is_verified(
+            source,
+            condition.get("coverage_status"),
+            "Alert condition",
+        ):
+            coverage_note = condition.get("coverage_note")
+            if not isinstance(coverage_note, str) or not coverage_note.strip():
+                raise ValueError("Gated alert conditions require an explicit coverage note")
+        query = _validate_query(condition.get("nrql"), bounded=False, expected_source=source)
+        _validate_hml_source_scope(query, source)
         if condition.get("enabled_during_hml_only") is not True:
             raise ValueError("Alert condition must be scoped to the HML lifecycle")
         if condition.get("loss_of_signal") != {"enabled": False}:
@@ -372,6 +512,8 @@ def validate_definitions(
                 raise ValueError("Invalid alert threshold occurrences")
             if not 0 < term.get("threshold_duration_seconds", 0) <= 3_600:
                 raise ValueError("Invalid alert evaluation duration")
+    if condition_ids != set(TECHNICAL_ALERT_CONTRACTS):
+        raise ValueError("Exactly seven reviewed alert conditions are required")
 
 
 def validate_service_order_definitions(dashboard: dict, alerts: dict) -> None:
@@ -555,7 +697,7 @@ def _load_json(path: Path) -> dict:
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         raise ValueError("Could not load an observability definition") from None
     if not isinstance(value, dict):
-        raise ValueError("Observability definition must be a JSON object")
+        raise TypeError("Observability definition must be a JSON object")
     return value
 
 
@@ -579,6 +721,19 @@ def _dashboard_input(
         }
         widgets = []
         for index, widget in enumerate(page["widgets"]):
+            existing_widget = existing_widgets.get(widget["title"])
+            raw_configuration = {
+                "nrqlQueries": [
+                    {"accountIds": [account_id], "query": widget["nrql"]}
+                ]
+            }
+            if existing_widget and isinstance(
+                existing_widget.get("rawConfiguration"), dict
+            ):
+                raw_configuration = {
+                    **existing_widget["rawConfiguration"],
+                    **raw_configuration,
+                }
             widget_input = {
                 "title": widget["title"],
                 "visualization": {"id": f"viz.{widget['visualization']}"},
@@ -588,26 +743,126 @@ def _dashboard_input(
                     "width": 6,
                     "height": 3,
                 },
-                "rawConfiguration": {
-                    "nrqlQueries": [
-                        {"accountIds": [account_id], "query": widget["nrql"]}
-                    ]
-                },
+                "linkedEntityGuids": [],
+                "rawConfiguration": raw_configuration,
             }
-            existing_widget = existing_widgets.get(widget["title"])
             if existing_widget and existing_widget.get("id"):
                 widget_input["id"] = existing_widget["id"]
             widgets.append(widget_input)
         page_input = {"name": page["name"], "widgets": widgets}
         if existing_page.get("guid"):
             page_input["guid"] = existing_page["guid"]
+        if isinstance(existing_page.get("description"), str):
+            page_input["description"] = existing_page["description"]
         pages.append(page_input)
-    return {
+    dashboard_input = {
         "name": definition["name"],
         "description": definition["description"],
         "permissions": definition["permissions"],
         "pages": pages,
     }
+    if existing is not None and existing.get("variables") is not None:
+        variables = existing["variables"]
+        if not isinstance(variables, list) or any(
+            not isinstance(variable, dict) for variable in variables
+        ):
+            raise ProvisioningError("NerdGraph dashboard variable configuration was invalid")
+        input_variable_fields = (
+            "name",
+            "title",
+            "type",
+            "nrqlQuery",
+            "defaultValues",
+            "options",
+            "isMultiSelection",
+            "replacementStrategy",
+        )
+        dashboard_input["variables"] = [
+            {
+                field: variable[field]
+                for field in input_variable_fields
+                if field in variable
+            }
+            for variable in variables
+        ]
+    return dashboard_input
+
+
+def _dashboard_configuration_matches(
+    desired: dict[str, object], existing: dict[str, object]
+) -> bool:
+    if any(
+        desired.get(field) != existing.get(field)
+        for field in ("name", "description", "permissions")
+    ):
+        return False
+    desired_pages = desired.get("pages")
+    existing_pages = existing.get("pages")
+    if (
+        not isinstance(desired_pages, list)
+        or not isinstance(existing_pages, list)
+        or len(desired_pages) != len(existing_pages)
+    ):
+        return False
+
+    for desired_page, existing_page in zip(desired_pages, existing_pages, strict=True):
+        if not isinstance(desired_page, dict) or not isinstance(existing_page, dict):
+            return False
+        if desired_page.get("name") != existing_page.get("name"):
+            return False
+        if (
+            "description" in desired_page
+            and desired_page["description"] != existing_page.get("description")
+        ):
+            return False
+        desired_widgets = desired_page.get("widgets")
+        existing_widgets = existing_page.get("widgets")
+        if (
+            not isinstance(desired_widgets, list)
+            or not isinstance(existing_widgets, list)
+            or len(desired_widgets) != len(existing_widgets)
+        ):
+            return False
+
+        for desired_widget, existing_widget in zip(
+            desired_widgets, existing_widgets, strict=True
+        ):
+            if not isinstance(desired_widget, dict) or not isinstance(
+                existing_widget, dict
+            ):
+                return False
+            desired_visualization = desired_widget.get("visualization")
+            existing_visualization = existing_widget.get("visualization")
+            if (
+                not isinstance(desired_visualization, dict)
+                or not isinstance(existing_visualization, dict)
+                or desired_visualization.get("id")
+                != existing_visualization.get("id")
+            ):
+                return False
+            existing_links = existing_widget.get("linkedEntities") or []
+            if not isinstance(existing_links, list):
+                return False
+            if any(
+                not isinstance(link, dict)
+                or not isinstance(link.get("guid"), str)
+                for link in existing_links
+            ):
+                return False
+            desired_links = desired_widget.get("linkedEntityGuids")
+            if (
+                not isinstance(desired_links, list)
+                or not all(isinstance(guid, str) for guid in desired_links)
+                or sorted(desired_links)
+                != sorted(link["guid"] for link in existing_links)
+            ):
+                return False
+            if any(
+                desired_widget.get(field) != existing_widget.get(field)
+                for field in ("title", "layout", "rawConfiguration")
+            ):
+                return False
+    return True
 
 
 def _condition_input(condition: dict, *, enabled: bool) -> dict[str, object]:
@@ -618,6 +873,7 @@ def _condition_input(condition: dict, *, enabled: bool) -> dict[str, object]:
         "enabled": enabled,
         "nrql": {"query": condition["nrql"]},
         "runbookUrl": condition["runbook_url"],
+        "valueFunction": "SINGLE_VALUE",
         "signal": {
             "aggregationWindow": signal["aggregation_window_seconds"],
             "aggregationMethod": signal["aggregation_method"],
@@ -635,12 +891,40 @@ def _condition_input(condition: dict, *, enabled: bool) -> dict[str, object]:
             for term in condition["terms"]
         ],
         "violationTimeLimitSeconds": 86_400,
-        "expiration": {
-            "closeViolationsOnExpiration": True,
-            "expirationDuration": None,
-            "openViolationOnExpiration": False,
-        },
     }
+
+
+def _condition_configuration(data: dict) -> dict[str, object]:
+    try:
+        condition = data["actor"]["account"]["alerts"]["nrqlCondition"]
+    except (KeyError, TypeError):
+        raise ProvisioningError(
+            "NerdGraph alert condition configuration response was invalid"
+        ) from None
+    if not isinstance(condition, dict) or not condition.get("id"):
+        raise ProvisioningError(
+            "NerdGraph alert condition configuration response was invalid"
+        )
+    return {
+        field: condition.get(field)
+        for field in (
+            "name",
+            "description",
+            "enabled",
+            "nrql",
+            "runbookUrl",
+            "valueFunction",
+            "signal",
+            "terms",
+            "violationTimeLimitSeconds",
+        )
+    }
+
+
+def _condition_configuration_matches(
+    desired: dict[str, object], existing: dict[str, object]
+) -> bool:
+    return desired == existing
 
 
 def _positive_account_id(raw: str) -> int:
@@ -658,13 +942,20 @@ def _entities(data: dict) -> list[dict]:
         values = data["actor"]["entitySearch"]["results"]["entities"]
     except (KeyError, TypeError):
         raise ProvisioningError("NerdGraph dashboard discovery response was invalid") from None
-    return values if isinstance(values, list) else []
+    if not isinstance(values, list) or any(not isinstance(value, dict) for value in values):
+        raise ProvisioningError("NerdGraph dashboard discovery response was invalid")
+    return values
 
 
 def _has_ownership_tag(entity: dict, ownership: str) -> bool:
+    tags = entity.get("tags")
+    if not isinstance(tags, list):
+        return False
     return any(
-        tag.get("key") == "auto-shop.ownership" and ownership in tag.get("values", [])
-        for tag in entity.get("tags", [])
+        tag.get("key") == "auto-shop.ownership"
+        and isinstance(tag.get("values"), list)
+        and ownership in tag["values"]
+        for tag in tags
         if isinstance(tag, dict)
     )
 
@@ -722,7 +1013,27 @@ def reconcile(
     alerts: dict,
     *,
     action: str,
+    profile: str = "technical",
 ) -> dict[str, object]:
+    if action not in {"plan", "apply", "disable"}:
+        raise ValueError("Unsupported reconciliation action")
+    if profile not in {"technical", "service-order"}:
+        raise ValueError("Unsupported reconciliation profile")
+    if profile == "technical":
+        validate_definitions(dashboard, alerts)
+        dashboard, total_widgets, eligible_widgets = _verified_dashboard_subset(dashboard)
+        alerts, total_conditions, eligible_conditions = _verified_alerts_subset(alerts)
+    else:
+        total_widgets = sum(len(page["widgets"]) for page in dashboard["pages"])
+        eligible_widgets = total_widgets
+        total_conditions = len(alerts["conditions"])
+        eligible_conditions = total_conditions
+    coverage_summary = {
+        "eligible_widgets": eligible_widgets,
+        "excluded_widgets": total_widgets - eligible_widgets,
+        "eligible_conditions": eligible_conditions,
+        "excluded_conditions": total_conditions - eligible_conditions,
+    }
     entity_query = (
         f"accountId = {account_id} AND type = 'DASHBOARD' "
         f"AND name = '{dashboard['name']}'"
@@ -738,6 +1049,7 @@ def reconcile(
         raise ProvisioningError("Owned dashboard discovery was ambiguous")
     if dashboards and not _has_ownership_tag(dashboards[0], dashboard["ownership"]):
         raise ProvisioningError("Same-named dashboard is not owned by this repository")
+    dashboard_action = "unchanged"
     if action == "apply":
         if dashboards:
             existing = _dashboard_structure(
@@ -745,11 +1057,17 @@ def reconcile(
                 account_id,
             )
             dashboard_input = _dashboard_input(dashboard, account_id, existing)
-            mutation = client.execute(
-                DASHBOARD_UPDATE,
-                {"guid": dashboards[0]["guid"], "dashboard": dashboard_input},
-            )
-            dashboard_guid = _dashboard_mutation_guid(mutation, "dashboardUpdate")
+            if _dashboard_configuration_matches(dashboard_input, existing):
+                dashboard_guid = dashboards[0]["guid"]
+            else:
+                mutation = client.execute(
+                    DASHBOARD_UPDATE,
+                    {"guid": dashboards[0]["guid"], "dashboard": dashboard_input},
+                )
+                dashboard_guid = _dashboard_mutation_guid(
+                    mutation, "dashboardUpdate"
+                )
+                dashboard_action = "updated"
         else:
             dashboard_input = _dashboard_input(dashboard, account_id)
             mutation = client.execute(
@@ -757,7 +1075,8 @@ def reconcile(
                 {"accountId": account_id, "dashboard": dashboard_input},
             )
             dashboard_guid = _dashboard_mutation_guid(mutation, "dashboardCreate")
-        _tag_owned_dashboard(client, dashboard_guid, dashboard["ownership"])
+            _tag_owned_dashboard(client, dashboard_guid, dashboard["ownership"])
+            dashboard_action = "created"
 
     policy_data = client.execute(
         POLICY_SEARCH,
@@ -773,6 +1092,7 @@ def reconcile(
     if action == "plan":
         if not policies:
             return {
+                **coverage_summary,
                 "dashboard": "update" if dashboards else "create",
                 "policy": "create",
                 "conditions_create": len(alerts["conditions"]),
@@ -797,6 +1117,7 @@ def reconcile(
         if stale_names:
             raise ProvisioningError("Unexpected owned alert conditions require manual review")
         return {
+            **coverage_summary,
             "dashboard": "update" if dashboards else "create",
             "policy": "update",
             "conditions_create": len(expected_names - owned_names),
@@ -805,7 +1126,12 @@ def reconcile(
         }
     if not policies:
         if action == "disable":
-            return {"dashboard": "unchanged", "policy": "absent", "conditions": 0}
+            return {
+                **coverage_summary,
+                "dashboard": "unchanged",
+                "policy": "absent",
+                "conditions": 0,
+            }
         created = client.execute(
             POLICY_CREATE,
             {
@@ -858,14 +1184,54 @@ def reconcile(
         condition_input = _condition_input(condition, enabled=action == "apply")
         current = by_name.get(condition["name"])
         if current:
-            client.execute(
-                CONDITION_UPDATE,
-                {
-                    "accountId": account_id,
-                    "conditionId": current["id"],
-                    "condition": condition_input,
-                },
+            existing_condition = _condition_configuration(
+                client.execute(
+                    CONDITION_GET,
+                    {"accountId": account_id, "conditionId": current["id"]},
+                )
             )
+            if not _condition_configuration_matches(
+                condition_input, existing_condition
+            ):
+                if profile == "service-order":
+                    if current.get("type") != "STATIC":
+                        raise ProvisioningError(
+                            "Owned service-order condition is not a static NRQL condition"
+                        )
+                    deleted = client.execute(
+                        CONDITION_DELETE,
+                        {
+                            "accountId": account_id,
+                            "conditionId": current["id"],
+                        },
+                    )
+                    try:
+                        deleted_id = deleted["alertsConditionDelete"]["id"]
+                    except (KeyError, TypeError):
+                        raise ProvisioningError(
+                            "NerdGraph alert condition deletion response was invalid"
+                        ) from None
+                    if str(deleted_id) != str(current["id"]):
+                        raise ProvisioningError(
+                            "NerdGraph deleted an unexpected alert condition"
+                        )
+                    client.execute(
+                        CONDITION_CREATE,
+                        {
+                            "accountId": account_id,
+                            "policyId": policy_id,
+                            "condition": condition_input,
+                        },
+                    )
+                else:
+                    client.execute(
+                        CONDITION_UPDATE,
+                        {
+                            "accountId": account_id,
+                            "conditionId": current["id"],
+                            "condition": condition_input,
+                        },
+                    )
         elif action == "apply":
             client.execute(
                 CONDITION_CREATE,
@@ -876,11 +1242,8 @@ def reconcile(
                 },
             )
     return {
-        "dashboard": (
-            "unchanged"
-            if action == "disable"
-            else "updated" if dashboards else "created"
-        ),
+        **coverage_summary,
+        "dashboard": dashboard_action,
         "policy": "reconciled",
         "conditions": len(alerts["conditions"]),
         "notifications": "not-attached",
@@ -895,28 +1258,32 @@ def main(argv: list[str] | None = None, *, environ: Mapping[str, str] | None = N
     parser.add_argument("--dashboard", type=Path, required=True)
     parser.add_argument("--alerts", type=Path, required=True)
     parser.add_argument("--region", choices=tuple(ENDPOINTS), default="us")
-    parser.add_argument("--confirm-aws-schema", action="store_true")
     arguments = parser.parse_args(argv)
     environment = os.environ if environ is None else environ
     try:
         dashboard = _load_json(arguments.dashboard)
         alerts = _load_json(arguments.alerts)
-        require_verified = arguments.action == "apply" and arguments.profile == "technical"
         if arguments.profile == "service-order":
             validate_service_order_definitions(dashboard, alerts)
         else:
-            validate_definitions(
-                dashboard,
-                alerts,
-                require_verified_aws=require_verified and arguments.confirm_aws_schema,
-            )
-        if require_verified and not arguments.confirm_aws_schema:
-            raise ValueError("Apply requires --confirm-aws-schema")
+            validate_definitions(dashboard, alerts)
         if arguments.action == "validate":
+            if arguments.profile == "service-order":
+                total_widgets = sum(len(page["widgets"]) for page in dashboard["pages"])
+                eligible_widgets = total_widgets
+                total_conditions = len(alerts["conditions"])
+                eligible_conditions = total_conditions
+            else:
+                _, total_widgets, eligible_widgets = _verified_dashboard_subset(dashboard)
+                _, total_conditions, eligible_conditions = _verified_alerts_subset(alerts)
             result = {
+                "conditions": total_conditions,
+                "eligible_conditions": eligible_conditions,
+                "eligible_widgets": eligible_widgets,
+                "excluded_conditions": total_conditions - eligible_conditions,
+                "excluded_widgets": total_widgets - eligible_widgets,
                 "status": "valid",
-                "widgets": sum(len(page["widgets"]) for page in dashboard["pages"]),
-                "conditions": len(alerts["conditions"]),
+                "widgets": total_widgets,
             }
         else:
             account_id = _positive_account_id(environment.get("NEW_RELIC_ACCOUNT_ID", ""))
@@ -930,8 +1297,9 @@ def main(argv: list[str] | None = None, *, environ: Mapping[str, str] | None = N
                 dashboard,
                 alerts,
                 action=arguments.action,
+                profile=arguments.profile,
             )
-    except (ValueError, ProvisioningError) as error:
+    except (TypeError, ValueError, ProvisioningError) as error:
         print(str(error), file=sys.stderr)
         return 1
     print(json.dumps(result, separators=(",", ":"), sort_keys=True))
