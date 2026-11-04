@@ -1,5 +1,6 @@
 from dataclasses import replace
 from datetime import datetime
+import logging
 
 import pytest
 
@@ -9,6 +10,29 @@ from src.domain.enums import Priority, ServiceOrderStatus, StockWithdrawalStatus
 from src.domain.exceptions import NotFoundError, ValidationError
 from src.domain.execution.entity import StockWithdrawal
 from src.domain.service_order.entity import ServiceOrder, ServiceOrderProductLine
+
+
+@pytest.fixture
+def execution_log_messages():
+    messages: list[str] = []
+    logger = logging.getLogger("src.application.services.execution_service")
+    previous_level = logger.level
+    previous_disabled = logger.disabled
+
+    class _Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            messages.append(record.getMessage())
+
+    handler = _Capture()
+    logger.setLevel(logging.INFO)
+    logger.disabled = False
+    logger.addHandler(handler)
+    try:
+        yield messages
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous_level)
+        logger.disabled = previous_disabled
 
 
 class InMemoryServiceOrderRepository:
@@ -265,7 +289,7 @@ def make_service(
     )
 
 
-def test_unexpected_execution_failure_publishes_a_sanitized_event_and_rolls_back(caplog):
+def test_unexpected_execution_failure_publishes_a_sanitized_event_and_rolls_back(execution_log_messages):
     repository = InMemoryServiceOrderRepository([make_service_order()])
     original_error = RuntimeError("CPF 52998224725 and token secret-value")
     repository.save = lambda _order: (_ for _ in ()).throw(original_error)
@@ -294,8 +318,9 @@ def test_unexpected_execution_failure_publishes_a_sanitized_event_and_rolls_back
     assert event.occurred_at.tzinfo is not None
     assert "52998224725" not in repr(event)
     assert "secret-value" not in repr(event)
-    assert "52998224725" not in caplog.text
-    assert "secret-value" not in caplog.text
+    log_text = "\n".join(execution_log_messages)
+    assert "52998224725" not in log_text
+    assert "secret-value" not in log_text
 
 
 def test_expected_domain_validation_does_not_publish_operational_event():
@@ -308,7 +333,7 @@ def test_expected_domain_validation_does_not_publish_operational_event():
     assert publisher.events == []
 
 
-def test_event_publisher_failure_does_not_hide_original_execution_error(caplog):
+def test_event_publisher_failure_does_not_hide_original_execution_error(execution_log_messages):
     repository = InMemoryServiceOrderRepository([make_service_order()])
     original_error = RuntimeError("sensitive failure CPF 52998224725")
     repository.save = lambda _order: (_ for _ in ()).throw(original_error)
@@ -325,9 +350,10 @@ def test_event_publisher_failure_does_not_hide_original_execution_error(caplog):
 
     assert raised.value is original_error
     assert len(publisher.events) == 1
-    assert "event_publish_failed" in caplog.text
-    assert "52998224725" not in caplog.text
-    assert "secret-value" not in caplog.text
+    log_text = "\n".join(execution_log_messages)
+    assert "event_publish_failed" in log_text
+    assert "52998224725" not in log_text
+    assert "secret-value" not in log_text
 
 
 def test_rollback_happens_before_failure_event_publication():
@@ -344,7 +370,7 @@ def test_rollback_happens_before_failure_event_publication():
     assert calls == ["rollback", "publish"]
 
 
-def test_rollback_failure_does_not_hide_original_execution_error(caplog):
+def test_rollback_failure_does_not_hide_original_execution_error(execution_log_messages):
     original_error = RuntimeError("commit failed")
     uow = FakeUnitOfWork(
         commit_error=original_error,
@@ -358,11 +384,12 @@ def test_rollback_failure_does_not_hide_original_execution_error(caplog):
 
     assert raised.value is original_error
     assert len(publisher.events) == 1
-    assert "processing_rollback_failed" in caplog.text
-    assert "sensitive detail" not in caplog.text
+    log_text = "\n".join(execution_log_messages)
+    assert "processing_rollback_failed" in log_text
+    assert "sensitive detail" not in log_text
 
 
-def test_missing_publisher_does_not_hide_original_execution_error(caplog):
+def test_missing_publisher_does_not_hide_original_execution_error(execution_log_messages):
     original_error = RuntimeError("commit failed")
     service = make_service(uow=FakeUnitOfWork(commit_error=original_error))
 
@@ -370,7 +397,7 @@ def test_missing_publisher_does_not_hide_original_execution_error(caplog):
         service.enqueue(1)
 
     assert raised.value is original_error
-    assert "reason=publisher_not_configured" in caplog.text
+    assert "reason=publisher_not_configured" in "\n".join(execution_log_messages)
 
 
 @pytest.mark.parametrize("operation", ("enqueue", "start", "finish"))

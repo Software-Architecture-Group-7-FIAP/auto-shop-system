@@ -88,17 +88,20 @@ def _decimal_text(value: Decimal) -> str:
     return format(value, "f")
 
 
-def _session_query_slots(first_day: date) -> int:
+def _session_query_slots(first_day: date, stage: str = "hml") -> int:
     """Reserve two Cost Explorer calls for each eligible stage/date still unbilled."""
     if first_day > CAP_WINDOW_END:
         return 0
-    hml_start = max(first_day, CAP_WINDOW_START)
-    hml_end = min(CAP_WINDOW_END, HML_LAST_DAY)
-    hml_days = max((hml_end - hml_start).days + 1, 0)
 
-    prd_start = max(first_day, PRD_FIRST_DAY)
-    prd_days = max((CAP_WINDOW_END - prd_start).days + 1, 0)
-    return hml_days + prd_days
+    if stage == "hml":
+        hml_start = max(first_day, CAP_WINDOW_START)
+        hml_end = min(CAP_WINDOW_END, HML_LAST_DAY)
+        return max((hml_end - hml_start).days + 1, 0)
+    elif stage == "prd":
+        prd_start = max(first_day, PRD_FIRST_DAY)
+        return max((CAP_WINDOW_END - prd_start).days + 1, 0)
+    else:
+        return 0
 
 
 def evaluate_spend_cap(
@@ -201,7 +204,7 @@ def evaluate_spend_cap(
     usage_daily_rate = max(daily_totals[day] for day in recent_days)
     projected_daily_rate = max(daily_floor, usage_daily_rate)
     projection_days = (CAP_WINDOW_END - data_through).days
-    query_slots = _session_query_slots(data_through + timedelta(days=1))
+    query_slots = _session_query_slots(data_through + timedelta(days=1), stage=expected_stage)
     if session_day <= data_through:
         query_slots += 1
     query_count = query_slots * REQUESTS_PER_SESSION

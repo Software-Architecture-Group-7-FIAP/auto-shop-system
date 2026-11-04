@@ -1,0 +1,48 @@
+{
+    "Items": [
+        {
+            "ApiKeyRequired": false,
+            "AuthorizationType": "NONE",
+            "RouteId": "03i8idp",
+            "RouteKey": "$default",
+            "Target": "integrations/a5kzbyq"
+        },
+        {
+            "ApiKeyRequired": false,
+            "AuthorizationType": "NONE",
+            "RouteId": "gp9icks",
+            "RouteKey": "GET /health",
+            "Target": "integrations/n5fa4ys"
+        },
+        {
+            "ApiKeyRequired": false,
+            "AuthorizationType": "NONE",
+            "RouteId": "gzfs0ev",
+            "RouteKey": "GET /.well-known/jwks.json",
+            "Target": "integrations/n5fa4ys"
+        },
+        {
+            "ApiKeyRequired": false,
+            "AuthorizationType": "CUSTOM",
+            "AuthorizerId": "oatrjj",
+            "RouteId": "jf81z20",
+            "RouteKey": "ANY /api/v1/admin/{proxy+}",
+            "Target": "integrations/a5kzbyq"
+        },
+        {
+            "ApiKeyRequired": false,
+            "AuthorizationType": "CUSTOM",
+            "AuthorizerId": "oatrjj",
+            "RouteId": "mfyq39j",
+            "RouteKey": "ANY /api/v1/admin",
+            "Target": "integrations/a5kzbyq"
+        },
+        {
+            "ApiKeyRequired": false,
+            "AuthorizationType": "NONE",
+            "RouteId": "n99fb9r",
+            "RouteKey": "POST /auth/customer/token",
+            "Target": "integrations/n5fa4ys"
+        }
+    ]
+}

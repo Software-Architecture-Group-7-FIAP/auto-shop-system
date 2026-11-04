@@ -6,6 +6,7 @@ metadata:
 data:
   APP_ENV: "development"
   APP_BASE_URL: "http://localhost:8000"
+  DATABASE_URL: "postgresql://oficina:local-dev-password@postgres-service:5432/oficina"
   FRONTEND_PUBLIC_URL: "http://localhost:4200"
   CORS_ALLOWED_ORIGINS: "http://localhost:4200"
   CORS_ALLOWED_METHODS: "GET,POST,PUT,PATCH,DELETE,OPTIONS"

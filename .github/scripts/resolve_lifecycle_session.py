@@ -12,7 +12,8 @@ BRT = ZoneInfo("America/Sao_Paulo")
 FIRST_PRD_DAY = date(2026, 11, 1)
 LAST_PRD_DAY = date(2026, 11, 5)
 UTC_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
-HML_LAST_DAY = date(2026, 10, 31)
+HML_LAST_DAY = date(2026, 11, 5)
+EMERGENCY_HML_LAST_DAY = date(2026, 10, 31)
 AUDIT_RESERVE = timedelta(minutes=15)
 TEARDOWN_MARGIN = timedelta(minutes=5)
 
@@ -36,7 +37,7 @@ def resolve_emergency_hml_teardown(
     expected_session_id = f"hml-{local_start.date().isoformat()}"
     if session_id != expected_session_id:
         raise ValueError("Emergency HML session ID must match its BRT start date")
-    if local_start.date() > HML_LAST_DAY:
+    if local_start.date() > EMERGENCY_HML_LAST_DAY:
         raise ValueError("Emergency cleanup cannot target a session after the HML lifecycle")
     if not time(7, 0) <= local_start.time().replace(tzinfo=None) <= time(17, 0):
         raise ValueError("Emergency HML session start is outside the authorized daily window")
@@ -75,6 +76,7 @@ def main() -> int:
     parser.add_argument("--stage", choices=("hml", "prd"), default="prd")
     parser.add_argument("--started-at", default="")
     parser.add_argument("--session-id", default="")
+    parser.add_argument("--session-mode", choices=("hml", "prd-window"), default="")
     parser.add_argument("--emergency-hml-teardown", action="store_true")
     parser.add_argument("--github-output", required=True)
     arguments = parser.parse_args()
@@ -116,25 +118,26 @@ def main() -> int:
             if arguments.started_at != local_start.astimezone(timezone.utc).strftime(UTC_FORMAT):
                 print("::error::PRD session start is fixed at 06:00 BRT (09:00 UTC).", file=sys.stderr)
                 return 1
-        session_end = datetime.combine(local_now.date(), time(22, 0), tzinfo=BRT)
+        session_end = local_start + timedelta(hours=5)
         cleanup_end = datetime.combine(local_now.date(), time(23, 0), tzinfo=BRT)
         session_mode = "prd-window"
     else:
         if local_now.date() > HML_LAST_DAY:
-            print("::error::HML lifecycle is authorized only through 31 October 2026 BRT.", file=sys.stderr)
+            print("::error::HML lifecycle is authorized only through 5 November 2026 BRT.", file=sys.stderr)
             return 1
         if os.environ.get("GITHUB_EVENT_NAME") == "schedule":
             print("::error::HML has no scheduled lifecycle; dispatch the central workflow manually.", file=sys.stderr)
             return 1
         if arguments.started_at:
             try:
-                local_start = datetime.strptime(arguments.started_at, UTC_FORMAT).replace(tzinfo=timezone.utc).astimezone(BRT)
+                parsed_start = datetime.strptime(arguments.started_at, UTC_FORMAT).replace(tzinfo=timezone.utc)
             except ValueError:
                 print("::error::HML started_at must use UTC format YYYY-MM-DDTHH:MM:SSZ.", file=sys.stderr)
                 return 1
-            if local_start.strftime(UTC_FORMAT) != arguments.started_at:
+            if parsed_start.strftime(UTC_FORMAT) != arguments.started_at:
                 print("::error::HML started_at must use UTC format YYYY-MM-DDTHH:MM:SSZ.", file=sys.stderr)
                 return 1
+            local_start = parsed_start.astimezone(BRT)
         else:
             local_start = datetime.combine(local_now.date(), time(17, 0), tzinfo=BRT)
         if local_start.date() != local_now.date():
@@ -159,6 +162,10 @@ def main() -> int:
             print("::error::HML teardown is allowed only after its calculated session end and before 23:00 BRT.", file=sys.stderr)
             return 1
         session_mode = "hml"
+
+    if arguments.session_mode and arguments.session_mode != session_mode:
+        print("::error::The provided session mode does not match the resolved lifecycle stage.", file=sys.stderr)
+        return 1
 
     session_id = f"{arguments.stage}-{local_now.date().isoformat()}"
     if arguments.stage == "hml" and arguments.action == "teardown":

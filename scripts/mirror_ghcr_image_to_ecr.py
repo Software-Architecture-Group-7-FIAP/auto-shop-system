@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mirror the authorized GHCR release image into the private staging ECR repository."""
+"""Mirror the authorized GHCR release image into the private ECR repository."""
 
 from __future__ import annotations
 

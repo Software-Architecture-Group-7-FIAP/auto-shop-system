@@ -1,0 +1,82 @@
+name: Install EKS Pod Identity Agent Add-on
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  install-addon:
+    runs-on: ubuntu-latest
+    environment: hml
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: infra
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN_HML }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Get cluster name and install Pod Identity Agent
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          SSM_PARAMETER_PREFIX: /auto-shop/staging
+        run: |
+          set -euo pipefail
+
+          echo "::notice::Retrieving EKS cluster name from SSM..."
+          CLUSTER_NAME="$(aws ssm get-parameter \
+            --name "${SSM_PARAMETER_PREFIX}/eks/cluster-name" \
+            --query Parameter.Value \
+            --output text)"
+          echo "Cluster: $CLUSTER_NAME"
+
+          echo "::notice::Installing eks-pod-identity-agent add-on..."
+          aws eks create-addon \
+            --cluster-name "$CLUSTER_NAME" \
+            --addon-name eks-pod-identity-agent \
+            --region "$AWS_REGION" || true
+
+          echo "::notice::Waiting for add-on to be active..."
+          for i in {1..60}; do
+            STATUS=$(aws eks describe-addon \
+              --cluster-name "$CLUSTER_NAME" \
+              --addon-name eks-pod-identity-agent \
+              --region "$AWS_REGION" \
+              --query 'addon.addonVersion' \
+              --output text 2>/dev/null || echo "CREATING")
+
+            if [[ "$STATUS" != "CREATING" && "$STATUS" != "" ]]; then
+              echo "✅ Add-on is ready (version: $STATUS)"
+              exit 0
+            fi
+
+            echo "Waiting... ($i/60)"
+            sleep 5
+          done
+
+          echo "::error::Add-on installation timed out"
+          exit 1
+
+      - name: Verify daemonset
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          SSM_PARAMETER_PREFIX: /auto-shop/staging
+        run: |
+          set -euo pipefail
+
+          CLUSTER_NAME="$(aws ssm get-parameter \
+            --name "${SSM_PARAMETER_PREFIX}/eks/cluster-name" \
+            --query Parameter.Value \
+            --output text)"
+
+          aws eks update-kubeconfig \
+            --name "$CLUSTER_NAME" \
+            --region "$AWS_REGION"
+
+          echo "::notice::Checking daemonset status..."
+          kubectl get daemonset -n kube-system eks-pod-identity-agent

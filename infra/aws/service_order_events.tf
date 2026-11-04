@@ -4,6 +4,11 @@ locals {
     prd = "production"
   }
 
+  service_order_bus_names = {
+    for stage, environment in local.service_order_environments :
+    stage => "${var.project_name}-service-orders-${environment}"
+  }
+
   service_order_namespaces = {
     hml = "auto-shop-hml"
     prd = "auto-shop-prd"
@@ -27,7 +32,7 @@ locals {
 resource "aws_cloudwatch_event_bus" "service_order" {
   for_each = local.api_stages
 
-  name = "${var.project_name}-service-orders-${local.service_order_environments[each.key]}"
+  name = local.service_order_bus_names[each.key]
 
   tags = merge(local.common_tags, {
     Name      = "${var.project_name}-service-orders-${local.service_order_environments[each.key]}"
@@ -332,10 +337,12 @@ data "aws_iam_policy_document" "service_order_publisher" {
   for_each = local.api_stages
 
   statement {
-    sid       = "PublishServiceOrderFailureEvents"
-    effect    = "Allow"
-    actions   = ["events:PutEvents"]
-    resources = [aws_cloudwatch_event_bus.service_order[each.key].arn]
+    sid     = "PublishServiceOrderFailureEvents"
+    effect  = "Allow"
+    actions = ["events:PutEvents"]
+    resources = [
+      "arn:${data.aws_partition.current.partition}:events:${var.aws_region}:${data.aws_caller_identity.current.account_id}:event-bus/${local.service_order_bus_names[each.key]}"
+    ]
   }
 }
 
@@ -352,7 +359,7 @@ resource "aws_ssm_parameter" "service_order_bus_name" {
 
   name  = local.service_order_bus_parameter_names[each.key]
   type  = "String"
-  value = aws_cloudwatch_event_bus.service_order[each.key].name
+  value = local.service_order_bus_names[each.key]
 
   tags = merge(local.common_tags, {
     Name      = local.service_order_bus_parameter_names[each.key]

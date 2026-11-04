@@ -18,6 +18,28 @@ def _opening(run_id: int, *, status: str = "completed") -> dict[str, object]:
     return {"id": run_id, "status": status}
 
 
+def test_emergency_cleanup_requires_a_verified_hml_dispatch_on_develop() -> None:
+    valid = {
+        "stage": "hml",
+        "close_request_id": "emergency-12345",
+        "event_name": "workflow_dispatch",
+        "workflow": "HML infrastructure-only stop",
+        "ref": "refs/heads/develop",
+        "capability_verified": "true",
+    }
+
+    assert CLOSE_GUARD.emergency_cleanup_is_authorized(**valid) is True
+    for field, value in (
+        ("stage", "prd"),
+        ("close_request_id", "cleanup-12345"),
+        ("event_name", "schedule"),
+        ("workflow", "Coordinated environment stop"),
+        ("ref", "refs/heads/main"),
+        ("capability_verified", "false"),
+    ):
+        assert CLOSE_GUARD.emergency_cleanup_is_authorized(**{**valid, field: value}) is False
+
+
 def test_duplicate_nonmutating_openings_close_ledger_without_teardown(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(CLOSE_GUARD, "_opening_mutation_started", lambda *_args: False)
 

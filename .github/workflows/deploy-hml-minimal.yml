@@ -1,0 +1,472 @@
+name: Minimal HML Deploy
+run-name: HML deploy ${{ github.sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Deploy HML or prepare the New Relic Secret before the platform apply
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - prepare-newrelic-secret
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-staging-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-guard:
+    name: Verify HML source branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require manual dispatch from develop
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_REF: ${{ github.ref }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+          OPERATION: ${{ inputs.operation || 'deploy' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EVENT_NAME" == "workflow_dispatch" && "$SOURCE_REF" == "refs/heads/develop" && "$SOURCE_REPOSITORY" == "Software-Architecture-Group-7-FIAP/auto-shop-system" ]] || {
+            echo "::error::The minimal HML workflow can run only by manual dispatch from auto-shop-system/develop."
+            exit 1
+          }
+          case "$OPERATION" in
+            deploy|prepare-newrelic-secret) ;;
+            *)
+              echo "::error::Unsupported HML operation."
+              exit 1
+              ;;
+          esac
+
+  build-push:
+    name: Build immutable commit image
+    needs: source-guard
+    if: needs.source-guard.result == 'success' && inputs.operation != 'prepare-newrelic-secret'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/reusable-build-push.yml
+
+  prepare-hml-newrelic-secret:
+    name: Prepare HML New Relic Kubernetes Secret
+    needs: source-guard
+    if: needs.source-guard.result == 'success' && inputs.operation == 'prepare-newrelic-secret'
+    runs-on:
+      group: k8s-private-eks
+      labels:
+        - "codebuild-auto-shop-hml-private-runner-${{ github.run_id }}-${{ github.run_attempt }}"
+        - "buildspec-override:true"
+    timeout-minutes: 15
+    environment: hml
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Require the HML New Relic license secret
+        env:
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$NEW_RELIC_LICENSE_KEY" ]] || {
+            echo "::error::The HML New Relic license secret is required before platform apply."
+            exit 1
+          }
+
+      - name: Validate the HML AWS role and region
+        env:
+          DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN_HML || '' }}
+          AWS_REGION: ${{ vars.AWS_REGION || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_ROLE_ARN" == "arn:aws:iam::035611741563:role/auto-shop-staging-github-staging" ]] || {
+            echo "::error::AWS_DEPLOY_ROLE_ARN_HML must identify the reviewed HML deploy role."
+            exit 1
+          }
+          [[ "$AWS_REGION" == "us-east-1" ]] || {
+            echo "::error::HML secret preparation requires AWS_REGION=us-east-1."
+            exit 1
+          }
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN_HML }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: "035611741563"
+          role-session-name: HmlNewRelicSecret${{ github.run_id }}
+
+      - name: Require the staging AWS account
+        env:
+          EXPECTED_AWS_ACCOUNT_ID: "035611741563"
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_account_id="$(aws sts get-caller-identity --query Account --output text --no-cli-pager)"
+          [[ "$actual_account_id" == "$EXPECTED_AWS_ACCOUNT_ID" ]] || {
+            echo "::error::The assumed role is outside the approved HML AWS account."
+            exit 1
+          }
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.37.1
+
+      - name: Resolve the approved HML EKS cluster
+        id: targets
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          SSM_PARAMETER_PREFIX: /auto-shop/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          cluster_name="$(aws ssm get-parameter \
+            --name "${SSM_PARAMETER_PREFIX}/eks/cluster-name" \
+            --query 'Parameter.Value' --output text --no-cli-pager)"
+          [[ "$cluster_name" == "auto-shop-staging" ]] || {
+            echo "::error::The HML SSM contract must resolve to the approved staging EKS cluster."
+            exit 1
+          }
+          echo "cluster_name=$cluster_name" >> "$GITHUB_OUTPUT"
+
+      - name: Connect to the approved HML EKS cluster
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          EKS_CLUSTER_NAME: ${{ steps.targets.outputs.cluster_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --no-cli-pager
+          expected_context="arn:aws:eks:us-east-1:035611741563:cluster/auto-shop-staging"
+          actual_context="$(kubectl config view --minify -o 'jsonpath={.contexts[0].context.cluster}')"
+          [[ "$actual_context" == "$expected_context" ]] || {
+            echo "::error::kubectl context is not the approved HML EKS cluster."
+            exit 1
+          }
+
+      - name: Materialize the HML New Relic Kubernetes Secret
+        env:
+          HML_NAMESPACE: auto-shop-hml
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$NEW_RELIC_LICENSE_KEY" ]] || {
+            echo "::error::The HML New Relic license secret is required before platform apply."
+            exit 1
+          }
+          namespace="$(kubectl get namespace "$HML_NAMESPACE" --output=name)"
+          [[ "$namespace" == "namespace/$HML_NAMESPACE" ]] || {
+            echo "::error::The HML namespace must exist before New Relic secret preparation."
+            exit 1
+          }
+
+          umask 077
+          license_file="$(mktemp)"
+          trap 'rm -f "$license_file"' EXIT
+          printf '%s' "$NEW_RELIC_LICENSE_KEY" > "$license_file"
+          unset NEW_RELIC_LICENSE_KEY
+          kubectl create secret generic auto-shop-new-relic \
+            --namespace "$HML_NAMESPACE" \
+            --from-file=NEW_RELIC_LICENSE_KEY="$license_file" \
+            --dry-run=client \
+            --output=yaml | kubectl apply --filename=-
+          echo "HML New Relic Secret is ready for the k8s-infra platform apply." >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-hml:
+    name: Deploy backend to HML EKS
+    needs: [source-guard, build-push]
+    if: needs.source-guard.result == 'success' && inputs.operation != 'prepare-newrelic-secret'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: hml
+    permissions:
+      contents: read
+      id-token: write
+      packages: read
+    outputs:
+      ecr_tag_reference: ${{ steps.mirror.outputs.tag_reference }}
+      ecr_image_reference: ${{ steps.resolve-image.outputs.image_reference }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Require the HML New Relic license secret
+        env:
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -n "$NEW_RELIC_LICENSE_KEY" ]] || {
+            echo "::error::The HML New Relic license secret is required before deployment."
+            exit 1
+          }
+
+      - name: Verify build output is this commit's immutable image
+        env:
+          SOURCE_IMAGE: ${{ needs.build-push.outputs.ghcr_image_reference }}
+          IMAGE_TAG: ${{ needs.build-push.outputs.image_tag }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_tag="sha-${GITHUB_SHA::7}"
+          expected_image="ghcr.io/${GITHUB_REPOSITORY,,}:${expected_tag}"
+          [[ "$IMAGE_TAG" == "$expected_tag" && "$SOURCE_IMAGE" == "$expected_image" ]] || {
+            echo "::error::The build output is not the immutable image for this workflow commit."
+            exit 1
+          }
+
+      - name: Validate the HML AWS role and region
+        env:
+          DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN_HML || '' }}
+          AWS_REGION: ${{ vars.AWS_REGION || '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_ROLE_ARN" == "arn:aws:iam::035611741563:role/auto-shop-staging-github-staging" ]] || {
+            echo "::error::AWS_DEPLOY_ROLE_ARN_HML must identify the reviewed HML deploy role."
+            exit 1
+          }
+          [[ "$AWS_REGION" == "us-east-1" ]] || {
+            echo "::error::HML deployment requires AWS_REGION=us-east-1."
+            exit 1
+          }
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN_HML }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: "035611741563"
+          role-session-name: HmlDeploy${{ github.run_id }}
+
+      - name: Require the staging AWS account
+        env:
+          EXPECTED_AWS_ACCOUNT_ID: "035611741563"
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_account_id="$(aws sts get-caller-identity --query Account --output text --no-cli-pager)"
+          [[ "$actual_account_id" == "$EXPECTED_AWS_ACCOUNT_ID" ]] || {
+            echo "::error::The assumed role is outside the approved HML AWS account."
+            exit 1
+          }
+
+      - name: Mirror the authenticated GHCR image to private ECR
+        id: mirror
+        env:
+          SOURCE_IMAGE: ${{ needs.build-push.outputs.ghcr_image_reference }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_reference="$(python3 scripts/mirror_ghcr_image_to_ecr.py "${SOURCE_IMAGE}")"
+          expected_suffix="/auto-shop-system:sha-${GITHUB_SHA::7}"
+          [[ "$image_reference" == "035611741563.dkr.ecr.us-east-1.amazonaws.com${expected_suffix}" ]] || {
+            echo "::error::The mirrored image is outside the immutable HML ECR repository."
+            exit 1
+          }
+          echo "tag_reference=${image_reference}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve the mirrored ECR image digest
+        id: resolve-image
+        env:
+          ECR_TAG_REFERENCE: ${{ steps.mirror.outputs.tag_reference }}
+          IMAGE_TAG: ${{ needs.build-push.outputs.image_tag }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_tag_reference="035611741563.dkr.ecr.us-east-1.amazonaws.com/auto-shop-system:${IMAGE_TAG}"
+          [[ "$ECR_TAG_REFERENCE" == "$expected_tag_reference" ]] || {
+            echo "::error::The mirrored tag does not match the expected HML ECR image."
+            exit 1
+          }
+          image_digest="$(aws ecr batch-get-image \
+            --repository-name auto-shop-system \
+            --image-ids "imageTag=${IMAGE_TAG}" \
+            --region "$AWS_REGION" \
+            --query 'images[0].imageId.imageDigest' \
+            --output text --no-cli-pager)"
+          [[ "$image_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo "::error::ECR did not return a valid immutable image digest."
+            exit 1
+          }
+          image_reference="035611741563.dkr.ecr.us-east-1.amazonaws.com/auto-shop-system@${image_digest}"
+          echo "image_reference=${image_reference}" >> "$GITHUB_OUTPUT"
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.37.1
+
+      - name: Resolve and validate HML deployment parameters
+        id: targets
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          SSM_PARAMETER_PREFIX: /auto-shop/staging
+        shell: bash
+        run: |
+          set -euo pipefail
+          cluster_name="$(aws ssm get-parameter \
+            --name "${SSM_PARAMETER_PREFIX}/eks/cluster-name" \
+            --query 'Parameter.Value' --output text --no-cli-pager)"
+          migration_secret_arn="$(aws ssm get-parameter \
+            --name "${SSM_PARAMETER_PREFIX}/database/secrets/migrations-hml-arn" \
+            --query 'Parameter.Value' --output text --no-cli-pager)"
+          service_order_event_bus_name="$(aws ssm get-parameter \
+            --name "${SSM_PARAMETER_PREFIX}/events/service-order-bus-name" \
+            --query 'Parameter.Value' --output text --no-cli-pager)"
+          service_order_publisher_role_arn="$(aws ssm get-parameter \
+            --name "${SSM_PARAMETER_PREFIX}/events/service-order-publisher-role-arn/hml" \
+            --query 'Parameter.Value' --output text --no-cli-pager)"
+
+          [[ "$cluster_name" == "auto-shop-staging" ]] || {
+            echo "::error::The HML SSM contract must resolve to the approved staging EKS cluster."
+            exit 1
+          }
+          [[ "$migration_secret_arn" =~ ^arn:aws:secretsmanager:us-east-1:035611741563:secret:[A-Za-z0-9/_+=.@-]+$ ]] || {
+            echo "::error::The HML migration secret ARN is outside the approved account and region."
+            exit 1
+          }
+          [[ "$service_order_event_bus_name" == "auto-shop-service-orders-staging" ]] || {
+            echo "::error::The service-order bus is not the HML staging bus."
+            exit 1
+          }
+          [[ "$service_order_publisher_role_arn" == "arn:aws:iam::035611741563:role/auto-shop-staging-hml-service-order-events-publisher" ]] || {
+            echo "::error::The service-order publisher role is not the HML role in the approved account."
+            exit 1
+          }
+
+          {
+            echo "cluster_name=${cluster_name}"
+            echo "migration_secret_arn=${migration_secret_arn}"
+            echo "service_order_event_bus_name=${service_order_event_bus_name}"
+            echo "service_order_publisher_role_arn=${service_order_publisher_role_arn}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Connect to the approved HML EKS cluster
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          EKS_CLUSTER_NAME: ${{ steps.targets.outputs.cluster_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION" --no-cli-pager
+          expected_context="arn:aws:eks:us-east-1:035611741563:cluster/auto-shop-staging"
+          actual_context="$(kubectl config view --minify -o 'jsonpath={.contexts[0].context.cluster}')"
+          [[ "$actual_context" == "$expected_context" ]] || {
+            echo "::error::kubectl context is not the approved HML EKS cluster."
+            exit 1
+          }
+
+      - name: Verify deployment manifests target only the HML namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'staging) NAMESPACE="auto-shop-hml" ;;' k8s/scripts/deploy.sh || {
+            echo "::error::deploy.sh no longer maps staging to auto-shop-hml."
+            exit 1
+          }
+          for phase in foundation migration seed app; do
+            kustomization="k8s/overlays/staging/${phase}/kustomization.yaml"
+            grep -Fxq 'namespace: auto-shop-hml' "$kustomization" || {
+              echo "::error::${kustomization} does not declare the approved HML namespace."
+              exit 1
+            }
+          done
+
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.19.0
+
+      - name: Deploy backend to HML
+        env:
+          IMAGE_REFERENCE: ${{ steps.resolve-image.outputs.image_reference }}
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+          MIGRATION_DATABASE_SECRET_ARN: ${{ steps.targets.outputs.migration_secret_arn }}
+          SERVICE_ORDER_EVENT_BUS_NAME: ${{ steps.targets.outputs.service_order_event_bus_name }}
+          SERVICE_ORDER_PUBLISHER_ROLE_ARN: ${{ steps.targets.outputs.service_order_publisher_role_arn }}
+        shell: bash
+        run: ./k8s/scripts/deploy.sh staging "${IMAGE_REFERENCE}"
+
+      - name: Confirm HML deployment uses the requested digest
+        env:
+          IMAGE_REFERENCE: ${{ steps.resolve-image.outputs.image_reference }}
+          HML_NAMESPACE: auto-shop-hml
+        shell: bash
+        run: |
+          set -euo pipefail
+          deployed_image="$(kubectl get deployment auto-shop-backend \
+            --namespace "$HML_NAMESPACE" \
+            --output='jsonpath={.spec.template.spec.containers[?(@.name=="backend-api")].image}')"
+          [[ "$deployed_image" == "$IMAGE_REFERENCE" ]] || {
+            echo "::error::The HML backend Deployment is not using the requested ECR digest."
+            exit 1
+          }
+
+  summary:
+    name: Report HML deployment result
+    if: always()
+    needs: [source-guard, build-push, deploy-hml, prepare-hml-newrelic-secret]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    env:
+      SOURCE_GUARD_RESULT: ${{ needs.source-guard.result }}
+      BUILD_RESULT: ${{ needs.build-push.result }}
+      DEPLOY_RESULT: ${{ needs.deploy-hml.result }}
+      PREPARE_RESULT: ${{ needs.prepare-hml-newrelic-secret.result }}
+      ACTION: ${{ inputs.operation || 'deploy' }}
+      SOURCE_IMAGE: ${{ needs.build-push.outputs.ghcr_image_reference }}
+      ECR_TAG_IMAGE: ${{ needs.deploy-hml.outputs.ecr_tag_reference }}
+      ECR_IMAGE: ${{ needs.deploy-hml.outputs.ecr_image_reference }}
+    steps:
+      - name: Write commit, image, and result summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          final_result=success
+          if [[ "$SOURCE_GUARD_RESULT" != "success" ]]; then
+            final_result=failure
+          elif [[ "$ACTION" == "prepare-newrelic-secret" ]]; then
+            if [[ "$PREPARE_RESULT" != "success" ]]; then
+              final_result=failure
+            fi
+          elif [[ "$BUILD_RESULT" != "success" || "$DEPLOY_RESULT" != "success" ]]; then
+            final_result=failure
+          fi
+          {
+            echo "## HML operation: $ACTION"
+            echo
+            printf '| Operation | %s |\n' "$ACTION"
+            printf '| Commit | [`%s`](%s/%s/commit/%s) |\n' "${GITHUB_SHA:0:7}" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_SHA"
+            printf '| GHCR image | `%s` |\n' "${SOURCE_IMAGE:-not published}"
+            printf '| ECR tag | `%s` |\n' "${ECR_TAG_IMAGE:-not mirrored}"
+            printf '| Deployed ECR digest | `%s` |\n' "${ECR_IMAGE:-not resolved}"
+            printf '| Source guard | %s |\n' "$SOURCE_GUARD_RESULT"
+            printf '| Build | %s |\n' "$BUILD_RESULT"
+            printf '| Deploy | %s |\n' "$DEPLOY_RESULT"
+            printf '| Secret preparation | %s |\n' "$PREPARE_RESULT"
+            printf '| Result | **%s** |\n' "$final_result"
+            echo
+            printf '%s\n' '> The deploy script applies resources in phases and runs migrations; it does not provide an atomic full rollback. This workflow does not attempt `kubectl rollout undo`.'
+          } >> "$GITHUB_STEP_SUMMARY"

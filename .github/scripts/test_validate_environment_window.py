@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from validate_environment_window import (
@@ -130,6 +130,31 @@ class ValidateEnvironmentWindowTests(unittest.TestCase):
                 started_at="2026-10-30T10:00:00Z",
             )
 
+    def test_any_time_hml_keeps_expiring_session_without_calendar_cutoffs(self) -> None:
+        remaining = validate_environment_window(
+            active="true",
+            authorized="true",
+            session_id="hml-2026-10-31",
+            stage="hml",
+            action="operate",
+            started_at="2026-11-01T02:00:57Z",
+            now=datetime(2026, 11, 1, 2, 30, tzinfo=timezone.utc),
+            allow_hml_any_time=True,
+        )
+        self.assertEqual(remaining, timedelta(hours=4, minutes=30, seconds=57))
+
+        with self.assertRaisesRegex(EnvironmentWindowError, "five hours"):
+            validate_environment_window(
+                active="true",
+                authorized="true",
+                session_id="hml-2026-10-31",
+                stage="hml",
+                action="operate",
+                started_at="2026-11-01T02:00:57Z",
+                now=datetime(2026, 11, 1, 7, 0, 57, tzinfo=timezone.utc),
+                allow_hml_any_time=True,
+            )
+
     def test_teardown_is_not_blocked_when_hml_session_expired(self) -> None:
         self.validate(
             stage="hml",
@@ -161,8 +186,42 @@ class ValidateEnvironmentWindowTests(unittest.TestCase):
                 started_at="2026-10-30T10:00:01Z",
             )
 
+    def test_deploy_is_not_limited_by_either_stage_time_window(self) -> None:
+        cases = (
+            (
+                "hml",
+                "2026-10-30T10:00:00Z",
+                datetime(2026, 11, 6, 9, 0, tzinfo=timezone.utc),
+            ),
+            (
+                "prd",
+                "2026-11-01T09:00:00Z",
+                datetime(2026, 11, 6, 9, 0, tzinfo=timezone.utc),
+            ),
+        )
+        for stage, started_at, now in cases:
+            with self.subTest(stage=stage):
+                self.validate(
+                    stage=stage,
+                    action="deploy",
+                    now=now,
+                    started_at=started_at,
+                )
+
+    def test_deploy_still_requires_explicit_environment_authorization(self) -> None:
+        with self.assertRaisesRegex(EnvironmentWindowError, "authorized"):
+            validate_environment_window(
+                active="true",
+                authorized="false",
+                session_id="hml-2026-10-30",
+                stage="hml",
+                action="deploy",
+                started_at="2026-10-30T10:00:00Z",
+                now=datetime(2026, 11, 6, 9, 0, tzinfo=timezone.utc),
+            )
+
     def test_rejects_unknown_stage_and_action(self) -> None:
-        for stage, action in (("production", "operate"), ("prd", "deploy")):
+        for stage, action in (("production", "operate"), ("prd", "unknown")):
             with self.subTest(stage=stage, action=action):
                 with self.assertRaises(EnvironmentWindowError):
                     self.validate(

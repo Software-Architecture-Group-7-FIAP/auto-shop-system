@@ -70,6 +70,26 @@ def _safe_close_jobs(*, mutation_started: bool = False) -> list[dict[str, object
     return [{"name": "close", "status": "completed", "conclusion": "failure", "steps": markers}]
 
 
+def test_any_time_hml_capability_preserves_signed_session_authentication() -> None:
+    key = "k" * 32
+    token = AUTH.sign_lifecycle_session(
+        key,
+        "hml",
+        "hml-2026-10-31",
+        "2026-11-01T02:00:57Z",
+        allow_hml_any_time=True,
+    )
+
+    AUTH.verify_lifecycle_session(
+        key,
+        token,
+        "hml",
+        "hml-2026-10-31",
+        "2026-11-01T02:00:57Z",
+        allow_hml_any_time=True,
+    )
+
+
 def test_default_hml_opening_resolves_to_the_default_brt_start() -> None:
     session = CLEANUP.parse_hml_opening_run(
         _opening("lifecycle:hml:open:default-17-BRT:101"), default_branch="main"

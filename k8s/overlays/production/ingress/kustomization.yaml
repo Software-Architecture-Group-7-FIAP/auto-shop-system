@@ -3,11 +3,11 @@ kind: Kustomization
 
 namespace: auto-shop
 
-bases:
+resources:
   - ../../../base/ingress
 
-patchesStrategicMerge:
-  - ingress-patch.yaml
+patches:
+  - path: ingress-patch.yaml
 
 labels:
   - pairs:

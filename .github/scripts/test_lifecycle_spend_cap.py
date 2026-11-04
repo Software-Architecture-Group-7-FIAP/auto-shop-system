@@ -65,9 +65,9 @@ class LifecycleSpendCapTests(unittest.TestCase):
         self.assertEqual(projection["usage_derived_daily_usd"], "1.00")
         self.assertEqual(projection["projected_daily_usd"], "2.00")
         self.assertEqual(projection["projection_days"], 7)
-        self.assertEqual(projection["reserved_cost_explorer_requests"], 24)
-        self.assertEqual(projection["reserved_cost_explorer_queries_usd"], "0.24")
-        self.assertEqual(projection["projected_gross_through_cutoff_usd"], "43.24")
+        self.assertEqual(projection["reserved_cost_explorer_requests"], 14)
+        self.assertEqual(projection["reserved_cost_explorer_queries_usd"], "0.14")
+        self.assertEqual(projection["projected_gross_through_cutoff_usd"], "43.14")
 
     def test_uses_gross_recent_usage_rate_when_it_exceeds_the_operator_floor(self) -> None:
         report = self.make_report(daily_amount="4.00", daily_floor="0.50")
@@ -75,7 +75,7 @@ class LifecycleSpendCapTests(unittest.TestCase):
         projection = self.evaluate(report)
 
         self.assertEqual(projection["projected_daily_usd"], "4.00")
-        self.assertEqual(projection["projected_gross_through_cutoff_usd"], "144.24")
+        self.assertEqual(projection["projected_gross_through_cutoff_usd"], "144.14")
         self.assertEqual(projection["status"], "blocked")
 
     def test_projects_from_highest_complete_day_not_recent_average(self) -> None:
@@ -94,7 +94,7 @@ class LifecycleSpendCapTests(unittest.TestCase):
             "maximum gross cost among trailing seven complete billing days",
         )
         self.assertEqual(projection["projected_daily_usd"], "30.00")
-        self.assertEqual(projection["projected_gross_through_cutoff_usd"], "268.24")
+        self.assertEqual(projection["projected_gross_through_cutoff_usd"], "268.14")
         self.assertEqual(projection["status"], "blocked")
 
     def test_blocks_evidence_older_than_one_hour(self) -> None:

@@ -16,6 +16,17 @@ logger = logging.getLogger("src.http")
 QUIET_PATHS = frozenset({"/health", "/health/live", "/health/ready", "/favicon.ico"})
 
 
+def _safe_route_path(scope: Scope, raw_path: str) -> str:
+    route = scope.get("route")
+    route_path = getattr(route, "path", None)
+    if not isinstance(route_path, str):
+        return "<unmatched>"
+    static_route_prefix = route_path.split("{", maxsplit=1)[0]
+    mounted_at = raw_path.find(static_route_prefix)
+    mount_prefix = raw_path[:mounted_at] if mounted_at >= 0 else ""
+    return f"{mount_prefix}{route_path}"
+
+
 class CorrelationMiddleware:
     """Bind one id per request and emit a JSON access line.
 
@@ -62,9 +73,14 @@ class CorrelationMiddleware:
         try:
             await self.app(scope, receive, send_with_correlation)
         except Exception:
+            safe_path = _safe_route_path(scope, path)
             logger.exception(
                 "unhandled exception",
-                extra={"event": "unhandled_exception", "http_method": scope.get("method"), "path": path},
+                extra={
+                    "event": "unhandled_exception",
+                    "http_method": scope.get("method"),
+                    "path": safe_path,
+                },
             )
             status_code = 500
             body = b'{"detail":"Erro interno do servidor"}'
@@ -79,12 +95,13 @@ class CorrelationMiddleware:
             return
         finally:
             if path not in QUIET_PATHS:
+                safe_path = _safe_route_path(scope, path)
                 logger.info(
                     "request completed",
                     extra={
                         "event": "http_request",
                         "http_method": scope.get("method"),
-                        "path": path,
+                        "path": safe_path,
                         "status_code": status_code,
                         "duration_ms": round((time.perf_counter() - started) * 1000, 2),
                     },

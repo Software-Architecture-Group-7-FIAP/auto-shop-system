@@ -8,10 +8,12 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -26,6 +28,7 @@ TITLE_PATTERN = re.compile(r"^[^\r\n\x00-\x1f]{1,240}$")
 ACTIVE_RUN_STATUSES = {"queued", "waiting", "in_progress", "requested", "pending", "canceling"}
 DISPATCH_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 SESSION_TOKEN_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+AUTHORIZATION_ACTIONS = {"open", "health", "close", "cleanup-close", "audit"}
 MAX_CANCEL_WAIT_SECONDS = 30
 MAX_API_TIMEOUT_SECONDS = 30
 POST_DEADLINE_LOOKUP_SECONDS = 15
@@ -44,6 +47,20 @@ def _utc_timestamp(value: str) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
         raise LifecycleDispatchError("The deadline must be an ISO-8601 UTC timestamp.")
     return parsed.astimezone(timezone.utc)
+
+
+def _run_completion_bound(run: dict[str, Any]) -> datetime:
+    """Return a conservative completion bound from a completed Actions run."""
+    timestamps = []
+    for field in ("completed_at", "updated_at"):
+        value = run.get(field)
+        if value is not None:
+            if not isinstance(value, str) or not value:
+                raise LifecycleDispatchError("GitHub returned an invalid completion timestamp.")
+            timestamps.append(_utc_timestamp(value))
+    if not timestamps:
+        raise LifecycleDispatchError("GitHub returned an invalid completion timestamp.")
+    return max(timestamps)
 
 
 def _api_request(
@@ -95,6 +112,9 @@ def _validate_arguments(arguments: argparse.Namespace) -> tuple[str, dict[str, s
         raise LifecycleDispatchError("Output name must be a valid GitHub Actions identifier.")
     if arguments.timeout_seconds < 1 or arguments.poll_seconds < 1:
         raise LifecycleDispatchError("Timeout and polling intervals must be positive.")
+    authorization_action = getattr(arguments, "authorization_action", "")
+    if authorization_action and authorization_action not in AUTHORIZATION_ACTIONS:
+        raise LifecycleDispatchError("The lifecycle authorization action is not allowed.")
     if not 1 <= arguments.cancel_wait_seconds <= MAX_CANCEL_WAIT_SECONDS:
         raise LifecycleDispatchError(
             f"Post-cancellation wait must be between 1 and {MAX_CANCEL_WAIT_SECONDS} seconds."
@@ -310,7 +330,7 @@ def _cancel_session_apply_runs(
             status = latest.get("status")
             if status == "completed":
                 try:
-                    completed_at = _utc_timestamp(str(latest.get("completed_at", "")))
+                    completed_at = _run_completion_bound(latest)
                 except LifecycleDispatchError as error:
                     raise LifecycleDispatchError(
                         f"Apply run {run_id} reached completed with an invalid completion timestamp; destroy was not dispatched."
@@ -382,6 +402,47 @@ def _append_output(path: str, name: str, value: str) -> None:
         raise LifecycleDispatchError("GitHub workflow output contained a line break.")
     with open(path, "a", encoding="utf-8") as output:
         output.write(f"{name}={value}\n")
+
+
+def _issue_dispatch_authorization(
+    *,
+    action: str,
+    session_id: str,
+    dispatch_id: str,
+    repository: str,
+    workflow: str,
+    ref: str,
+    inputs: dict[str, str],
+) -> None:
+    command = [
+        sys.executable,
+        str(Path(__file__).with_name("lifecycle_session_ledger.py")),
+        "issue-dispatch",
+        "--session-id",
+        session_id,
+        "--dispatch-id",
+        dispatch_id,
+        "--action",
+        action,
+        "--repository",
+        repository,
+        "--workflow",
+        workflow,
+        "--ref",
+        ref,
+        "--inputs",
+        json.dumps(inputs, separators=(",", ":")),
+    ]
+    try:
+        result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=45)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise LifecycleDispatchError(
+            "The lifecycle ledger could not issue the child authorization; no child was dispatched."
+        ) from error
+    if result.returncode != 0:
+        raise LifecycleDispatchError(
+            "The lifecycle ledger rejected the exact child authorization; no child was dispatched."
+        )
 
 
 def _stable_dispatch_id(
@@ -494,16 +555,22 @@ def dispatch_and_wait(arguments: argparse.Namespace) -> int:
         )
 
     repository, inputs = _validate_arguments(arguments)
-    session_token = os.environ.get("LIFECYCLE_SESSION_TOKEN", "").strip()
-    if not SESSION_TOKEN_PATTERN.fullmatch(session_token):
-        raise LifecycleDispatchError(
-            "LIFECYCLE_SESSION_TOKEN must be a valid coordinator-issued capability; no run was dispatched."
-        )
-    if "session_token" in inputs or "lifecycle_dispatch_id" in inputs:
-        raise LifecycleDispatchError(
-            "session_token and lifecycle_dispatch_id are injected by the coordinator and must not be supplied directly."
-        )
-    inputs["session_token"] = session_token
+    if getattr(arguments, "no_session_token", False):
+        if "session_token" in inputs or "lifecycle_dispatch_id" in inputs:
+            raise LifecycleDispatchError(
+                "lifecycle_dispatch_id is injected by the coordinator and must not be supplied directly."
+            )
+    else:
+        session_token = os.environ.get("LIFECYCLE_SESSION_TOKEN", "").strip()
+        if not SESSION_TOKEN_PATTERN.fullmatch(session_token):
+            raise LifecycleDispatchError(
+                "LIFECYCLE_SESSION_TOKEN must be a valid coordinator-issued capability; no run was dispatched."
+            )
+        if "session_token" in inputs or "lifecycle_dispatch_id" in inputs:
+            raise LifecycleDispatchError(
+                "session_token and lifecycle_dispatch_id are injected by the coordinator and must not be supplied directly."
+            )
+        inputs["session_token"] = session_token
     raw_run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1").strip()
     if not re.fullmatch(r"[1-9][0-9]*", raw_run_attempt):
         raise LifecycleDispatchError("GITHUB_RUN_ATTEMPT must be a positive integer.")
@@ -578,6 +645,17 @@ def dispatch_and_wait(arguments: argparse.Namespace) -> int:
             )
         if datetime.now(timezone.utc) >= deadline:
             raise LifecycleDispatchError("The lifecycle phase deadline passed before dispatch could start.")
+        authorization_action = getattr(arguments, "authorization_action", "")
+        if authorization_action:
+            _issue_dispatch_authorization(
+                action=authorization_action,
+                session_id=inputs.get("session_id", ""),
+                dispatch_id=dispatch_id,
+                repository=repository,
+                workflow=arguments.workflow,
+                ref=arguments.ref,
+                inputs=inputs,
+            )
         _api_request(
             token,
             "POST",
@@ -616,7 +694,7 @@ def dispatch_and_wait(arguments: argparse.Namespace) -> int:
                         f"Correlated run {run.get('id')} ended with conclusion '{conclusion}'."
                     )
                 try:
-                    completed_at = _utc_timestamp(str(run.get("completed_at", "")))
+                    completed_at = _run_completion_bound(run)
                 except LifecycleDispatchError as error:
                     raise LifecycleDispatchError("GitHub returned an invalid completion timestamp.") from error
                 if completed_at > deadline:
@@ -660,9 +738,8 @@ def dispatch_and_wait(arguments: argparse.Namespace) -> int:
         raise LifecycleDispatchError("The uniquely correlated run has no valid ID; no run was canceled.")
 
     if run.get("status") == "completed":
-        completed_at_value = run.get("completed_at")
         try:
-            completed_at = _utc_timestamp(str(completed_at_value))
+            completed_at = _run_completion_bound(run)
         except LifecycleDispatchError as error:
             raise LifecycleDispatchError(
                 f"Deadline reached and correlated run {run_id} is complete, but its completion time is invalid."
@@ -714,8 +791,10 @@ def main() -> int:
     parser.add_argument("--poll-seconds", type=int, default=10)
     parser.add_argument("--cancel-wait-seconds", type=int, default=30)
     parser.add_argument("--deadline-utc")
+    parser.add_argument("--authorization-action", choices=tuple(sorted(AUTHORIZATION_ACTIONS)), default="")
     parser.add_argument("--cancel-active-workflow", default="")
     parser.add_argument("--cancel-title-prefix", default="")
+    parser.add_argument("--no-session-token", action="store_true")
     arguments = parser.parse_args()
 
     try:

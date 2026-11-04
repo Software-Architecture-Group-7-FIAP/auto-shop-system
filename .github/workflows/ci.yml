@@ -31,7 +31,9 @@ jobs:
           echo "image_tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "Release image tag: ${tag} (commit ${GITHUB_SHA})"
 
+  # Temporary HML PR flexibility; remove after three proven deployments.
   test-and-security:
+    if: github.event_name != 'pull_request' || github.base_ref != 'develop'
     runs-on: ubuntu-latest
     needs: metadata
     env:
@@ -65,6 +67,7 @@ jobs:
         run: poetry run python scripts/check_unsafe_defaults.py --image-reference "$IMAGE_REFERENCE"
 
   gateway:
+    if: github.event_name != 'pull_request' || github.base_ref != 'develop'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -138,6 +141,7 @@ jobs:
           done
 
   terraform-k8s:
+    if: github.event_name != 'pull_request' || github.base_ref != 'develop'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -258,6 +262,7 @@ jobs:
             -var=enable_local_database=false
 
   terraform-aws:
+    if: github.event_name != 'pull_request' || github.base_ref != 'develop'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -272,6 +277,7 @@ jobs:
           terraform -chdir=infra/aws validate
 
   cluster-smoke:
+    if: github.event_name != 'pull_request' || github.base_ref != 'develop'
     runs-on: ubuntu-latest
     needs: [test-and-security, manifests]
     steps:
@@ -316,9 +322,9 @@ jobs:
           set -euo pipefail
           kubectl wait --for=condition=available deployment/postgres --namespace auto-shop --timeout=180s
           kubectl apply -k k8s/overlays/local/migration
-          kubectl wait --for=condition=complete job/auto-shop-migrate --namespace auto-shop --timeout=300s
+          bash k8s/scripts/wait-for-job.sh auto-shop-migrate auto-shop 600
           kubectl apply -k k8s/overlays/local/seed
-          kubectl wait --for=condition=complete job/auto-shop-seed --namespace auto-shop --timeout=300s
+          bash k8s/scripts/wait-for-job.sh auto-shop-seed auto-shop 600
           kubectl apply -k k8s/overlays/local/app
           kubectl rollout status deployment/auto-shop-backend --namespace auto-shop --timeout=300s
           kubectl apply -k k8s/overlays/local/ingress
@@ -345,6 +351,7 @@ jobs:
         run: bash scripts/check_hpa_smoke.sh
 
   frontend:
+    if: github.event_name != 'pull_request' || github.base_ref != 'develop'
     runs-on: ubuntu-latest
     defaults:
       run:

@@ -15,7 +15,7 @@ on:
         required: true
         type: string
       session_mode:
-        description: Authorized production window
+        description: Coordinator-authorized production session
         required: true
         type: choice
         options: [prd-window]
@@ -75,10 +75,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$EVENT_NAME" == "push" ]]; then
-            echo "Push builds do not deploy; environment changes require a coordinator-backed workflow_dispatch."
-            exit 0
-          fi
           [[ "$ENVIRONMENT_SCHEDULE_ENABLED" == "true" ]] || { echo "::error::ENVIRONMENT_SCHEDULE_ENABLED is not true."; exit 1; }
           [[ "$PRD_LIFECYCLE_AUTOMATION_READY" == "true" ]] || { echo "::error::PRD_LIFECYCLE_AUTOMATION_READY is not true."; exit 1; }
           [[ "$PRD_COST_EXCEPTION_APPROVED" == "true" ]] || { echo "::error::PRD_COST_EXCEPTION_APPROVED is not true."; exit 1; }
@@ -109,14 +105,20 @@ jobs:
 
   deploy-production:
     needs: [build-push, lifecycle-authorization]
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && vars.DEPLOY_PRODUCTION_ENABLED == 'true'
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      vars.DEPLOY_PRODUCTION_ENABLED == 'true' &&
+      needs.build-push.result == 'success' &&
+      needs.lifecycle-authorization.result == 'success'
     runs-on: ubuntu-latest
     environment: prd
     permissions:
       contents: read
       id-token: write
+      packages: read
     env:
-      IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
+      SOURCE_IMAGE: ${{ needs.build-push.outputs.ghcr_image_reference }}
       ALLOW_SYNTHETIC_SEED_IN_PRD: ${{ vars.ALLOW_SYNTHETIC_SEED_IN_PRD || 'false' }}
       LIFECYCLE_SESSION_ID: ${{ inputs.session_id }}
     steps:
@@ -146,9 +148,6 @@ jobs:
           fi
           python3 .github/scripts/validate_environment_window.py --action "${action}"
 
-      - name: Verify image is pullable without credentials
-        run: docker pull "${IMAGE_REFERENCE}"
-
       - name: Validate the Terraform-managed PRD deploy role ARN
         env:
           DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN_PRD || '' }}
@@ -165,6 +164,18 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN_PRD }}
           aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Mirror authenticated GHCR image to private ECR
+        id: ecr_image
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_reference="$(python3 scripts/mirror_ghcr_image_to_ecr.py "${SOURCE_IMAGE}")"
+          echo "image_reference=${image_reference}" >> "${GITHUB_OUTPUT}"
 
       - uses: azure/setup-kubectl@v4
         with:
@@ -224,7 +235,7 @@ jobs:
 
       - name: Deploy to production (rolling via Deployment rollout)
         env:
-          IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
+          IMAGE_REFERENCE: ${{ steps.ecr_image.outputs.image_reference }}
           MIGRATION_DATABASE_SECRET_ARN: ${{ steps.eks.outputs.migration_secret_arn }}
           SERVICE_ORDER_EVENT_BUS_NAME: ${{ steps.eks.outputs.service_order_event_bus_name }}
           SERVICE_ORDER_PUBLISHER_ROLE_ARN: ${{ steps.eks.outputs.service_order_publisher_role_arn }}
@@ -234,7 +245,7 @@ jobs:
 
   deploy-production-frontend:
     needs: deploy-production
-    if: github.event_name == 'workflow_dispatch' && vars.DEPLOY_PRODUCTION_ENABLED == 'true' && vars.DEPLOY_PRODUCTION_FRONTEND_ENABLED == 'true'
+    if: needs.deploy-production.result == 'success' && vars.DEPLOY_PRODUCTION_FRONTEND_ENABLED == 'true' && github.event_name == 'workflow_dispatch' && vars.DEPLOY_PRODUCTION_ENABLED == 'true'
     permissions:
       contents: read
       id-token: write
@@ -255,7 +266,7 @@ jobs:
     steps:
       - name: Deploy gated until production infra is ready
         env:
-          IMAGE_REFERENCE: ${{ needs.build-push.outputs.image_reference }}
+          IMAGE_REFERENCE: ${{ needs.build-push.outputs.ghcr_image_reference }}
         run: |
           echo "Imagem publicada: ${IMAGE_REFERENCE}"
           echo "Deploy produção ignorado: defina a variável de repositório DEPLOY_PRODUCTION_ENABLED=true."
@@ -269,3 +280,4 @@ jobs:
     steps:
       - name: Keep production changes behind the lifecycle coordinator
         run: echo "Push build completed; production deploy requires workflow_dispatch with a validated session_id, started_at, and session_mode."
+

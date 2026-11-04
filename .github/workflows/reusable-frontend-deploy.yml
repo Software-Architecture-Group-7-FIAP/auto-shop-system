@@ -68,10 +68,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Require the authorized environment operating window
+      - name: Require authorized environment deployment
         env:
-          ENVIRONMENT_ACTIVE: ${{ inputs.github_environment == 'staging' && vars.STAGING_ACTIVE || vars.ENVIRONMENT_ACTIVE }}
-          ENVIRONMENT_WINDOW_AUTHORIZED: ${{ inputs.github_environment == 'staging' && vars.STAGING_SESSION_AUTHORIZED || vars.ENVIRONMENT_WINDOW_AUTHORIZED }}
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_ENVIRONMENT: ${{ inputs.github_environment }}
+          ENVIRONMENT_ACTIVE_HML: ${{ vars.STAGING_ACTIVE || 'false' }}
+          ENVIRONMENT_AUTHORIZED_HML: ${{ vars.STAGING_SESSION_AUTHORIZED || 'false' }}
+          ENVIRONMENT_ACTIVE_PRD: ${{ vars.ENVIRONMENT_ACTIVE || 'false' }}
+          ENVIRONMENT_AUTHORIZED_PRD: ${{ vars.ENVIRONMENT_WINDOW_AUTHORIZED || 'false' }}
           ENVIRONMENT_SESSION_ID: ${{ inputs.session_id }}
           ENVIRONMENT_WINDOW_STARTED_AT: ${{ inputs.started_at }}
           ENVIRONMENT_STAGE: ${{ inputs.api_stage }}
@@ -81,13 +85,36 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          local_hour="$(TZ=America/Sao_Paulo date +%H)"
-          if [[ "${ENVIRONMENT_STAGE}" == "prd" && "${local_hour}" -lt 7 ]]; then
-            action=start
-          else
-            action=operate
+          case "$GITHUB_ENVIRONMENT" in
+            hml)
+              active="$ENVIRONMENT_ACTIVE_HML"
+              authorized="$ENVIRONMENT_AUTHORIZED_HML"
+              expected_stage=hml
+              expected_mode=hml
+              ;;
+            prd)
+              active="$ENVIRONMENT_ACTIVE_PRD"
+              authorized="$ENVIRONMENT_AUTHORIZED_PRD"
+              expected_stage=prd
+              expected_mode=prd-window
+              ;;
+            *) echo "::error::The frontend deploy Environment must be hml or prd."; exit 1 ;;
+          esac
+          [[ "$ENVIRONMENT_STAGE" == "$expected_stage" ]] || {
+            echo "::error::The frontend API stage must match its GitHub Environment."
+            exit 1
+          }
+          [[ "$active" == "true" && "$authorized" == "true" ]] || {
+            echo "::error::The environment deployment authorization gates are not enabled."
+            exit 1
+          }
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            [[ "$SESSION_MODE" == "$expected_mode" ]] || {
+              echo "::error::The coordinator session mode does not match the target environment."
+              exit 1
+            }
+            python3 ../.github/scripts/validate_environment_window.py --action deploy
           fi
-          python3 .github/scripts/validate_environment_window.py --action "${action}"
 
       - uses: actions/setup-node@v4
         with:
@@ -98,13 +125,14 @@ jobs:
       - name: Validate API stage
         env:
           API_STAGE: ${{ inputs.api_stage }}
+          GITHUB_ENVIRONMENT: ${{ inputs.github_environment }}
         shell: bash
         run: |
           set -euo pipefail
-          case "${API_STAGE}" in
-            hml|prd) ;;
-            *) echo "Unsupported API stage." >&2; exit 1 ;;
-          esac
+          [[ "${API_STAGE}" == "${GITHUB_ENVIRONMENT}" ]] || {
+            echo "The API stage must match the selected GitHub Environment." >&2
+            exit 1
+          }
 
       - name: Install dependencies
         run: npm ci

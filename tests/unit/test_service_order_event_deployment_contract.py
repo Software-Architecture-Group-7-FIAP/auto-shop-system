@@ -72,12 +72,10 @@ def test_kubernetes_deploy_injects_only_the_resolved_bus_and_irsa_role():
     assert "needs: deploy-staging" in staging_frontend_job
     assert "needs: deploy-production" in production_frontend_job
     assert (
-        "if: github.event_name == 'workflow_dispatch' && vars.DEPLOY_STAGING_ENABLED == 'true'"
-        " && vars.DEPLOY_STAGING_FRONTEND_ENABLED == 'true'"
+        "if: needs.deploy-staging.result == 'success' && vars.DEPLOY_STAGING_FRONTEND_ENABLED == 'true'"
     ) in staging_frontend_job
     assert (
-        "if: github.event_name == 'workflow_dispatch' && vars.DEPLOY_PRODUCTION_ENABLED == 'true'"
-        " && vars.DEPLOY_PRODUCTION_FRONTEND_ENABLED == 'true'"
+        "if: needs.deploy-production.result == 'success' && vars.DEPLOY_PRODUCTION_FRONTEND_ENABLED == 'true'"
     ) in production_frontend_job
     assert "[A-Za-z0-9][A-Za-z0-9_-]{0,99}" in staging_workflow
     assert "[A-Za-z0-9][A-Za-z0-9_-]{0,99}" in production_workflow

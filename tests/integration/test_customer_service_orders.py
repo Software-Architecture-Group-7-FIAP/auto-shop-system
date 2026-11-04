@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -19,6 +20,7 @@ from src.infrastructure.database import (
     SupplierModel,
     VehicleModel,
 )
+from src.infrastructure.observability.json_logging import JsonLogFormatter
 
 ISSUER = "https://auth.example.invalid"
 AUDIENCE = "auto-shop-api"
@@ -181,7 +183,6 @@ def test_customer_cannot_distinguish_foreign_service_order_from_missing_order(
     client,
     db_session,
     customer_token_factory,
-    caplog,
 ):
     owner_id, foreign_order_id = _create_customer_order(db_session, suffix="owner")
     requester_id, _ = _create_customer_order(db_session, suffix="requester")
@@ -193,14 +194,36 @@ def test_customer_cannot_distinguish_foreign_service_order_from_missing_order(
         "X-Correlation-ID": correlation_id,
     }
 
-    foreign_response = client.get(
-        f"/api/v1/customer/service-orders/{foreign_order_id}",
-        headers=headers,
-    )
-    missing_response = client.get(
-        "/api/v1/customer/service-orders/999999",
-        headers=headers,
-    )
+    records: list[str] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(JsonLogFormatter("development").format(record))
+
+    loggers = [
+        logging.getLogger("src.api.routers.customer_service_orders"),
+        logging.getLogger("src.domain.errors"),
+    ]
+    previous_state = [(logger, logger.level, logger.disabled) for logger in loggers]
+    capture = _Capture()
+    for logger in loggers:
+        logger.setLevel(logging.INFO)
+        logger.disabled = False
+        logger.addHandler(capture)
+    try:
+        foreign_response = client.get(
+            f"/api/v1/customer/service-orders/{foreign_order_id}",
+            headers=headers,
+        )
+        missing_response = client.get(
+            "/api/v1/customer/service-orders/999999",
+            headers=headers,
+        )
+    finally:
+        for logger, previous_level, previous_disabled in previous_state:
+            logger.removeHandler(capture)
+            logger.setLevel(previous_level)
+            logger.disabled = previous_disabled
 
     assert owner_id != requester_id
     assert foreign_response.status_code == 404
@@ -213,8 +236,9 @@ def test_customer_cannot_distinguish_foreign_service_order_from_missing_order(
         "code": "not_found",
     }
     assert "Cliente owner" not in foreign_response.text
-    assert correlation_id in caplog.text
-    assert "cliente-owner@test.local" not in caplog.text
+    payloads = [json.loads(record) for record in records]
+    assert any(item.get("correlation_id") == correlation_id for item in payloads)
+    assert "cliente-owner@test.local" not in "\n".join(records)
 
 
 def test_customer_service_order_requires_valid_customer_token(client):

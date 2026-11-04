@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "ownership": "auto-shop-owned-hml-technical-v1",
+  "name": "auto-shop-owned::HML Technical Health",
+  "description": "Owned by auto-shop-system. Aggregate HML health only; no raw logs or personal data.",
+  "permissions": "PRIVATE",
+  "aws_schema_mapping": {
+    "verified": false,
+    "verified_at": null,
+    "evidence_run_url": null
+  },
+  "pages": [
+    {
+      "name": "API and AWS Edge",
+      "widgets": [
+        {
+          "id": "fastapi-throughput",
+          "title": "FastAPI throughput (requests/min)",
+          "visualization": "line",
+          "source": "Transaction",
+          "time_range": "30 minutes",
+          "unit": "requests/minute",
+          "filters": ["appName = auto-shop-api", "label.environment = hml"],
+          "nrql": "FROM Transaction SELECT rate(count(*), 1 minute) WHERE appName = 'auto-shop-api' AND label.environment = 'hml' TIMESERIES SINCE 30 minutes ago"
+        },
+        {
+          "id": "fastapi-availability-errors",
+          "title": "FastAPI availability and error rate (%)",
+          "visualization": "billboard",
+          "source": "Transaction",
+          "time_range": "30 minutes",
+          "unit": "percent",
+          "filters": ["appName = auto-shop-api", "label.environment = hml"],
+          "coverage_note": "No traffic is no data, not 100% availability.",
+          "nrql": "FROM Transaction SELECT percentage(count(*), WHERE error IS false) AS 'availability', percentage(count(*), WHERE error IS true) AS 'error rate' WHERE appName = 'auto-shop-api' AND label.environment = 'hml' SINCE 30 minutes ago"
+        },
+        {
+          "id": "fastapi-latency",
+          "title": "FastAPI latency p50/p95/p99 (seconds)",
+          "visualization": "line",
+          "source": "Transaction",
+          "time_range": "30 minutes",
+          "unit": "seconds",
+          "filters": ["appName = auto-shop-api", "label.environment = hml"],
+          "nrql": "FROM Transaction SELECT percentile(duration, 50, 95, 99) WHERE appName = 'auto-shop-api' AND label.environment = 'hml' TIMESERIES SINCE 30 minutes ago"
+        },
+        {
+          "id": "gateway-volume-errors",
+          "title": "API Gateway volume and errors (count/5 min)",
+          "visualization": "line",
+          "source": "ApiGatewaySample",
+          "time_range": "30 minutes",
+          "unit": "count per polling interval",
+          "filters": ["stage = hml"],
+          "coverage_note": "AWS polling is aggregate and normally arrives every five minutes.",
+          "nrql": "FROM ApiGatewaySample SELECT sum(provider.count), sum(provider.4xxError), sum(provider.5xxError) WHERE stage = 'hml' TIMESERIES 5 minutes SINCE 30 minutes ago"
+        },
+        {
+          "id": "gateway-error-availability",
+          "title": "API Gateway availability and error rates (%)",
+          "visualization": "line",
+          "source": "ApiGatewaySample",
+          "time_range": "30 minutes",
+          "unit": "percent",
+          "filters": ["stage = hml"],
+          "coverage_note": "Availability excludes 4xx responses and uses 100 × (Count − 5XXError) / Count. No requests produce no availability claim; verify provider fields before apply.",
+          "nrql": "FROM ApiGatewaySample SELECT 100 * (sum(provider.count) - sum(provider.5xxError)) / sum(provider.count) AS 'availability', 100 * sum(provider.4xxError) / sum(provider.count) AS '4xx error rate', 100 * sum(provider.5xxError) / sum(provider.count) AS '5xx error rate' WHERE stage = 'hml' TIMESERIES 5 minutes SINCE 30 minutes ago"
+        },
+        {
+          "id": "gateway-latency",
+          "title": "API Gateway latency (milliseconds)",
+          "visualization": "line",
+          "source": "ApiGatewaySample",
+          "time_range": "30 minutes",
+          "unit": "milliseconds",
+          "filters": ["stage = hml"],
+          "coverage_note": "Provider attribute names and units require live schema verification.",
+          "nrql": "FROM ApiGatewaySample SELECT average(provider.latency), average(provider.integrationLatency) WHERE stage = 'hml' TIMESERIES 5 minutes SINCE 30 minutes ago"
+        },
+        {
+          "id": "lambda-auth-health",
+          "title": "lambda-auth errors, throttles and duration (count/ms)",
+          "visualization": "line",
+          "source": "ServerlessSample",
+          "time_range": "30 minutes",
+          "unit": "count and milliseconds",
+          "filters": ["provider.functionName = lambda-auth-hml"],
+          "coverage_note": "Cold starts are intentionally omitted until lambda-auth instrumentation is verified.",
+          "nrql": "FROM ServerlessSample SELECT sum(provider.invocations), sum(provider.errors), sum(provider.throttles), average(provider.duration) WHERE provider.functionName = 'lambda-auth-hml' TIMESERIES 5 minutes SINCE 30 minutes ago"
+        }
+      ]
+    },
+    {
+      "name": "Kubernetes",
+      "widgets": [
+        {
+          "id": "k8s-pod-resources",
+          "title": "Kubernetes pod CPU and memory (cores/bytes)",
+          "visualization": "line",
+          "source": "K8sPodSample",
+          "time_range": "30 minutes",
+          "unit": "cores and bytes",
+          "filters": ["clusterName = auto-shop-hml", "namespaceName = auto-shop-hml"],
+          "nrql": "FROM K8sPodSample SELECT latest(cpuUsedCores), latest(memoryWorkingSetBytes) WHERE clusterName = 'auto-shop-hml' AND namespaceName = 'auto-shop-hml' FACET deploymentName TIMESERIES SINCE 30 minutes ago"
+        },
+        {
+          "id": "k8s-readiness",
+          "title": "Kubernetes pods not ready (count)",
+          "visualization": "billboard",
+          "source": "K8sPodSample",
+          "time_range": "30 minutes",
+          "unit": "pods",
+          "filters": ["clusterName = auto-shop-hml", "namespaceName = auto-shop-hml"],
+          "nrql": "FROM K8sPodSample SELECT filter(uniqueCount(podName), WHERE isReady = false) WHERE clusterName = 'auto-shop-hml' AND namespaceName = 'auto-shop-hml' SINCE 30 minutes ago"
+        },
+        {
+          "id": "k8s-restarts",
+          "title": "Kubernetes container restart counters (count)",
+          "visualization": "line",
+          "source": "K8sContainerSample",
+          "time_range": "30 minutes",
+          "unit": "cumulative restarts",
+          "filters": ["clusterName = auto-shop-hml", "namespaceName = auto-shop-hml"],
+          "coverage_note": "Counters are faceted; they are never summed across containers.",
+          "nrql": "FROM K8sContainerSample SELECT max(restartCount) WHERE clusterName = 'auto-shop-hml' AND namespaceName = 'auto-shop-hml' FACET deploymentName, podName, containerName TIMESERIES SINCE 30 minutes ago"
+        },
+        {
+          "id": "k8s-hpa",
+          "title": "Kubernetes HPA desired/current replicas (replicas)",
+          "visualization": "line",
+          "source": "K8sHpaSample",
+          "time_range": "30 minutes",
+          "unit": "replicas",
+          "filters": ["clusterName = auto-shop-hml", "namespaceName = auto-shop-hml"],
+          "nrql": "FROM K8sHpaSample SELECT latest(currentReplicas), latest(desiredReplicas) WHERE clusterName = 'auto-shop-hml' AND namespaceName = 'auto-shop-hml' FACET displayName TIMESERIES SINCE 30 minutes ago"
+        }
+      ]
+    }
+  ]
+}

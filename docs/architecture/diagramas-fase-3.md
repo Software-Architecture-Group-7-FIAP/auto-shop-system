@@ -18,6 +18,7 @@ Esta página reúne os RFCs, ADRs e diagramas complementares da Fase 3. O desenh
 | [ADR-0076](decisions/ADR-0076-comunicacao-sincrona-e-evento-falha.md) | REST síncrono e evento de falha operacional |
 | [ADR-0077](decisions/ADR-0077-hml-prd-por-namespace.md) | HML e PRD em namespaces e databases separados |
 | [ADR-0078](decisions/ADR-0078-observabilidade-new-relic.md) | New Relic como plataforma de observabilidade |
+| [ADR-0079](decisions/ADR-0079-registry-privado-ecr.md) | GHCR autenticado e mirror para ECR privado |
 
 ## Diagramas editáveis e exportados
 
