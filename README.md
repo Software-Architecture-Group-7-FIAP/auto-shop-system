@@ -350,6 +350,15 @@ o Redis usa memória efêmera e desaparece junto com o namespace da sessão.
 
 Vídeo da entrega (até 15 min): [https://youtu.be/mZ6VZ04t5gU](https://youtu.be/mZ6VZ04t5gU) — PDF em [docs/entrega/Entrega.pdf](docs/entrega/Entrega.pdf).
 
+### Homologação (HML) — acesso para demonstração
+
+| Recurso | URL |
+| --- | --- |
+| Painel admin | https://app-hml.oficina-workshop.com.br/ |
+| Swagger (API) | https://api.oficina-workshop.com.br/docs |
+
+Login do painel: usuário **`avaliador`**, senha **`avaliador`** (conta do seed sintético Fase 3; apenas HML).
+
 ## Hardening de OS e links publicos
 
 - OS segue `Recebida -> Em diagnostico -> Aguardando aprovacao -> Aguardando inicio -> Em execucao -> Finalizada -> Entregue`.
