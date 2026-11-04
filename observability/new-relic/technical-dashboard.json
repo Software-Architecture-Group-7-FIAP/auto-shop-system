@@ -1,14 +1,9 @@
 {
   "schema_version": 1,
-  "ownership": "auto-shop-owned-hml-technical-v1",
-  "name": "auto-shop-owned::HML Technical Health",
+  "ownership": "auto-shop-owned-hml-technical-v2",
+  "name": "auto-shop-owned::HML Technical Health v2",
   "description": "Owned by auto-shop-system. Aggregate HML health only; no raw logs or personal data.",
   "permissions": "PRIVATE",
-  "aws_schema_mapping": {
-    "verified": false,
-    "verified_at": null,
-    "evidence_run_url": null
-  },
   "pages": [
     {
       "name": "API and AWS Edge",
@@ -18,6 +13,7 @@
           "title": "FastAPI throughput (requests/min)",
           "visualization": "line",
           "source": "Transaction",
+          "coverage_status": "verified",
           "time_range": "30 minutes",
           "unit": "requests/minute",
           "filters": ["appName = auto-shop-api", "label.environment = hml"],
@@ -28,6 +24,7 @@
           "title": "FastAPI availability and error rate (%)",
           "visualization": "billboard",
           "source": "Transaction",
+          "coverage_status": "verified",
           "time_range": "30 minutes",
           "unit": "percent",
           "filters": ["appName = auto-shop-api", "label.environment = hml"],
@@ -39,6 +36,7 @@
           "title": "FastAPI latency p50/p95/p99 (seconds)",
           "visualization": "line",
           "source": "Transaction",
+          "coverage_status": "verified",
           "time_range": "30 minutes",
           "unit": "seconds",
           "filters": ["appName = auto-shop-api", "label.environment = hml"],
@@ -49,10 +47,11 @@
           "title": "API Gateway volume and errors (count/5 min)",
           "visualization": "line",
           "source": "ApiGatewaySample",
+          "coverage_status": "excluded",
           "time_range": "30 minutes",
           "unit": "count per polling interval",
           "filters": ["stage = hml"],
-          "coverage_note": "AWS polling is aggregate and normally arrives every five minutes.",
+          "coverage_note": "Excluded: API Gateway HTTP API v2 coverage is unsupported by this dashboard contract.",
           "nrql": "FROM ApiGatewaySample SELECT sum(provider.count), sum(provider.4xxError), sum(provider.5xxError) WHERE stage = 'hml' TIMESERIES 5 minutes SINCE 30 minutes ago"
         },
         {
@@ -60,10 +59,11 @@
           "title": "API Gateway availability and error rates (%)",
           "visualization": "line",
           "source": "ApiGatewaySample",
+          "coverage_status": "excluded",
           "time_range": "30 minutes",
           "unit": "percent",
           "filters": ["stage = hml"],
-          "coverage_note": "Availability excludes 4xx responses and uses 100 × (Count − 5XXError) / Count. No requests produce no availability claim; verify provider fields before apply.",
+          "coverage_note": "Excluded: API Gateway HTTP API v2 coverage is unsupported by this dashboard contract.",
           "nrql": "FROM ApiGatewaySample SELECT 100 * (sum(provider.count) - sum(provider.5xxError)) / sum(provider.count) AS 'availability', 100 * sum(provider.4xxError) / sum(provider.count) AS '4xx error rate', 100 * sum(provider.5xxError) / sum(provider.count) AS '5xx error rate' WHERE stage = 'hml' TIMESERIES 5 minutes SINCE 30 minutes ago"
         },
         {
@@ -71,10 +71,11 @@
           "title": "API Gateway latency (milliseconds)",
           "visualization": "line",
           "source": "ApiGatewaySample",
+          "coverage_status": "excluded",
           "time_range": "30 minutes",
           "unit": "milliseconds",
           "filters": ["stage = hml"],
-          "coverage_note": "Provider attribute names and units require live schema verification.",
+          "coverage_note": "Excluded: API Gateway HTTP API v2 coverage is unsupported by this dashboard contract.",
           "nrql": "FROM ApiGatewaySample SELECT average(provider.latency), average(provider.integrationLatency) WHERE stage = 'hml' TIMESERIES 5 minutes SINCE 30 minutes ago"
         },
         {
@@ -82,10 +83,11 @@
           "title": "lambda-auth errors, throttles and duration (count/ms)",
           "visualization": "line",
           "source": "ServerlessSample",
+          "coverage_status": "gated",
           "time_range": "30 minutes",
           "unit": "count and milliseconds",
           "filters": ["provider.functionName = lambda-auth-hml"],
-          "coverage_note": "Cold starts are intentionally omitted until lambda-auth instrumentation is verified.",
+          "coverage_note": "Gated: Lambda AWS schema attribute names and units have not been verified for this account.",
           "nrql": "FROM ServerlessSample SELECT sum(provider.invocations), sum(provider.errors), sum(provider.throttles), average(provider.duration) WHERE provider.functionName = 'lambda-auth-hml' TIMESERIES 5 minutes SINCE 30 minutes ago"
         }
       ]
@@ -98,6 +100,7 @@
           "title": "Kubernetes pod CPU and memory (cores/bytes)",
           "visualization": "line",
           "source": "K8sPodSample",
+          "coverage_status": "verified",
           "time_range": "30 minutes",
           "unit": "cores and bytes",
           "filters": ["clusterName = auto-shop-hml", "namespaceName = auto-shop-hml"],
@@ -108,6 +111,7 @@
           "title": "Kubernetes pods not ready (count)",
           "visualization": "billboard",
           "source": "K8sPodSample",
+          "coverage_status": "verified",
           "time_range": "30 minutes",
           "unit": "pods",
           "filters": ["clusterName = auto-shop-hml", "namespaceName = auto-shop-hml"],
@@ -118,6 +122,7 @@
           "title": "Kubernetes container restart counters (count)",
           "visualization": "line",
           "source": "K8sContainerSample",
+          "coverage_status": "verified",
           "time_range": "30 minutes",
           "unit": "cumulative restarts",
           "filters": ["clusterName = auto-shop-hml", "namespaceName = auto-shop-hml"],
@@ -129,6 +134,7 @@
           "title": "Kubernetes HPA desired/current replicas (replicas)",
           "visualization": "line",
           "source": "K8sHpaSample",
+          "coverage_status": "verified",
           "time_range": "30 minutes",
           "unit": "replicas",
           "filters": ["clusterName = auto-shop-hml", "namespaceName = auto-shop-hml"],
