@@ -9,6 +9,17 @@ Modelos para repositórios **independentes** (sem checkout cross-repo). Copie o 
 | Infraestrutura / IaC | [infra-ci.yml](./infra-ci.yml) | `fmt` e `validate` em pull request, sem credencial AWS; `plan` só no push de `main`/`develop`, via OIDC no environment `aws-plan` (`AWS_PLAN_ROLE_ARN`) |
 | Gateway / integração | [gateway-ci.yml](./gateway-ci.yml) | testes Lambda via `requirements.txt` ([partida](./gateway-requirements.txt): `pytest` e `PyJWT`), `terraform fmt/validate` |
 
+### Implementação nos quatro repositórios ([#89](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/89))
+
+| Repositório | Cenário #89 | CI | CD / deploy |
+| --- | --- | --- | --- |
+| [auto-shop-system](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system) | 1 (backend) + 2 (frontend no monorepo) | [`.github/workflows/ci.yml`](../workflows/ci.yml) | [cd-staging.yml](../workflows/cd-staging.yml), [cd-prod.yml](../workflows/cd-prod.yml) ([#90](https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/issues/90)) |
+| [lambda-auth](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth) | 4 (gateway) | [`ci.yml`](https://github.com/Software-Architecture-Group-7-FIAP/lambda-auth/blob/main/.github/workflows/ci.yml) | Terraform manual / apply fora do PR |
+| [database-infra](https://github.com/Software-Architecture-Group-7-FIAP/database-infra) | 3 (IaC) | [`ci.yml`](https://github.com/Software-Architecture-Group-7-FIAP/database-infra/blob/main/.github/workflows/ci.yml) | [`apply.yml`](https://github.com/Software-Architecture-Group-7-FIAP/database-infra/blob/main/.github/workflows/apply.yml) (`STAGING_ACTIVE`) |
+| [k8s-infra](https://github.com/Software-Architecture-Group-7-FIAP/k8s-infra) | 3 (IaC) | [`ci.yml`](https://github.com/Software-Architecture-Group-7-FIAP/k8s-infra/blob/main/.github/workflows/ci.yml) | [`apply.yml`](https://github.com/Software-Architecture-Group-7-FIAP/k8s-infra/blob/main/.github/workflows/apply.yml) (`STAGING_ACTIVE`) |
+
+Artefato imutável por commit (cenário 5): imagem `ghcr.io/...:sha-<7>` no backend; `dist/lambda-auth.zip` no job de CI do `lambda-auth`.
+
 ## Tag de artefato (Cenário 5)
 
 Use tag imutável por commit:
