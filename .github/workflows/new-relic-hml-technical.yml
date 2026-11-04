@@ -42,11 +42,6 @@ on:
         required: true
         type: boolean
         default: false
-      confirm_aws_schema:
-        description: Confirm checked-in Gateway and Lambda attribute mapping has live schema evidence
-        required: true
-        type: boolean
-        default: false
       confirm_notification_route:
         description: Confirm the separately managed HML SRE notification route and recipients are approved
         required: true
@@ -79,7 +74,6 @@ jobs:
         env:
           ACTION: ${{ inputs.action }}
           CONFIRM_APPLY: ${{ inputs.confirm_apply }}
-          CONFIRM_AWS_SCHEMA: ${{ inputs.confirm_aws_schema }}
           CONFIRM_NOTIFICATION_ROUTE: ${{ inputs.confirm_notification_route }}
         shell: bash
         run: |
@@ -88,7 +82,6 @@ jobs:
             [[ "$CONFIRM_APPLY" == "true" ]]
           fi
           if [[ "$ACTION" == "apply" ]]; then
-            [[ "$CONFIRM_AWS_SCHEMA" == "true" ]]
             [[ "$CONFIRM_NOTIFICATION_ROUTE" == "true" ]]
           fi
 
@@ -136,7 +129,6 @@ jobs:
         if: inputs.action != 'validate'
         env:
           ACTION: ${{ inputs.action }}
-          CONFIRM_AWS_SCHEMA: ${{ inputs.confirm_aws_schema }}
           NEW_RELIC_ACCOUNT_ID: ${{ vars.NEW_RELIC_ACCOUNT_ID }}
           NEW_RELIC_USER_API_KEY: ${{ secrets.NEW_RELIC_USER_API_KEY }}
           NEW_RELIC_REGION: ${{ inputs.region }}
@@ -149,9 +141,6 @@ jobs:
             --alerts observability/new-relic/technical-alerts.json
             --region "$NEW_RELIC_REGION"
           )
-          if [[ "$CONFIRM_AWS_SCHEMA" == "true" ]]; then
-            arguments+=(--confirm-aws-schema)
-          fi
           result="$(python3 scripts/observability/provision_technical_observability.py "${arguments[@]}")"
           unset NEW_RELIC_USER_API_KEY
           {

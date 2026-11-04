@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "ownership": "auto-shop-owned-hml-service-order-v1",
-  "name": "auto-shop-owned::HML Service Order Operations",
-  "description": "Aggregate service-order throughput, completed lifecycle duration, and processing failures for the authorized HML environment.",
+  "ownership": "auto-shop-owned-hml-service-order-v2",
+  "name": "auto-shop-owned::HML Service Order Operations v2",
+  "description": "Aggregate service-order throughput, completed lifecycle duration, and HML processing failures. The one-event HML drill is operator-triggered and documented in the runbook.",
   "permissions": "PRIVATE",
   "pages": [
     {
@@ -54,7 +54,7 @@
             "service = auto-shop-api",
             "environment = staging"
           ],
-          "coverage_note": "Groups only the closed failure type and subsystem taxonomies; record identifiers are excluded.",
+          "coverage_note": "Groups only the closed failure type and subsystem taxonomies; record identifiers are excluded. A single-event drill uses the approved operator path.",
           "nrql": "FROM Log SELECT count(*) WHERE event = 'ServiceOrderProcessingFailure' AND event_version = 1 AND service = 'auto-shop-api' AND environment = 'staging' SINCE 24 hours ago TIMESERIES 1 hour FACET failure_type, subsystem"
         }
       ]

@@ -20,10 +20,6 @@ $mutex = $null
 $portForwardProcess = $null
 $migrationJobName = $null
 $seedJobName = $null
-$newRelicK8sChart = "newrelic/nri-bundle"
-$newRelicK8sChartVersion = "8.0.39"
-$newRelicK8sChartSha256 = "96eb019f7c78e1e746e0ba170b7e656e437ae3f7bfe7203f812e750511db108f"
-$newRelicK8sRelease = "auto-shop-new-relic"
 
 function Invoke-RequiredCommand {
     param(
@@ -227,41 +223,6 @@ function Ensure-NewRelicSecret {
     Remove-Item Env:NEW_RELIC_LICENSE_KEY -ErrorAction SilentlyContinue
 }
 
-function Install-NewRelicKubernetes {
-    if ($Environment -ne "staging") {
-        return
-    }
-
-    Require-Tool "helm"
-    Require-Tool "curl.exe"
-    $valuesFile = Join-Path $repoRoot "k8s/observability/new-relic/values-staging.yaml"
-    $chartFile = [System.IO.Path]::GetTempFileName() + ".tgz"
-    $tempFiles.Add($chartFile)
-    $licenseData = Invoke-CapturedCommand "kubectl" @(
-        "get", "secret", "auto-shop-new-relic", "--namespace", $namespace,
-        "--output", "jsonpath={.data.NEW_RELIC_LICENSE_KEY}"
-    )
-    if ([string]::IsNullOrWhiteSpace($licenseData)) {
-        throw "Secret auto-shop-new-relic is missing NEW_RELIC_LICENSE_KEY"
-    }
-
-    Invoke-RequiredCommand "curl.exe" @(
-        "--fail", "--location", "--silent", "--show-error",
-        "--output", $chartFile,
-        "https://github.com/newrelic/helm-charts/releases/download/nri-bundle-$newRelicK8sChartVersion/nri-bundle-$newRelicK8sChartVersion.tgz"
-    )
-    $actualChartHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $chartFile).Hash.ToLowerInvariant()
-    if ($actualChartHash -ne $newRelicK8sChartSha256) {
-        throw "New Relic Kubernetes chart checksum mismatch"
-    }
-    Invoke-RequiredCommand "helm" @(
-        "upgrade", "--install", $newRelicK8sRelease, $chartFile,
-        "--namespace", $namespace,
-        "--values", $valuesFile,
-        "--atomic", "--wait", "--timeout", "10m"
-    )
-}
-
 function Wait-ForMigration {
     try {
         Invoke-RequiredCommand "kubectl" @(
@@ -367,13 +328,15 @@ try {
     $migrationJobName = "auto-shop-migrate-$releaseSuffix"
     $seedJobName = "auto-shop-seed-$releaseSuffix"
 
-    $namespaceManifest = Invoke-CapturedCommand "kubectl" @(
-        "create", "namespace", $namespace, "--dry-run=client", "--output=yaml"
-    )
-    $namespaceFile = [System.IO.Path]::GetTempFileName()
-    $tempFiles.Add($namespaceFile)
-    [System.IO.File]::WriteAllText($namespaceFile, $namespaceManifest)
-    Invoke-RequiredCommand "kubectl" @("apply", "--filename", $namespaceFile)
+    if ($Environment -eq "local") {
+        $namespaceManifest = Invoke-CapturedCommand "kubectl" @(
+            "create", "namespace", $namespace, "--dry-run=client", "--output=yaml"
+        )
+        $namespaceFile = [System.IO.Path]::GetTempFileName()
+        $tempFiles.Add($namespaceFile)
+        [System.IO.File]::WriteAllText($namespaceFile, $namespaceManifest)
+        Invoke-RequiredCommand "kubectl" @("apply", "--filename", $namespaceFile)
+    }
     Ensure-Secret
     Apply-RenderedPhase "foundation"
     Ensure-NewRelicSecret
@@ -390,7 +353,6 @@ try {
 
     Apply-RenderedPhase "app"
     Invoke-RequiredCommand "kubectl" @("rollout", "status", "deployment/auto-shop-backend", "--namespace", $namespace, "--timeout=300s")
-    Install-NewRelicKubernetes
 
     if (-not $SkipIngress) {
         Apply-RenderedPhase "ingress"
