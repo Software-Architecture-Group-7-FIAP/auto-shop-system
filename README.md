@@ -348,7 +348,7 @@ O deploy de staging/produção cria automaticamente `auto-shop-redis-credentials
 por namespace se ainda não existir. A senha aleatória fica no Secret Kubernetes;
 o Redis usa memória efêmera e desaparece junto com o namespace da sessão.
 
-Vídeo da entrega (até 15 min): **em gravação/edição** — publicar link aqui e em [docs/entrega/tech-challenge-fase-3-portal.md](docs/entrega/tech-challenge-fase-3-portal.md) antes do envio ao portal.
+Vídeo da entrega (até 15 min): [https://youtu.be/mZ6VZ04t5gU](https://youtu.be/mZ6VZ04t5gU) — PDF em [docs/entrega/Entrega.pdf](docs/entrega/Entrega.pdf).
 
 ## Hardening de OS e links publicos
 
