@@ -1,0 +1,28 @@
+name: Cleanup ECR tag
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: ECR image tag to delete
+        required: true
+        default: sha-20bcf50
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    environment: hml
+    permissions:
+      id-token: write
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::035611741563:role/auto-shop-staging-github-staging
+          aws-region: us-east-1
+      
+      - name: Delete ECR tag
+        run: |
+          aws ecr batch-delete-image \
+            --repository-name auto-shop-system \
+            --image-ids imageTag=${{ inputs.image_tag }} \
+            --region us-east-1 || true
+          echo "Deleted tag: ${{ inputs.image_tag }}"
