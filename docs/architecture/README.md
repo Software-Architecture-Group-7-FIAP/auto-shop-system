@@ -7,7 +7,7 @@ Documentação de arquitetura da Fase 2 (Kubernetes local) e Fase 3 (operacional
 | Fase | Fonte Mermaid | Export |
 | --- | --- | --- |
 | Fase 2 — app no cluster local | [fase2-architecture.mmd](./fase2-architecture.mmd) | [PNG](./fase2-architecture.png), [SVG](./fase2-architecture.svg) |
-| Fase 3 — operacional ponta a ponta | [fase-operacional.mmd](./fase-operacional.mmd) | Exportar PNG/SVG localmente com `@mermaid-js/mermaid-cli` (fatia 2 da #95) |
+| Fase 3 — operacional ponta a ponta | [fase-operacional.mmd](./fase-operacional.mmd) | [PNG](./fase-operacional.png), [SVG](./fase-operacional.svg) |
 | Fase 3 — componentes (nuvem, APIs, banco, monitoramento) | [diagrams/componentes-fase-3.mmd](./diagrams/componentes-fase-3.mmd) | [PNG](./diagrams/componentes-fase-3.png), [SVG](./diagrams/componentes-fase-3.svg) |
 | Sequência — autenticação do cliente (CPF → JWT → API) | [diagrams/autenticacao-cliente.mmd](./diagrams/autenticacao-cliente.mmd) | [PNG](./diagrams/autenticacao-cliente.png), [SVG](./diagrams/autenticacao-cliente.svg) |
 | Sequência — abertura de OS | [diagrams/abertura-os.mmd](./diagrams/abertura-os.mmd) | [PNG](./diagrams/abertura-os.png), [SVG](./diagrams/abertura-os.svg) |
@@ -32,9 +32,15 @@ Modelo de dados: [`docs/database/database-schema.mermaid`](../database/database-
 
 ADRs aceitos são imutáveis; novas decisões geram novo número.
 
+## Observabilidade
+
+Índice de logs, APM, dashboards e checklist da issue #92: [`docs/observability/README.md`](../observability/README.md).
+
+Runbooks: [`docs/runbooks/README.md`](../runbooks/README.md).
+
 ## RFCs
 
-Propostas técnicas aceitas e implementadas: [`docs/rfc/`](../rfc/README.md).
+Propostas técnicas aceitas e implementadas: [`docs/rfc/`](../rfc/README.md) (inclui RFC-0004 a RFC-0006 — observabilidade, deploy multi-repo e Gateway).
 
 ## Repositórios relacionados
 
