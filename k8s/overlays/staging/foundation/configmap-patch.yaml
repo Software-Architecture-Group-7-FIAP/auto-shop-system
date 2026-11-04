@@ -34,7 +34,7 @@ data:
   SMTP_USE_TLS: "false"
   SMTP_STARTTLS: "true"
   SMTP_REQUIRE_TLS: "true"
-  CUSTOMER_JWT_JWKS_URL: "https://api.oficina-workshop.com.br/hml/.well-known/jwks.json"
+  CUSTOMER_JWT_JWKS_URL: "https://api.oficina-workshop.com.br/.well-known/jwks.json"
   CUSTOMER_JWT_ISSUER: "https://api.oficina-workshop.com.br"
   CUSTOMER_JWT_AUDIENCE: "auto-shop-api"
   CUSTOMER_JWT_CLOCK_SKEW_SECONDS: "0"

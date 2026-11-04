@@ -152,7 +152,7 @@ def test_customer_auth_overlays_share_issuer_and_select_stage_jwks() -> None:
     assert issuer in staging
     assert issuer in production
     assert (
-        'CUSTOMER_JWT_JWKS_URL: "https://api.oficina-workshop.com.br/hml/'
+        'CUSTOMER_JWT_JWKS_URL: "https://api.oficina-workshop.com.br/'
         '.well-known/jwks.json"'
     ) in staging
     assert (
