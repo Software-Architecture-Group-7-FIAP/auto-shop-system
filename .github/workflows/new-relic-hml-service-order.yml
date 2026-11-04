@@ -37,6 +37,10 @@ on:
         description: Coordinator-generated run correlation ID
         required: false
         type: string
+      lifecycle_dispatch_id:
+        description: Coordinator-generated run correlation ID
+        required: false
+        type: string
       confirm_apply:
         description: Confirm that apply or disable may mutate only owned New Relic resources
         required: true

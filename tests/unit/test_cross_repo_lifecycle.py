@@ -10,6 +10,9 @@ import pytest
 
 
 SCRIPT_PATH = Path(__file__).parents[2] / ".github" / "scripts" / "cross_repo_lifecycle.py"
+GITHUB_RUN_FIXTURE_PATH = Path(__file__).with_name(
+    "github_k8s_foundation_plan_run_41677910404.json"
+)
 SPEC = importlib.util.spec_from_file_location("cross_repo_lifecycle", SCRIPT_PATH)
 assert SPEC is not None and SPEC.loader is not None
 cross_repo_lifecycle = importlib.util.module_from_spec(SPEC)
@@ -69,6 +72,21 @@ def test_api_request_applies_the_remaining_deadline_timeout():
         ) == {}
 
     assert urlopen.call_args.kwargs["timeout"] == 2.5
+
+
+def test_completion_bound_uses_updated_at_from_real_github_run_response():
+    run = json.loads(GITHUB_RUN_FIXTURE_PATH.read_text(encoding="utf-8"))
+
+    assert run["status"] == "completed"
+    assert "completed_at" not in run
+    assert cross_repo_lifecycle._run_completion_bound(run) == datetime(
+        2026, 11, 3, 16, 51, 35, tzinfo=timezone.utc
+    )
+
+    run_with_later_update = {**run, "completed_at": "2026-11-03T16:51:34Z"}
+    assert cross_repo_lifecycle._run_completion_bound(run_with_later_update) == datetime(
+        2026, 11, 3, 16, 51, 35, tzinfo=timezone.utc
+    )
 
 
 def test_dispatch_id_is_stable_for_a_workflow_run_and_does_not_depend_on_the_session_token():
@@ -178,6 +196,45 @@ def test_dispatch_rerun_resumes_an_existing_completed_run_without_dispatching_ag
         f"platform_dispatch_id={dispatch_id}",
         "platform_run_attempt=1",
         "platform_plan_id=8675309-1",
+    ]
+
+
+def test_dispatch_resumes_completed_run_without_completed_at(tmp_path):
+    arguments = make_arguments(github_output=str(tmp_path / "github-output"))
+    inputs = {"session_id": "hml-2026-10-29"}
+    run_fixture = json.loads(GITHUB_RUN_FIXTURE_PATH.read_text(encoding="utf-8"))
+    with patch.dict(
+        "os.environ",
+        {
+            "GITHUB_RUN_ID": "123456",
+            "LIFECYCLE_CROSS_REPO_TOKEN": "github-token",
+            "LIFECYCLE_SESSION_TOKEN": "a" * 64,
+        },
+    ):
+        dispatch_id = cross_repo_lifecycle._stable_dispatch_id(arguments, "example/infra", inputs)
+        now = datetime.now(timezone.utc)
+        existing_run = {
+            **run_fixture,
+            "id": 8675310,
+            "run_attempt": 1,
+            "display_title": f"{arguments.expected_title}:{dispatch_id}",
+            "created_at": (now - timedelta(seconds=10)).isoformat(),
+            "updated_at": (now - timedelta(seconds=2)).isoformat(),
+        }
+        with (
+            patch.object(cross_repo_lifecycle, "_list_runs", return_value=[existing_run]),
+            patch.object(cross_repo_lifecycle, "_api_request") as api_request,
+            patch.object(cross_repo_lifecycle, "_issue_dispatch_authorization") as issue_authorization,
+        ):
+            assert cross_repo_lifecycle.dispatch_and_wait(arguments) == 0
+
+    api_request.assert_not_called()
+    issue_authorization.assert_not_called()
+    assert (tmp_path / "github-output").read_text(encoding="utf-8").splitlines() == [
+        "platform_run_id=8675310",
+        f"platform_dispatch_id={dispatch_id}",
+        "platform_run_attempt=1",
+        "platform_plan_id=8675310-1",
     ]
 
 

@@ -1,0 +1,125 @@
+{
+    "cluster": {
+        "name": "auto-shop-staging",
+        "arn": "arn:aws:eks:us-east-1:035611741563:cluster/auto-shop-staging",
+        "createdAt": "2026-10-28T13:32:08.289000-03:00",
+        "version": "1.37",
+        "endpoint": "https://D0E7684675F7C56C13804E01B5421249.gr7.us-east-1.eks.amazonaws.com",
+        "roleArn": "arn:aws:iam::035611741563:role/auto-shop/auto-shop-staging-cluster-d90160e14ba6c5d718fe7f9e83",
+        "resourcesVpcConfig": {
+            "subnetIds": [
+                "subnet-0898333d80b4cd0f5",
+                "subnet-0c9b5ee832291a8cb"
+            ],
+            "securityGroupIds": [
+                "sg-03a8b2ba67dfa8fc8"
+            ],
+            "clusterSecurityGroupId": "sg-0e9cce039eef30b8d",
+            "vpcId": "vpc-0ff823d990f9d10cf",
+            "endpointPublicAccess": true,
+            "endpointPrivateAccess": true,
+            "publicAccessCidrs": [
+                "0.0.0.0/0"
+            ],
+            "controlPlaneEgressMode": "AWS_MANAGED"
+        },
+        "kubernetesNetworkConfig": {
+            "serviceIpv4Cidr": "172.20.0.0/16",
+            "ipFamily": "ipv4",
+            "elasticLoadBalancing": {
+                "enabled": false
+            }
+        },
+        "logging": {
+            "clusterLogging": [
+                {
+                    "types": [
+                        "api",
+                        "audit",
+                        "authenticator"
+                    ],
+                    "enabled": true
+                },
+                {
+                    "types": [
+                        "controllerManager",
+                        "scheduler"
+                    ],
+                    "enabled": false
+                }
+            ]
+        },
+        "identity": {
+            "oidc": {
+                "issuer": "https://oidc.eks.us-east-1.amazonaws.com/id/D0E7684675F7C56C13804E01B5421249"
+            }
+        },
+        "status": "ACTIVE",
+        "certificateAuthority": {
+            "data": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURNakNDQWhxZ0F3SUJBZ0lSQVBkVlZKWUtPMHE4a0pRMytzaDg1NFl3RFFZSktvWklodmNOQVFFTEJRQXcKSnpFUU1BNEdBMVVFQ2hNSFFWZFRJRVZMVXpFVE1CRUdBMVVFQXhNS2EzVmlaWEp1WlhSbGN6QWVGdzB5TmpFdwpNamd4TmpNeU1qUmFGdzB6TVRFd01qY3hOak15TWpSYU1DY3hFREFPQmdOVkJBb1RCMEZYVXlCRlMxTXhFekFSCkJnTlZCQU1UQ210MVltVnlibVYwWlhNd2dnRWlNQTBHQ1NxR1NJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUIKQVFEUG9WOVRGWHQwZnRFaWdTRWI3ZlpSMlo1YUd6MGp3S2wzaHFSa0xkMVl1WndTdkxyc1FlMG9ObTBvN2xNbwpDUnRFN096RXAvRzR3OXVOYzYvRGJxdVNYTUJFa3dDd2RtVTU3VzY1WWVncGdSMUZDbk9FOGhUaDdSeTV5a2NSClBtbk5UQ0xmamR4MUkvdFNYQUlZZXdpbENLUi9WZFh0K3cwQ1c0NkhnbXZwZ0Voem4zNFpXNnZXbm5GWGVyekgKNVAwYlhpWXY4c1VUcUIyTmhCOWdHaXh2TnNtOFJPTmQ1SlZKYXJYUldxd0dzUkV4SVFiTWU0SU5obWRuWDdxegp2SG9tRTFrWHBGWm9QTWNaOFpENWtFUk90RlppWm1tWkZqVEdnc0RWOEh1ZWcwZEp1OGZUYTRrazdXN0g2UDFUCnFnSkx3UEtsaFN6MG9XYlR1cE5BRXBWNUFnTUJBQUdqV1RCWE1BNEdBMVVkRHdFQi93UUVBd0lDcERBUEJnTlYKSFJNQkFmOEVCVEFEQVFIL01CMEdBMVVkRGdRV0JCUk9neFFoZGE1cWdaNDBjTGllcU84L3pmK0p1ekFWQmdOVgpIUkVFRGpBTWdncHJkV0psY201bGRHVnpNQTBHQ1NxR1NJYjNEUUVCQ3dVQUE0SUJBUUNMM09qMFVrNzhxS2huCmJiR0JwU3p2UEdpV1dPOE81NzJKRWNTbUNHZXVXNU5Vb2YzQmZ1NFNyU3BQN2txRE11dWxzZjFwMVVGcHhMYS8KL2gxZExPWjJWNXQ0eFhTeEloeHJHVDJya0RVOWkxN0FsMkcxNXlmc2tiS1c1TE00cWl3b1B3a0VBR0dITVpWNApsRmJPQ1RKY3dVdSs5Vnp3R0pvbzZzOHJCd2dCQ0RydXc2YWliZEp6RVFseWNZZ25TTmk1dUx0RnhCbWtocHk5CmwvbWYxNVVwUzZYQ2pYRzBibWZEcUFTcEhDdUc5OHJSeTVkbWJUR0s2ZldvWStxcmVWNUY1QWJVaW43UVplbVcKdWNnVTRESnkxWXZRdklTa3JmWWh2QmliS3FjWmh1OG9aaStTNldDOFhyeHpSNEhwL1c3QzJFbzM2YkFSanFrTwo3YjVnOWRLVgotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==",
+            "active": {
+                "id": "9d084d27-09ec-3188-9b17-4b90145c836e",
+                "activatedBy": "EKS"
+            }
+        },
+        "platformVersion": "eks.5",
+        "tags": {
+            "Project": "auto-shop",
+            "Environment": "staging",
+            "Repository": "k8s-infra",
+            "ManagedBy": "Terraform",
+            "Stack": "foundation"
+        },
+        "accessConfig": {
+            "authenticationMode": "API"
+        },
+        "upgradePolicy": {
+            "supportType": "EXTENDED"
+        },
+        "computeConfig": {
+            "enabled": false,
+            "nodePools": []
+        },
+        "storageConfig": {
+            "blockStorage": {
+                "enabled": false
+            }
+        },
+        "deletionProtection": false,
+        "controlPlaneScalingConfig": {
+            "tier": "standard"
+        },
+        "kubeApiServerConfig": {
+            "eventTtl": "60m",
+            "serviceNodePortRange": {
+                "minPort": 30000,
+                "maxPort": 32767
+            }
+        },
+        "kubeSchedulerConfig": {
+            "nodeResourcesFit": {
+                "scoringStrategy": {
+                    "type": "LeastAllocated",
+                    "resources": [
+                        {
+                            "name": "cpu",
+                            "weight": 1
+                        },
+                        {
+                            "name": "memory",
+                            "weight": 1
+                        }
+                    ]
+                }
+            }
+        },
+        "kubeControllerManagerConfig": {
+            "podGcControllerConfig": {
+                "terminatedPodGcThreshold": 12500
+            },
+            "horizontalPodAutoscalerControllerConfig": {
+                "horizontalPodAutoscalerSyncPeriod": "15s"
+            }
+        }
+    }
+}

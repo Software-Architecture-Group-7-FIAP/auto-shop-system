@@ -1,0 +1,125 @@
+{
+    "DBInstances": [
+        {
+            "DBInstanceIdentifier": "auto-shop-staging",
+            "DBInstanceClass": "db.t4g.micro",
+            "Engine": "postgres",
+            "DBInstanceStatus": "available",
+            "MasterUsername": "autoshop_owner",
+            "Endpoint": {
+                "Address": "auto-shop-staging.c2tyauassglg.us-east-1.rds.amazonaws.com",
+                "Port": 5432,
+                "HostedZoneId": "Z2R2ITUGPM61AM"
+            },
+            "AllocatedStorage": 20,
+            "InstanceCreateTime": "2026-10-28T16:58:17.093000+00:00",
+            "PreferredBackupWindow": "03:00-04:00",
+            "BackupRetentionPeriod": 1,
+            "DBSecurityGroups": [],
+            "VpcSecurityGroups": [
+                {
+                    "VpcSecurityGroupId": "sg-0dfa7eedcd5e0541c",
+                    "Status": "active"
+                }
+            ],
+            "DBParameterGroups": [
+                {
+                    "DBParameterGroupName": "auto-shop-staging-postgres16",
+                    "ParameterApplyStatus": "in-sync"
+                }
+            ],
+            "AvailabilityZone": "us-east-1a",
+            "DBSubnetGroup": {
+                "DBSubnetGroupName": "auto-shop-staging-db",
+                "DBSubnetGroupDescription": "Isolated subnets for the ephemeral Auto Shop staging database.",
+                "VpcId": "vpc-0ff823d990f9d10cf",
+                "SubnetGroupStatus": "Complete",
+                "Subnets": [
+                    {
+                        "SubnetIdentifier": "subnet-05a7db1a0e42f631d",
+                        "SubnetAvailabilityZone": {
+                            "Name": "us-east-1b"
+                        },
+                        "SubnetOutpost": {},
+                        "SubnetStatus": "Active"
+                    },
+                    {
+                        "SubnetIdentifier": "subnet-0f0fc39c9f792f66e",
+                        "SubnetAvailabilityZone": {
+                            "Name": "us-east-1a"
+                        },
+                        "SubnetOutpost": {},
+                        "SubnetStatus": "Active"
+                    }
+                ]
+            },
+            "PreferredMaintenanceWindow": "sun:07:00-sun:07:30",
+            "UpgradeRolloutOrder": "second",
+            "PendingModifiedValues": {},
+            "LatestRestorableTime": "2026-11-03T23:49:45+00:00",
+            "MultiAZ": false,
+            "EngineVersion": "16.15",
+            "AutoMinorVersionUpgrade": true,
+            "ReadReplicaDBInstanceIdentifiers": [],
+            "LicenseModel": "postgresql-license",
+            "Iops": 3000,
+            "StorageThroughput": 125,
+            "OptionGroupMemberships": [
+                {
+                    "OptionGroupName": "default:postgres-16",
+                    "Status": "in-sync"
+                }
+            ],
+            "PubliclyAccessible": false,
+            "StorageType": "gp3",
+            "DbInstancePort": 0,
+            "StorageEncrypted": true,
+            "KmsKeyId": "arn:aws:kms:us-east-1:035611741563:key/f643035b-78df-40b7-838e-16aab3e84fd2",
+            "DbiResourceId": "db-FSPQUZWD7TXUXO3JGGKSQ3KN7U",
+            "CACertificateIdentifier": "rds-ca-rsa2048-g1",
+            "DomainMemberships": [],
+            "CopyTagsToSnapshot": true,
+            "MonitoringInterval": 0,
+            "DBInstanceArn": "arn:aws:rds:us-east-1:035611741563:db:auto-shop-staging",
+            "IAMDatabaseAuthenticationEnabled": false,
+            "DatabaseInsightsMode": "standard",
+            "PerformanceInsightsEnabled": false,
+            "DeletionProtection": false,
+            "AssociatedRoles": [],
+            "TagList": [
+                {
+                    "Key": "Project",
+                    "Value": "auto-shop"
+                },
+                {
+                    "Key": "Environment",
+                    "Value": "staging"
+                },
+                {
+                    "Key": "Repository",
+                    "Value": "database-infra"
+                },
+                {
+                    "Key": "ManagedBy",
+                    "Value": "Terraform"
+                }
+            ],
+            "CustomerOwnedIpEnabled": false,
+            "NetworkType": "IPV4",
+            "ActivityStreamStatus": "stopped",
+            "BackupTarget": "region",
+            "CertificateDetails": {
+                "CAIdentifier": "rds-ca-rsa2048-g1",
+                "ValidTill": "2027-10-28T16:56:26+00:00"
+            },
+            "MasterUserSecret": {
+                "SecretArn": "arn:aws:secretsmanager:us-east-1:035611741563:secret:rds!db-cbe0cdd5-5c60-4a11-ba48-d0b4d18c4de2-5lu78U",
+                "SecretStatus": "active",
+                "KmsKeyId": "arn:aws:kms:us-east-1:035611741563:key/0b8599d6-b85e-4fd6-af75-72c3d869eed1"
+            },
+            "DedicatedLogVolume": false,
+            "IsStorageConfigUpgradeAvailable": false,
+            "EngineLifecycleSupport": "open-source-rds-extended-support"
+        }
+    ]
+}

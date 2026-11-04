@@ -1,0 +1,73 @@
+{
+    "Configuration": {
+        "FunctionName": "lambda-auth-hml",
+        "FunctionArn": "arn:aws:lambda:us-east-1:035611741563:function:lambda-auth-hml",
+        "Runtime": "python3.12",
+        "Role": "arn:aws:iam::035611741563:role/lambda-auth-hml-execution",
+        "Handler": "lambda_auth.handler.lambda_handler",
+        "CodeSize": 27685328,
+        "Description": "Autenticação de clientes ativos por CPF para a oficina (HML)",
+        "Timeout": 15,
+        "MemorySize": 256,
+        "LastModified": "2026-11-02T17:22:51.000+0000",
+        "CodeSha256": "pVJPpDPTD9moytADdG7nzCF3ar6+dQEHH1bjfhtGnpQ=",
+        "Version": "$LATEST",
+        "VpcConfig": {
+            "SubnetIds": [
+                "subnet-0898333d80b4cd0f5",
+                "subnet-0c9b5ee832291a8cb"
+            ],
+            "SecurityGroupIds": [
+                "sg-0d1abd32d7e1cc595"
+            ],
+            "VpcId": "vpc-0ff823d990f9d10cf",
+            "Ipv6AllowedForDualStack": false
+        },
+        "Environment": {
+            "Variables": {
+                "JWT_KID": "auto-shop-hml-2026-11",
+                "JWT_AUDIENCE": "auto-shop-api",
+                "JWT_TTL_SECONDS": "900",
+                "JWT_ISSUER": "https://api.oficina-workshop.com.br",
+                "JWT_KMS_KEY_ID": "arn:aws:kms:us-east-1:035611741563:key/d9d3463d-2a25-44d9-8c42-707e5e7025ba",
+                "DATABASE_SECRET_ARN": "arn:aws:secretsmanager:us-east-1:035611741563:secret:auto-shop/staging/hml/lambda-auth-i1iAa6",
+                "LOG_LEVEL": "WARNING",
+                "DATABASE_SECRET_ID": "auto-shop/staging/hml/lambda-auth"
+            }
+        },
+        "TracingConfig": {
+            "Mode": "Active"
+        },
+        "RevisionId": "4caa1831-925f-4ed3-a92a-28c2dc776018",
+        "State": "Active",
+        "LastUpdateStatus": "Successful",
+        "PackageType": "Zip",
+        "Architectures": [
+            "x86_64"
+        ],
+        "EphemeralStorage": {
+            "Size": 512
+        },
+        "SnapStart": {
+            "ApplyOn": "None",
+            "OptimizationStatus": "Off"
+        },
+        "RuntimeVersionConfig": {
+            "RuntimeVersionArn": "arn:aws:lambda:us-east-1::runtime:a8b19198a828662ade07d066a1dce047429a5869166346747ab7d57435583a29"
+        },
+        "LoggingConfig": {
+            "LogFormat": "Text",
+            "LogGroup": "/aws/lambda/lambda-auth-hml"
+        }
+    },
+    "Code": {
+        "RepositoryType": "S3",
+        "Location": "https://prod-04-2014-tasks.s3.us-east-1.amazonaws.com/snapshots/035611741563/lambda-auth-hml-8d3d813a-4016-4590-b5ac-b3f10a14f591?versionId=CTd9_5tVyrqYlynZbdMMoSmNl3xZWc86&X-Amz-Security-Token=IQoJb3JpZ2luX2VjENj%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJHMEUCIEqJBuPBc3pmKNuNPwj7hO9wEEIJdtPb1tShtAYK1ODTAiEAnbMr4WbIvRzxGEcsu86yzjifAn8u%2F3EeBCOapOpSWDkqlAIIoP%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FARAAGgw3NDk2Nzg5MDI4MzkiDHZ5hM7mfj1IXcuDsiroAeIzC8TNyvAGyUE4flGCT%2BLcuXkCSO6ew18KA6MBUp4NvUhQzaFzWQDvuHZku7TqpxNXfBdhDKiRIlSORIJW55zP2%2BzndI3ads59%2B2DNPMMqYdcEhK0wIEk1%2BRNbLkTy66xGdisErCERh6%2BCN4FVn2I6p9PTlOK8Qbt9ZsKlRNFJots9wWwxL%2F53aYES3XIYqbuO58gfgfAPbG53Dt9XbX5%2FYuUJZ1Ig2BvZkYtbRdkHV4%2Bkj7jNMsrlET%2FkdQIiMedK7865AM39p8kHsKTvMhNoty6vi%2BVs2iwIvKUt%2BY0YUdpTyeRj%2B4ow8dup1wY6jQEH6IvFsGcGLqaWODOUYktVks%2BD72cE%2Fm55nw9THfd8Rb6IuZn0S%2FmVGDHzd%2FKxJuaVMZVRzoaYLtrAak9KdYe%2BogNr%2BgZnKtwAy44XS8O2tACdeYZIjxBpOpJzKeR01vQGGivt4JNkY7hfA4VFq5%2FxHYawk7EYXU5vbv3tQ%2FuDrZQizlnGrHEvwCNtOwA%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20261103T235717Z&X-Amz-SignedHeaders=host&X-Amz-Expires=600&X-Amz-Credential=ASIA25DCYHY346PEI2NJ%2F20261103%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=f531ef151e499416d170ac3f65df2ed7d755f33c777da4e8179499134b93fd56"
+    },
+    "Tags": {
+        "Project": "auto-shop",
+        "Environment": "staging",
+        "Stage": "hml",
+        "Purpose": "customer-cpf-auth"
+    }
+}

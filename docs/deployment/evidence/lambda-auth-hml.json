@@ -1,0 +1,8 @@
+{
+    "Name": "lambda-auth-hml",
+    "Runtime": "python3.12",
+    "State": "Active",
+    "LastModified": "2026-11-02T17:22:51.000+0000",
+    "CodeSha256": "pVJPpDPTD9moytADdG7nzCF3ar6+dQEHH1bjfhtGnpQ=",
+    "Role": "arn:aws:iam::035611741563:role/lambda-auth-hml-execution"
+}

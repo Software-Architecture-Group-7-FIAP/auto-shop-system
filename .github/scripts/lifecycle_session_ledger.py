@@ -372,11 +372,11 @@ def _require_safe_retry_context(
     if (
         stage != "hml"
         or session_mode != "hml"
-        or session_scope != "infrastructure-only"
+        or session_scope not in {"infrastructure-only", "integrated"}
         or os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
         or os.environ.get("GITHUB_WORKFLOW") != "Coordinated environment start"
     ):
-        raise LedgerError("Safe retry ownership handoff is limited to the guarded HML infrastructure-only start.")
+        raise LedgerError("Safe retry ownership handoff is limited to the guarded HML lifecycle start.")
     if not RUN_ID_PATTERN.fullmatch(source_run_id) or source_run_id == run_id:
         raise LedgerError("The verified prior opening run ID is invalid for ownership handoff.")
 

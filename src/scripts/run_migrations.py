@@ -113,6 +113,9 @@ def _psycopg2_connection_arguments(database_url: str) -> dict[str, object]:
 
 
 def _classify_connection_failure(error: Exception) -> tuple[str, bool, str | None]:
+    if isinstance(error, (ArgumentError, RuntimeError)):
+        return "migration database configuration is invalid", False, None
+
     message = str(error).lower()
     sqlstate = getattr(error, "pgcode", None)
 
@@ -162,6 +165,21 @@ def _classify_connection_failure(error: Exception) -> tuple[str, bool, str | Non
     return "database connection failed", False, sqlstate
 
 
+def _log_migration_connection_failure(error: Exception) -> bool:
+    if os.environ.get("MIGRATION_DIAGNOSTICS", "").lower() != "true":
+        return False
+
+    summary, retryable, sqlstate = _classify_connection_failure(error)
+    sqlstate_message = f"; sqlstate={sqlstate}" if sqlstate else ""
+    print(
+        f"migration preflight: {summary} ({type(error).__name__}; "
+        f"retryable={str(retryable).lower()}{sqlstate_message})",
+        file=sys.stderr,
+        flush=True,
+    )
+    return retryable
+
+
 def run_migrations() -> int:
     try:
         database_url, connect_timeout, use_migration_identity = _migration_config()
@@ -179,16 +197,11 @@ def run_migrations() -> int:
             **connection_arguments,
             connect_timeout=connect_timeout,
         )
-    except (OSError, psycopg2.Error) as error:
-        summary, retryable, sqlstate = _classify_connection_failure(error)
-        sqlstate_message = f"; sqlstate={sqlstate}" if sqlstate else ""
-        print(
-            f"migration preflight: {summary} ({type(error).__name__}; "
-            f"retryable={str(retryable).lower()}{sqlstate_message})",
-            file=sys.stderr,
-            flush=True,
-        )
-        return 10 if retryable else 20
+    except (ArgumentError, OSError, RuntimeError, psycopg2.Error) as error:
+        retryable = _log_migration_connection_failure(error)
+        if os.environ.get("MIGRATION_DIAGNOSTICS", "").lower() == "true":
+            return 10 if retryable else 20
+        return 10
 
     try:
         with connection:
