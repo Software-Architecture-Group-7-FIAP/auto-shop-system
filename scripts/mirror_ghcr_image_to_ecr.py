@@ -204,21 +204,8 @@ def mirror_image(source_image: str) -> str:
             target_config_id != source_config_id
             or _image_revision(target_image) != github_sha
         ):
-            # Image tag exists but points to a different commit. Clean it up and push the new version.
-            _run([
-                "aws",
-                "ecr",
-                "batch-delete-image",
-                "--repository-name",
-                ECR_REPOSITORY,
-                "--image-ids",
-                f"imageTag={expected_tag}",
-                "--region",
-                aws_region,
-                "--no-cli-pager",
-            ])
-        else:
-            return target_image
+            raise MirrorError("The existing immutable ECR tag does not match this GHCR image.")
+        return target_image
 
     _run(["docker", "tag", source_image, target_image])
     _run(["docker", "push", target_image])
