@@ -5,10 +5,10 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: Validate locally, plan against New Relic, apply, or disable the HML failure condition
+        description: Validate, plan, apply, disable, or record sanitized evidence for the HML single-event drill
         required: true
         type: choice
-        options: [validate, plan, apply, disable]
+        options: [validate, plan, apply, disable, evidence]
         default: validate
       region:
         description: New Relic control-plane region
@@ -31,6 +31,10 @@ on:
         options: [hml]
       session_token:
         description: Signed coordinator session capability
+        required: true
+        type: string
+      lifecycle_dispatch_id:
+        description: Coordinator-generated run correlation ID
         required: false
         type: string
       lifecycle_dispatch_id:
@@ -49,6 +53,77 @@ on:
         default: false
       confirm_failure_threshold:
         description: Confirm the HML SRE owner approved the provisional single-failure threshold and route
+        required: true
+        type: boolean
+        default: false
+      confirm_notification_route:
+        description: Confirm the owner-approved route will be attached manually before the synthetic failure
+        required: true
+        type: boolean
+        default: false
+      evidence_window_started_at:
+        description: Evidence window start in UTC, YYYY-MM-DDTHH:MM:SSZ; required for evidence action
+        required: false
+        type: string
+      evidence_window_ended_at:
+        description: Evidence window end in UTC, YYYY-MM-DDTHH:MM:SSZ; required for evidence action
+        required: false
+        type: string
+      baseline_failure_count:
+        description: Operator-observed failure count before the synthetic event; required for evidence action
+        required: false
+        type: choice
+        options: [not-recorded, "0", "1+"]
+        default: not-recorded
+      drill_failure_count:
+        description: Operator-observed failures in the bounded drill window; required for evidence action
+        required: false
+        type: choice
+        options: [not-recorded, "0", "1", "2+"]
+        default: not-recorded
+      trace_correlation_outcome:
+        description: Whether trace linking was found on the one inspected event; raw IDs are never recorded
+        required: false
+        type: choice
+        options: [not-reviewed, linked, unavailable]
+        default: not-reviewed
+      confirm_baseline_clear:
+        description: Confirm the bounded baseline query returned zero service-order failure events
+        required: true
+        type: boolean
+        default: false
+      confirm_single_failure_observed:
+        description: Confirm exactly one synthetic service-order failure was observed in the drill window
+        required: true
+        type: boolean
+        default: false
+      confirm_incident_opened:
+        description: Confirm the service-order alert opened an incident for the single synthetic event
+        required: true
+        type: boolean
+        default: false
+      confirm_approved_route_only:
+        description: Confirm delivery reached only the approved HML SRE notification route
+        required: true
+        type: boolean
+        default: false
+      confirm_trace_reviewed:
+        description: Confirm the inspected event's trace-linking outcome was reviewed without copying raw IDs
+        required: true
+        type: boolean
+        default: false
+      confirm_incident_closed:
+        description: Confirm the incident closed after the single event aged out of the alert window
+        required: true
+        type: boolean
+        default: false
+      confirm_condition_disabled:
+        description: Confirm the owned service-order condition is disabled for cleanup
+        required: true
+        type: boolean
+        default: false
+      confirm_route_detached:
+        description: Confirm the manually attached HML SRE notification route was detached after the drill
         required: true
         type: boolean
         default: false
@@ -75,12 +150,35 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Mask signed coordinator session capability
+        env:
+          LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}
+        shell: bash
+        run: echo "::add-mask::$LIFECYCLE_SESSION_TOKEN"
+
       - name: Validate requested action and confirmations
+        id: validate_inputs
         env:
           ACTION: ${{ inputs.action }}
           CONFIRM_APPLY: ${{ inputs.confirm_apply }}
           CONFIRM_BUSINESS_TELEMETRY: ${{ inputs.confirm_business_telemetry }}
           CONFIRM_FAILURE_THRESHOLD: ${{ inputs.confirm_failure_threshold }}
+          CONFIRM_NOTIFICATION_ROUTE: ${{ inputs.confirm_notification_route }}
+          BASELINE_FAILURE_COUNT: ${{ inputs.baseline_failure_count }}
+          DRILL_FAILURE_COUNT: ${{ inputs.drill_failure_count }}
+          TRACE_CORRELATION_OUTCOME: ${{ inputs.trace_correlation_outcome }}
+          CONFIRM_BASELINE_CLEAR: ${{ inputs.confirm_baseline_clear }}
+          CONFIRM_SINGLE_FAILURE_OBSERVED: ${{ inputs.confirm_single_failure_observed }}
+          CONFIRM_INCIDENT_OPENED: ${{ inputs.confirm_incident_opened }}
+          CONFIRM_APPROVED_ROUTE_ONLY: ${{ inputs.confirm_approved_route_only }}
+          CONFIRM_TRACE_REVIEWED: ${{ inputs.confirm_trace_reviewed }}
+          CONFIRM_INCIDENT_CLOSED: ${{ inputs.confirm_incident_closed }}
+          CONFIRM_CONDITION_DISABLED: ${{ inputs.confirm_condition_disabled }}
+          CONFIRM_ROUTE_DETACHED: ${{ inputs.confirm_route_detached }}
+          SESSION_STARTED_AT: ${{ inputs.started_at }}
+          EVIDENCE_WINDOW_STARTED_AT: ${{ inputs.evidence_window_started_at }}
+          EVIDENCE_WINDOW_ENDED_AT: ${{ inputs.evidence_window_ended_at }}
+          REQUESTED_ACTION: ${{ inputs.action }}
         shell: bash
         run: |
           set -euo pipefail
@@ -90,6 +188,48 @@ jobs:
           if [[ "$ACTION" == "apply" ]]; then
             [[ "$CONFIRM_BUSINESS_TELEMETRY" == "true" ]]
             [[ "$CONFIRM_FAILURE_THRESHOLD" == "true" ]]
+            [[ "$CONFIRM_NOTIFICATION_ROUTE" == "true" ]]
+          fi
+          if [[ "$ACTION" == "evidence" ]]; then
+            [[ "$BASELINE_FAILURE_COUNT" == "0" ]]
+            [[ "$DRILL_FAILURE_COUNT" == "1" ]]
+            [[ "$TRACE_CORRELATION_OUTCOME" == "linked" || "$TRACE_CORRELATION_OUTCOME" == "unavailable" ]]
+            [[ "$CONFIRM_BASELINE_CLEAR" == "true" ]]
+            [[ "$CONFIRM_SINGLE_FAILURE_OBSERVED" == "true" ]]
+            [[ "$CONFIRM_INCIDENT_OPENED" == "true" ]]
+            [[ "$CONFIRM_APPROVED_ROUTE_ONLY" == "true" ]]
+            [[ "$CONFIRM_TRACE_REVIEWED" == "true" ]]
+            [[ "$CONFIRM_INCIDENT_CLOSED" == "true" ]]
+            [[ "$CONFIRM_CONDITION_DISABLED" == "true" ]]
+            [[ "$CONFIRM_ROUTE_DETACHED" == "true" ]]
+            python3 - "$SESSION_STARTED_AT" "$EVIDENCE_WINDOW_STARTED_AT" "$EVIDENCE_WINDOW_ENDED_AT" <<'PY'
+          import os
+          import sys
+          from datetime import datetime, timedelta, timezone
+
+          utc_format = "%Y-%m-%dT%H:%M:%SZ"
+
+          def parse(value):
+              try:
+                  parsed = datetime.strptime(value, utc_format).replace(tzinfo=timezone.utc)
+              except ValueError:
+                  raise SystemExit("Evidence timestamps must use UTC YYYY-MM-DDTHH:MM:SSZ format.") from None
+              if parsed.strftime(utc_format) != value:
+                  raise SystemExit("Evidence timestamps must use canonical UTC format.")
+              return parsed
+
+          session_start, evidence_start, evidence_end = map(parse, sys.argv[1:])
+          baseline_start = evidence_start - timedelta(minutes=10)
+          now = datetime.now(timezone.utc)
+          if baseline_start < session_start or evidence_end <= evidence_start:
+              raise SystemExit("The 10-minute baseline and drill window must follow the signed HML session start.")
+          if evidence_end - baseline_start > timedelta(minutes=30):
+              raise SystemExit("The maximum evidence period, including baseline, is 30 minutes.")
+          if evidence_end > now:
+              raise SystemExit("The evidence window end cannot be in the future.")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"baseline_window_started_at={baseline_start.strftime(utc_format)}\n")
+          PY
           fi
 
       - name: Validate coordinator inputs and HML session gates
@@ -112,7 +252,7 @@ jobs:
           [[ "$STAGING_ACTIVE" == "true" && "$STAGING_SESSION_AUTHORIZED" == "true" ]]
           [[ "$AUTHORIZED_SESSION_MODE" == "hml" && "$SESSION_MODE" == "hml" ]]
           validator_action=operate
-          if [[ "$REQUESTED_ACTION" == "disable" ]]; then
+          if [[ "$REQUESTED_ACTION" == "disable" || "$REQUESTED_ACTION" == "evidence" ]]; then
             validator_action=teardown
           fi
           ENVIRONMENT_ACTIVE="$STAGING_ACTIVE" \
@@ -134,7 +274,7 @@ jobs:
             --region "${{ inputs.region }}"
 
       - name: Plan or reconcile owned New Relic resources
-        if: inputs.action != 'validate'
+        if: inputs.action == 'plan' || inputs.action == 'apply' || inputs.action == 'disable'
         env:
           ACTION: ${{ inputs.action }}
           NEW_RELIC_ACCOUNT_ID: ${{ vars.NEW_RELIC_ACCOUNT_ID }}
@@ -156,4 +296,33 @@ jobs:
             printf '%s\n' "$result"
             echo '```'
             echo "The hml-sre-approved-workflow destination is reviewed and attached separately; this provisioner never attaches notification destinations."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Record sanitized service-order drill evidence
+        if: inputs.action == 'evidence'
+        env:
+          SESSION_ID: ${{ inputs.session_id }}
+          BASELINE_WINDOW_STARTED_AT: ${{ steps.validate_inputs.outputs.baseline_window_started_at }}
+          EVIDENCE_WINDOW_STARTED_AT: ${{ inputs.evidence_window_started_at }}
+          EVIDENCE_WINDOW_ENDED_AT: ${{ inputs.evidence_window_ended_at }}
+          BASELINE_FAILURE_COUNT: ${{ inputs.baseline_failure_count }}
+          DRILL_FAILURE_COUNT: ${{ inputs.drill_failure_count }}
+          TRACE_CORRELATION_OUTCOME: ${{ inputs.trace_correlation_outcome }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### HML service-order single-event drill evidence"
+            echo "Session: \`$SESSION_ID\`"
+            echo "Baseline query interval (UTC): \`$BASELINE_WINDOW_STARTED_AT\` to \`$EVIDENCE_WINDOW_STARTED_AT\` (10 minutes)"
+            echo "Drill query interval (UTC): \`$EVIDENCE_WINDOW_STARTED_AT\` to \`$EVIDENCE_WINDOW_ENDED_AT\`"
+            echo "Baseline failure count: \`$BASELINE_FAILURE_COUNT\` (operator-attested)"
+            echo "Drill failure count: \`$DRILL_FAILURE_COUNT\` (operator-attested)"
+            echo "Trace correlation outcome: \`$TRACE_CORRELATION_OUTCOME\`; raw trace and span IDs are not recorded."
+            echo "Incident open and close, approved-route-only delivery, condition disable, and route detach were explicitly confirmed."
+            echo "Operator attestations only: this workflow did not inject an event or query New Relic logs or incidents."
+            echo "Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           } >> "$GITHUB_STEP_SUMMARY"

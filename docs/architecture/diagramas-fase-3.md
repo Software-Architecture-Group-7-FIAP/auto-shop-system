@@ -24,6 +24,7 @@ Esta página reúne os RFCs, ADRs e diagramas complementares da Fase 3. O desenh
 
 | Diagrama | Fonte | SVG | PNG |
 | --- | --- | --- | --- |
+| Operacional ponta a ponta (CI/CD → Gateway → K8s) | [fase-operacional.mmd](fase-operacional.mmd) | [SVG](fase-operacional.svg) | [PNG](fase-operacional.png) |
 | Arquitetura AWS da Fase 3 | [componentes-fase-3.mmd](diagrams/componentes-fase-3.mmd) | [SVG](diagrams/componentes-fase-3.svg) | [PNG](diagrams/componentes-fase-3.png) |
 | Autenticação de cliente | [autenticacao-cliente.mmd](diagrams/autenticacao-cliente.mmd) | [SVG](diagrams/autenticacao-cliente.svg) | [PNG](diagrams/autenticacao-cliente.png) |
 | Abertura de OS | [abertura-os.mmd](diagrams/abertura-os.mmd) | [SVG](diagrams/abertura-os.svg) | [PNG](diagrams/abertura-os.png) |
@@ -46,3 +47,13 @@ poetry run python scripts/render_architecture_diagrams.py
 ~~~
 
 O script fixa @mermaid-js/mermaid-cli em 12.0.0, lê os arquivos Mermaid e atualiza os SVGs e PNGs em docs/architecture/diagrams/. O ícone AWS utilizado pelo diagrama de componentes vem do subconjunto local em docs/architecture/diagrams/aws-icons.json. Regere as exportações no mesmo PR que altera uma fonte.
+
+Para [fase-operacional.mmd](fase-operacional.mmd) (fora de `diagrams/`), use o mesmo CLI via Docker:
+
+```bash
+docker run --rm -u "$(id -u):$(id -g)" -v "$PWD/docs/architecture:/data" \
+  ghcr.io/mermaid-js/mermaid-cli/mermaid-cli:latest \
+  -i /data/fase-operacional.mmd -o /data/fase-operacional.png -b white
+```
+
+Repita com `-o /data/fase-operacional.svg` para SVG.

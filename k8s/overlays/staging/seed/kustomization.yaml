@@ -18,3 +18,9 @@ patches:
       - op: replace
         path: /spec/template/spec/containers/0/env/1/value
         value: hml
+  - path: redis-url-patch.yaml
+    target:
+      group: batch
+      version: v1
+      kind: Job
+      name: auto-shop-seed

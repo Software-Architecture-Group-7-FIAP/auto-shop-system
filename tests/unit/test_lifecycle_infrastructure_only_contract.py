@@ -8,9 +8,11 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 
 def _assert_profile_aware_ledger_scope(workflow: str) -> None:
     scope_line = next(line for line in workflow.splitlines() if "SESSION_SCOPE:" in line)
-    assert "steps.window.outputs.stage == 'hml'" in scope_line
-    assert "vars.STAGING_SESSION_PROFILE == 'infra-only'" in scope_line
-    assert "'infrastructure-only' || 'integrated'" in scope_line
+    assert scope_line.strip() == (
+        "SESSION_SCOPE: ${{ steps.window.outputs.stage == 'hml' && "
+        "(vars.STAGING_SESSION_PROFILE == 'infra-only' && 'infrastructure-only' || 'integrated') "
+        "|| 'integrated' }}"
+    )
 
 
 def test_start_is_limited_to_a_gated_hml_session_with_profile_aware_scope() -> None:

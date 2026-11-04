@@ -166,9 +166,6 @@ def _classify_connection_failure(error: Exception) -> tuple[str, bool, str | Non
 
 
 def _log_migration_connection_failure(error: Exception) -> bool:
-    if os.environ.get("MIGRATION_DIAGNOSTICS", "").lower() != "true":
-        return False
-
     summary, retryable, sqlstate = _classify_connection_failure(error)
     sqlstate_message = f"; sqlstate={sqlstate}" if sqlstate else ""
     print(

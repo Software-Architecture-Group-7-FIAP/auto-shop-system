@@ -31,7 +31,7 @@ class NewRelicCanaryWorkflowTests(unittest.TestCase):
         self.assertIn("environment: hml", content)
         self.assertIn("STAGING_SESSION_ALLOW_ANY_TIME", content)
         self.assertIn("secrets.LIFECYCLE_SESSION_SIGNING_KEY", content)
-        self.assertIn("sign_lifecycle_session.py", content)
+        self.assertIn("LIFECYCLE_SESSION_TOKEN: ${{ inputs.session_token }}", content)
         self.assertIn("validate_environment_window.py --action operate", content)
         self.assertIn("contents: read", content)
         self.assertNotIn("id-token: write", content)
@@ -47,3 +47,4 @@ class NewRelicCanaryWorkflowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

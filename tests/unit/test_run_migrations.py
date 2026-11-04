@@ -227,7 +227,7 @@ def test_run_migrations_logs_retryable_database_connection_failure_without_secre
         assert run_migrations() == 10
 
     output = capsys.readouterr().err
-    assert "connection was refused" in output
+    assert "database connection was refused" in output
     assert "retryable=true" in output
     assert secret not in output
     assert "db.internal" not in output

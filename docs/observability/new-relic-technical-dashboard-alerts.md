@@ -1,9 +1,14 @@
 # New Relic HML technical dashboard and alerts
 
-The owned dashboard is `auto-shop-owned::HML Technical Health`; the owned alert
-policy is `auto-shop-owned::HML Technical Alerts`. Their checked-in definitions
-are under `observability/new-relic/`. Provisioning uses NerdGraph variables and
-an approved User API key. It never uses the New Relic ingest/license key.
+The replacement dashboard is `auto-shop-owned::HML Technical Health v2`; the
+owned alert policy remains `auto-shop-owned::HML Technical Alerts`. Their
+checked-in definitions are under `observability/new-relic/`. The v2 dashboard
+uses the existing `auto-shop.ownership` tag key with the v2 ownership value. It
+is created alongside the legacy v1 dashboard, which this reconciler does not
+delete. Provisioning uses NerdGraph variables and an approved User API key. It
+never uses the New Relic ingest/license key.
+The alert-policy name and condition definitions remain unchanged; only their
+manifest ownership marker moves to v2 with the replacement dashboard.
 
 ## Dashboard contract
 

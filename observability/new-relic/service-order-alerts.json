@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "ownership": "auto-shop-owned-hml-service-order-v1",
+  "ownership": "auto-shop-owned-hml-service-order-v2",
   "policy": {
     "name": "auto-shop-owned::HML Service Order Failures",
     "incident_preference": "PER_CONDITION_AND_TARGET"
@@ -45,7 +45,7 @@
         "enabled": false
       },
       "enabled_during_hml_only": true,
-      "runbook_url": "https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/observability/new-relic-service-order-dashboard-alerts.md#failure-alert"
+      "runbook_url": "https://github.com/Software-Architecture-Group-7-FIAP/auto-shop-system/blob/develop/docs/observability/new-relic-service-order-dashboard-alerts.md#controlled-hml-drill"
     }
   ]
 }

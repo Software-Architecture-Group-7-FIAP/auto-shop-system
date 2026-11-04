@@ -36,11 +36,14 @@ Documentação da trilha [#88–#95](https://github.com/Software-Architecture-Gr
 | Recurso | Caminho |
 | --- | --- |
 | Índice de arquitetura | [docs/architecture/README.md](docs/architecture/README.md) |
-| Diagrama operacional (Mermaid) | [docs/architecture/fase-operacional.mmd](docs/architecture/fase-operacional.mmd) |
+| Diagrama operacional | [Mermaid](docs/architecture/fase-operacional.mmd) · [PNG](docs/architecture/fase-operacional.png) · [SVG](docs/architecture/fase-operacional.svg) |
 | CI no PR | [.github/workflows/ci.yml](.github/workflows/ci.yml) |
 | CD / OIDC / deploy | [.github/CD.md](.github/CD.md) |
 | Proteção de branches | [.github/BRANCH_PROTECTION.md](.github/BRANCH_PROTECTION.md) |
 | Templates CI outros repos | [.github/ecosystem-templates/README.md](.github/ecosystem-templates/README.md) |
+| Observabilidade (índice #92–#94) | [docs/observability/README.md](docs/observability/README.md) |
+| Runbooks operacionais | [docs/runbooks/README.md](docs/runbooks/README.md) |
+| RFCs operacionais (Gateway, deploy, NR) | [docs/rfc/README.md](docs/rfc/README.md) |
 | API Gateway (Terraform AWS) | [infra/aws/README.md](infra/aws/README.md) |
 | Deploy K8s | [k8s/scripts/deploy.sh](k8s/scripts/deploy.sh) |
 
@@ -345,7 +348,16 @@ O deploy de staging/produção cria automaticamente `auto-shop-redis-credentials
 por namespace se ainda não existir. A senha aleatória fica no Secret Kubernetes;
 o Redis usa memória efêmera e desaparece junto com o namespace da sessão.
 
-Vídeo da entrega: **inserir o link fornecido pelo participante responsável antes do envio**.
+Vídeo da entrega (até 15 min): [https://youtu.be/mZ6VZ04t5gU](https://youtu.be/mZ6VZ04t5gU) — PDF em [docs/entrega/Entrega.pdf](docs/entrega/Entrega.pdf).
+
+### Homologação (HML) — acesso para demonstração
+
+| Recurso | URL |
+| --- | --- |
+| Painel admin | https://app-hml.oficina-workshop.com.br/ |
+| Swagger (API) | https://api.oficina-workshop.com.br/docs |
+
+Login do painel: usuário **`avaliador`**, senha **`avaliador`** (conta do seed sintético Fase 3; apenas HML).
 
 ## Hardening de OS e links publicos
 

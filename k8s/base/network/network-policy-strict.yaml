@@ -186,3 +186,47 @@ spec:
           port: 8000
         - protocol: TCP
           port: 8080
+---
+# The New Relic scraper reads kube-state-metrics over HTTP inside the
+# namespace, which default-deny-ingress blocks without an explicit rule.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-kube-state-metrics-ingress
+  namespace: auto-shop
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kube-state-metrics
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8081
+---
+# The existing egress rules only cover 443/80, so the New Relic scraper also
+# needs explicit egress to the kube-state-metrics port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-kube-state-metrics-egress
+  namespace: auto-shop
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kube-state-metrics
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8081

@@ -1,6 +1,8 @@
 ### 📝 Descrição
 <!-- Descreva de forma clara o que esta PR resolve ou adiciona. -->
 
+**Base da PR:** abrir contra a branch **`develop`** (não `main`, salvo exceção acordada com o time).
+
 ### 🎫 Relacionado à Issue ou Ticket
 <!-- Ex: #123 ou link do Jira, Trello, etc. Colar o link do card -->
 [TXXX - Nome da tarefa] [colar aqui link do card] (link)
