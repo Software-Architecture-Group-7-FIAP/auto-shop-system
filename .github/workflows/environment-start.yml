@@ -517,7 +517,7 @@ jobs:
           python3 .github/scripts/cross_repo_lifecycle.py
           --repository "$GITHUB_REPOSITORY" --workflow new-relic-hml-technical.yml --ref develop
           --expected-title "new-relic:hml-technical:plan:$SESSION_ID"
-          --inputs "{\"action\":\"plan\",\"region\":\"us\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"confirm_apply\":\"false\",\"confirm_aws_schema\":\"false\",\"confirm_notification_route\":\"false\"}"
+          --inputs "{\"action\":\"plan\",\"region\":\"us\",\"session_id\":\"$SESSION_ID\",\"started_at\":\"$STARTED_AT\",\"session_mode\":\"$SESSION_MODE\",\"confirm_apply\":\"false\",\"confirm_notification_route\":\"false\"}"
           --github-output "$GITHUB_OUTPUT" --output-name new_relic_technical_plan --timeout-seconds 600 --deadline-utc "$WORK_DEADLINE"
 
       - name: Plan New Relic HML service-order dashboards and alerts
