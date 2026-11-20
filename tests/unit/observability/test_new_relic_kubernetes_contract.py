@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_hml_app_deploy_materializes_new_relic_secret_and_installs_cluster_chart():
+def test_hml_app_deploy_materializes_new_relic_secret_without_cluster_chart_install():
     bash_deploy = (ROOT / "k8s/scripts/deploy.sh").read_text(encoding="utf-8")
     powershell_deploy = (ROOT / "k8s/scripts/deploy.ps1").read_text(encoding="utf-8")
     cd_workflow = (ROOT / ".github/workflows/cd-staging.yml").read_text(encoding="utf-8")
@@ -18,11 +18,8 @@ def test_hml_app_deploy_materializes_new_relic_secret_and_installs_cluster_chart
         assert "NEW_RELIC_LICENSE_KEY" in script
         assert "--from-literal" not in script
 
-    # The platform repository never completed the HML chart rollout, so the
-    # application deploy installs the pinned nri-bundle itself.
-    assert "helm upgrade --install" in bash_deploy
-    assert "nri-bundle" in bash_deploy
-    assert "NEW_RELIC_K8S_CHART_SHA256" in bash_deploy
+    assert "install_new_relic_kubernetes" not in bash_deploy
+    assert "helm upgrade --install" not in bash_deploy
     assert "helm upgrade" not in powershell_deploy
 
     assert "NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}" in cd_workflow

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -69,6 +70,27 @@ def test_frontend_deploy_gate_is_independent_from_backend_deploy_gate() -> None:
         assert gate not in authorization
         assert gate not in backend
         assert f"vars.{gate} == 'true'" in frontend
+
+
+def test_environment_start_dispatches_only_declared_new_relic_technical_inputs() -> None:
+    start = (WORKFLOWS / "environment-start.yml").read_text(encoding="utf-8")
+    technical = (WORKFLOWS / "new-relic-hml-technical.yml").read_text(encoding="utf-8")
+    plan_step = start.split("Plan New Relic HML technical dashboards and alerts", 1)[1].split(
+        "Plan New Relic HML service-order", 1
+    )[0]
+    assert "new-relic-hml-technical.yml" in plan_step
+    assert "confirm_aws_schema" not in plan_step
+
+    declared = set(
+        re.findall(
+            r"^      (\w+):\s*$",
+            technical.split("workflow_dispatch:", 1)[1].split("permissions:", 1)[0],
+            flags=re.MULTILINE,
+        )
+    )
+    dispatched_keys = set(re.findall(r'\\"([a-z_]+)\\":', plan_step))
+    assert dispatched_keys
+    assert dispatched_keys.issubset(declared)
 
 
 def test_hml_wait_does_not_run_after_a_failed_open() -> None:

@@ -7,3 +7,15 @@ images:
   - name: auto-shop-system
     newName: registry.example.com/auto-shop-system
     newTag: __IMAGE_TAG__
+patches:
+  - target:
+      group: batch
+      version: v1
+      kind: Job
+      name: auto-shop-migrate
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: MIGRATION_DIAGNOSTICS
+            value: "true"

@@ -865,11 +865,17 @@ def _dashboard_configuration_matches(
     return True
 
 
-def _condition_input(condition: dict, *, enabled: bool) -> dict[str, object]:
+def _condition_input(
+    condition: dict, *, enabled: bool, profile: str = "technical"
+) -> dict[str, object]:
     signal = condition["signal"]
+    if profile == "service-order":
+        description = f"Owned service-order HML condition: {condition['category']}"
+    else:
+        description = f"Owned aggregate HML condition: {condition['category']}"
     return {
         "name": condition["name"],
-        "description": f"Owned aggregate HML condition: {condition['category']}",
+        "description": description,
         "enabled": enabled,
         "nrql": {"query": condition["nrql"]},
         "runbookUrl": condition["runbook_url"],
@@ -1181,7 +1187,9 @@ def reconcile(
         raise ProvisioningError("Unexpected owned alert conditions require manual review")
     by_name = {item["name"]: item for item in owned}
     for condition in alerts["conditions"]:
-        condition_input = _condition_input(condition, enabled=action == "apply")
+        condition_input = _condition_input(
+            condition, enabled=action == "apply", profile=profile
+        )
         current = by_name.get(condition["name"])
         if current:
             existing_condition = _condition_configuration(
@@ -1193,45 +1201,18 @@ def reconcile(
             if not _condition_configuration_matches(
                 condition_input, existing_condition
             ):
-                if profile == "service-order":
-                    if current.get("type") != "STATIC":
-                        raise ProvisioningError(
-                            "Owned service-order condition is not a static NRQL condition"
-                        )
-                    deleted = client.execute(
-                        CONDITION_DELETE,
-                        {
-                            "accountId": account_id,
-                            "conditionId": current["id"],
-                        },
+                if current.get("type") != "STATIC":
+                    raise ProvisioningError(
+                        "Owned alert condition is not a static NRQL condition"
                     )
-                    try:
-                        deleted_id = deleted["alertsConditionDelete"]["id"]
-                    except (KeyError, TypeError):
-                        raise ProvisioningError(
-                            "NerdGraph alert condition deletion response was invalid"
-                        ) from None
-                    if str(deleted_id) != str(current["id"]):
-                        raise ProvisioningError(
-                            "NerdGraph deleted an unexpected alert condition"
-                        )
-                    client.execute(
-                        CONDITION_CREATE,
-                        {
-                            "accountId": account_id,
-                            "policyId": policy_id,
-                            "condition": condition_input,
-                        },
-                    )
-                else:
-                    client.execute(
-                        CONDITION_UPDATE,
-                        {
-                            "accountId": account_id,
-                            "conditionId": current["id"],
-                            "condition": condition_input,
-                        },
-                    )
+                client.execute(
+                    CONDITION_UPDATE,
+                    {
+                        "accountId": account_id,
+                        "conditionId": current["id"],
+                        "condition": condition_input,
+                    },
+                )
         elif action == "apply":
             client.execute(
                 CONDITION_CREATE,

@@ -520,11 +520,11 @@ def test_service_order_apply_replaces_owned_drifted_legacy_condition():
     documents = [document for document, _ in client.calls[call_count:]]
 
     assert CONDITION_GET in documents
-    assert CONDITION_DELETE in documents
-    assert CONDITION_CREATE in documents
-    assert CONDITION_UPDATE not in documents
+    assert CONDITION_UPDATE in documents
+    assert CONDITION_DELETE not in documents
+    assert CONDITION_CREATE not in documents
     assert result["conditions"] == 1
     assert client.conditions[condition_name]["configuration"]["description"] == (
-        "Owned aggregate HML condition: service_order_failure"
+        "Owned service-order HML condition: service_order_failure"
     )
 

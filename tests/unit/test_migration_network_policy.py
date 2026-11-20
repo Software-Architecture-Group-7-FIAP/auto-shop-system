@@ -59,3 +59,22 @@ def test_database_policies_allow_backend_migration_and_seed_clients() -> None:
     assert postgres_ingress["spec"]["ingress"][0]["ports"] == [
         {"protocol": "TCP", "port": 5432}
     ]
+
+
+def test_kube_state_metrics_policies_only_allow_newrelic_infrastructure_scraper() -> None:
+    policies = yaml.safe_load_all(NETWORK_POLICIES.read_text(encoding="utf-8"))
+    policies_by_name = {policy["metadata"]["name"]: policy for policy in policies}
+    ingress = policies_by_name["allow-kube-state-metrics-ingress"]
+    egress = policies_by_name["allow-kube-state-metrics-egress"]
+    scraper_selector = {"matchLabels": {"app.kubernetes.io/name": "newrelic-infrastructure"}}
+
+    assert ingress["spec"]["ingress"][0]["from"] == [{"podSelector": scraper_selector}]
+    assert egress["spec"]["podSelector"] == scraper_selector["matchLabels"]
+
+
+def test_production_migration_overlay_enables_diagnostics() -> None:
+    overlay = (
+        ROOT / "k8s" / "overlays" / "production" / "migration" / "kustomization.yaml"
+    ).read_text(encoding="utf-8")
+    assert "MIGRATION_DIAGNOSTICS" in overlay
+    assert 'value: "true"' in overlay
