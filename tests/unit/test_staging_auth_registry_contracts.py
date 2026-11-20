@@ -140,27 +140,31 @@ def test_deploy_jobs_require_dispatch_and_successful_prerequisites(
     assert "needs: [build-push, lifecycle-authorization]" in deploy_job
 
 
-def test_customer_auth_overlays_share_issuer_and_select_stage_jwks() -> None:
+def test_customer_auth_overlays_share_issuer_and_gateway_root_jwks() -> None:
     staging = (
         ROOT / "k8s/overlays/staging/foundation/configmap-patch.yaml"
     ).read_text(encoding="utf-8")
     production = (
         ROOT / "k8s/overlays/production/foundation/configmap-patch.yaml"
     ).read_text(encoding="utf-8")
+    gateway = (ROOT / "infra/aws/api_gateway.tf").read_text(encoding="utf-8")
 
     issuer = 'CUSTOMER_JWT_ISSUER: "https://api.oficina-workshop.com.br"'
-    assert issuer in staging
-    assert issuer in production
-    assert (
+    jwks_url = (
         'CUSTOMER_JWT_JWKS_URL: "https://api.oficina-workshop.com.br/'
         '.well-known/jwks.json"'
-    ) in staging
-    assert (
-        'CUSTOMER_JWT_JWKS_URL: "https://api.oficina-workshop.com.br/prd/'
-        '.well-known/jwks.json"'
-    ) in production
-    assert 'CUSTOMER_JWT_AUDIENCE: "auto-shop-api"' in staging
-    assert 'CUSTOMER_JWT_AUDIENCE: "auto-shop-api"' in production
+    )
+    audience = 'CUSTOMER_JWT_AUDIENCE: "auto-shop-api"'
+
+    assert issuer in staging
+    assert issuer in production
+    assert jwks_url in staging
+    assert jwks_url in production
+    assert audience in staging
+    assert audience in production
+    assert "/prd/.well-known/jwks.json" not in production
+    assert 'resource "aws_api_gateway_method" "jwks_get"' in gateway
+    assert 'path_part   = "jwks.json"' in gateway
 
 
 def test_documented_ssm_jwt_contract_matches_published_parameters() -> None:

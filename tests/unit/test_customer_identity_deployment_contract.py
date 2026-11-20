@@ -28,6 +28,25 @@ def test_kubernetes_and_terraform_publish_customer_identity_configuration():
     assert "service_order_event_bus_name não pode ficar vazio" in variables
 
 
+def test_staging_and_production_publish_gateway_root_jwks_url():
+    published_jwks = (
+        "https://api.oficina-workshop.com.br/.well-known/jwks.json"
+    )
+    staging_overlay = (
+        ROOT / "k8s/overlays/staging/foundation/configmap-patch.yaml"
+    ).read_text(encoding="utf-8")
+    production_overlay = (
+        ROOT / "k8s/overlays/production/foundation/configmap-patch.yaml"
+    ).read_text(encoding="utf-8")
+
+    assert f'CUSTOMER_JWT_JWKS_URL: "{published_jwks}"' in staging_overlay
+    assert f'CUSTOMER_JWT_JWKS_URL: "{published_jwks}"' in production_overlay
+    assert 'CUSTOMER_JWT_ISSUER: "https://api.oficina-workshop.com.br"' in staging_overlay
+    assert 'CUSTOMER_JWT_ISSUER: "https://api.oficina-workshop.com.br"' in production_overlay
+    assert 'CUSTOMER_JWT_AUDIENCE: "auto-shop-api"' in staging_overlay
+    assert 'CUSTOMER_JWT_AUDIENCE: "auto-shop-api"' in production_overlay
+
+
 def test_customer_identity_settings_are_configured_in_local_and_staging_overlays():
     local_overlay = (ROOT / "k8s/overlays/local/foundation/configmap-patch.yaml").read_text(
         encoding="utf-8"
